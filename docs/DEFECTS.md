@@ -78,3 +78,32 @@ any tool outside the matched command set is not intercepted.
   change made by any means still shows up in `git status`/`git diff` against
   a known-good baseline, so the hook's job is to catch the common case
   quickly, not to be the only line of defense.
+
+---
+
+## DEFECT-6 — `migrate_split_v2.py --dry-run`'s S-2a check is currently unfalsifiable
+
+Run against a 25-snapshot corpus where every snapshot was already captured at
+`split-v2` (no split-v1 legacy data to migrate): `--dry-run` reports 25
+snapshots, 0 reassigned, 0 unchanged, 25 already-v2 — correct so far — but
+then reports **0 domains** in the domain-level distribution, and "S-2a
+straddling domains: 0 (must be 0)" passes.
+
+The domain-tracking code (`domains_by_split`, `snapshots_per_domain`) is only
+populated inside the branch that handles snapshots needing reassignment; the
+`already_v2` branch `continue`s before reaching it. When every snapshot is
+already `split-v2` — which will be true for this entire corpus going
+forward, since `capture.py` assigns `split-v2` at capture time — the domain
+count is 0 by construction, not because there are genuinely 0 domains.
+
+A check over zero domains passes vacuously. §13.3 requires confidence
+intervals reported against the domain count specifically because domains
+carry unequal snapshot counts; an audit that silently reports 0 domains
+gives no such basis. This is the same failure shape DEC-1 already flagged
+for the gzip globs: a broken check that presents as success.
+
+- **Owner:** Step 13.
+- **Do not tick C0.6** ("the S-2a audit passes") until the domain count
+  itself is non-zero and verified — the audit passing with 0 domains is not
+  evidence C0.6's check is meaningful, it's evidence the check hasn't been
+  exercised on real reassignment data yet.
