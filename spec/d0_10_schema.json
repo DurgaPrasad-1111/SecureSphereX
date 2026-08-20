@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securesphere.example/schemas/d0.10.schema.json",
+  "title": "SecureSphere X — D0.10 canonical contract",
+  "$defs": {
+    "UserDisposition": {
+      "type": "string",
+      "enum": [
+        "heeded",
+        "overridden",
+        "dismissed"
+      ]
+    },
+    "InvocationContext": {
+      "type": "object",
+      "properties": {
+        "analysisSessionId": {
+          "type": "string"
+        },
+        "targetResourceId": {
+          "type": "string"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "trigger": {
+          "$ref": "#/$defs/PassTrigger"
+        },
+        "isPrivateContext": {
+          "type": "boolean",
+          "description": "Propagated so the store write path can honour §20.8."
+        },
+        "gateOrdinal": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "1-based index of the Tier 2 gate event within the session; dense and monotonic (Rule Engine §2.4). Null for Tier 0 and Tier 1 invocations, which are not gates.\n\nADDED at contract v1.1.0. Backend §12.3 makes gate submission idempotent on `(sessionId, gateOrdinal)`, so the value must cross the Role A → Role B boundary and, in the HTTP projection, the client-server boundary. It had no canonical definition; this is that definition.\n\n`tier` is NOT part of the HTTP projection of this structure (BI-32, Backend §5.1)."
+        }
+      },
+      "required": [
+        "analysisSessionId",
+        "targetResourceId",
+        "tier",
+        "trigger",
+        "isPrivateContext",
+        "gateOrdinal"
+      ],
+      "additionalProperties": false
+    },
+    "Tier": {
+      "type": "number",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "PassTrigger": {
+      "type": "string",
+      "enum": [
+        "navigation_commit",
+        "dom_ready",
+        "gate_credential_submit",
+        "gate_download_initiate",
+        "gate_permission_request",
+        "advisory_reevaluation"
+      ]
+    }
+  }
+}

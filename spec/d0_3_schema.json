@@ -1,0 +1,698 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securesphere.example/schemas/d0.3.schema.json",
+  "title": "SecureSphere X — D0.3 canonical contract",
+  "$defs": {
+    "RuleSet": {
+      "type": "object",
+      "properties": {
+        "formatVersion": {
+          "type": "string",
+          "const": "1.1.0"
+        },
+        "ruleSetVersion": {
+          "type": "string",
+          "description": "§14.1 semantic version, e.g. \"rules-v0.1.0\"."
+        },
+        "released": {
+          "type": "boolean"
+        },
+        "integrityDigest": {
+          "type": "string",
+          "description": "§12.2: a released version is immutable. Integrity is checked at load; failure is fail-closed (§15.3)."
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ParameterDefinition"
+          }
+        },
+        "refinementSets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefinementSet"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleDefinition"
+          }
+        },
+        "suppressions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SuppressionDefinition"
+          }
+        },
+        "subsumption": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubsumptionEntry"
+          },
+          "description": "§10.4: intentionally empty at rules-v0.1. The MECHANISM ships; the table does not. Adding composites is then a data change."
+        },
+        "changeLog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MAJOR",
+                  "MINOR",
+                  "PATCH"
+                ]
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version",
+              "kind",
+              "summary"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "formatVersion",
+        "ruleSetVersion",
+        "released",
+        "integrityDigest",
+        "parameters",
+        "refinementSets",
+        "rules",
+        "suppressions",
+        "subsumption",
+        "changeLog"
+      ],
+      "additionalProperties": false
+    },
+    "ParameterDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ParameterId"
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/EmpiricalConfidence",
+          "description": "Unvalidated at rules-v0.1 by definition (§18.2)."
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "unit",
+        "rationale",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "ParameterId": {
+      "type": "string",
+      "enum": [
+        "tau_sim",
+        "redirect_hop_min",
+        "page_age_max_ms",
+        "threshold_medium",
+        "threshold_high",
+        "tau_collision",
+        "auth_count_n",
+        "auth_days_m",
+        "provisional_expiry_days",
+        "trust_validity_days",
+        "establishment_rate_max"
+      ]
+    },
+    "EmpiricalConfidence": {
+      "type": "string",
+      "enum": [
+        "Unvalidated",
+        "Provisional",
+        "Validated"
+      ]
+    },
+    "RefinementSet": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/RefinementSetId"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matchMode": {
+          "type": "string",
+          "const": "exact"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "members",
+        "matchMode",
+        "rationale"
+      ],
+      "additionalProperties": false
+    },
+    "RefinementSetId": {
+      "type": "string",
+      "enum": [
+        "executableTypes",
+        "sensitivePermissions",
+        "identityProviders"
+      ]
+    },
+    "RuleDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/RuleId"
+        },
+        "family": {
+          "$ref": "#/$defs/RuleFamily"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/RuleType"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuleId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Aggravators only. Contributes solely when the parent is present, unsubsumed, and has non-zero effective weight (§9.3)."
+        },
+        "predicate": {
+          "$ref": "#/$defs/Predicate"
+        },
+        "requiredModules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModuleId"
+          },
+          "description": "Modules whose evaluations the predicate reads.\n\nCRITICAL (§15.2): if ANY required module is `unevaluable` for this pass, the rule outcome is `unevaluable` — NOT a non-match. A rule that could not be tested MUST NOT be recorded as a rule that found nothing."
+        },
+        "baseWeight": {
+          "type": "number"
+        },
+        "tier": {
+          "$ref": "#/$defs/Tier"
+        },
+        "interveningTier": {
+          "$ref": "#/$defs/Tier",
+          "description": "Tier at which the rule may contribute to an intervening decision."
+        },
+        "owner": {
+          "type": "string"
+        },
+        "introducedIn": {
+          "type": "string"
+        },
+        "lastModifiedIn": {
+          "type": "string"
+        },
+        "lifecycleState": {
+          "$ref": "#/$defs/LifecycleState"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "empiricalConfidence": {
+          "$ref": "#/$defs/EmpiricalConfidence"
+        },
+        "knownFalsePositiveRisks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "knownLimitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cweMappings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capecMappings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "family",
+        "name",
+        "type",
+        "parent",
+        "predicate",
+        "requiredModules",
+        "baseWeight",
+        "tier",
+        "interveningTier",
+        "owner",
+        "introducedIn",
+        "lastModifiedIn",
+        "lifecycleState",
+        "rationale",
+        "empiricalConfidence",
+        "knownFalsePositiveRisks",
+        "knownLimitations",
+        "cweMappings",
+        "capecMappings"
+      ],
+      "additionalProperties": false
+    },
+    "RuleId": {
+      "type": "string"
+    },
+    "RuleFamily": {
+      "type": "string",
+      "enum": [
+        "CRED",
+        "DL",
+        "PM",
+        "JS"
+      ]
+    },
+    "RuleType": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "aggravator"
+      ]
+    },
+    "Predicate": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "is"
+            },
+            "path": {
+              "$ref": "#/$defs/ValuePath"
+            }
+          },
+          "required": [
+            "op",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "not"
+            },
+            "operand": {
+              "$ref": "#/$defs/Predicate"
+            }
+          },
+          "required": [
+            "op",
+            "operand"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "and"
+            },
+            "operands": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Predicate"
+              }
+            }
+          },
+          "required": [
+            "op",
+            "operands"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "or"
+            },
+            "operands": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Predicate"
+              }
+            }
+          },
+          "required": [
+            "op",
+            "operands"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "gt",
+                "lt"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/ValuePath"
+            },
+            "param": {
+              "$ref": "#/$defs/ParameterId"
+            }
+          },
+          "required": [
+            "op",
+            "path",
+            "param"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "eq",
+                "neq"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/ValuePath"
+            },
+            "value": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "path",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "sameSite",
+                "notSameSite"
+              ]
+            },
+            "left": {
+              "$ref": "#/$defs/ValuePath"
+            },
+            "right": {
+              "$ref": "#/$defs/ValuePath"
+            }
+          },
+          "required": [
+            "op",
+            "left",
+            "right"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "inSet"
+            },
+            "path": {
+              "$ref": "#/$defs/ValuePath"
+            },
+            "set": {
+              "$ref": "#/$defs/RefinementSetId"
+            }
+          },
+          "required": [
+            "op",
+            "path",
+            "set"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "exists"
+            },
+            "collection": {
+              "$ref": "#/$defs/CollectionPath"
+            },
+            "where": {
+              "$ref": "#/$defs/Predicate"
+            }
+          },
+          "required": [
+            "op",
+            "collection",
+            "where"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "priorFindingActive"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ValuePath": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FindingPath"
+        },
+        {
+          "$ref": "#/$defs/ItemPath"
+        }
+      ],
+      "description": "Any readable operand: a module finding, or the bound item inside `exists`."
+    },
+    "FindingPath": {
+      "type": "string"
+    },
+    "ItemPath": {
+      "type": "string",
+      "description": "Reference to the item bound by an `exists` quantifier.\n\n`'$'`        — the bound item itself (scalar collections) `'$.field'`  — a field of the bound item (object collections)\n\nValid ONLY inside an `exists.where` subtree; enforced by static check V-13.\n\nADDED at contract v1.1.0. Without a binding mechanism the `exists` quantifier could not reference the item it bound, and CRED-01, CRED-05 and CRED-07 were inexpressible. Confirmed by compilation, not by inspection."
+    },
+    "CollectionPath": {
+      "type": "string",
+      "enum": [
+        "loginForm.forms",
+        "javascript.transmissionEndpointDomains"
+      ],
+      "description": "Paths into repeated sub-structures, used with the `exists` quantifier."
+    },
+    "ModuleId": {
+      "type": "string",
+      "enum": [
+        "url",
+        "ssl",
+        "dns",
+        "redirect",
+        "loginForm",
+        "javascript",
+        "homograph",
+        "authContext",
+        "downloadContext",
+        "permissionContext"
+      ]
+    },
+    "Tier": {
+      "type": "number",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "LifecycleState": {
+      "type": "string",
+      "enum": [
+        "Proposed",
+        "Active",
+        "Deprecated",
+        "Retired"
+      ]
+    },
+    "SuppressionDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SuppressionId"
+        },
+        "mechanism": {
+          "$ref": "#/$defs/SuppressionMechanism"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Predicate"
+          },
+          "description": "ALL guards must hold for the suppression to apply (§6.1)."
+        },
+        "blockedBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleId"
+          },
+          "description": "Negative guards: if ANY holds, the suppression does NOT apply. S-02's CRED-03 guard lives here — without it, a confusable lookalike of a registry entry would obtain automatic exemption from CRED-01."
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SuppressionTarget"
+          }
+        },
+        "neverApplies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleId"
+          }
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "introducedIn": {
+          "type": "string"
+        },
+        "lastModifiedIn": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "mechanism",
+        "purpose",
+        "guards",
+        "blockedBy",
+        "targets",
+        "neverApplies",
+        "rationale",
+        "introducedIn",
+        "lastModifiedIn"
+      ],
+      "additionalProperties": false
+    },
+    "SuppressionId": {
+      "type": "string"
+    },
+    "SuppressionMechanism": {
+      "type": "string",
+      "enum": [
+        "exemption",
+        "allowlist"
+      ]
+    },
+    "SuppressionTarget": {
+      "type": "object",
+      "properties": {
+        "ruleId": {
+          "$ref": "#/$defs/RuleId"
+        },
+        "reduction": {
+          "type": "number",
+          "description": "0 < reduction ≤ 1. 1.0 nullifies; 0.5 halves."
+        }
+      },
+      "required": [
+        "ruleId",
+        "reduction"
+      ],
+      "additionalProperties": false
+    },
+    "SubsumptionEntry": {
+      "type": "object",
+      "properties": {
+        "composite": {
+          "$ref": "#/$defs/RuleId"
+        },
+        "subsumes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuleId"
+          }
+        }
+      },
+      "required": [
+        "composite",
+        "subsumes"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

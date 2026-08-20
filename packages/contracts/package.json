@@ -1,0 +1,9 @@
+{
+  "name": "@securesphere-x/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22"
+  }
+}

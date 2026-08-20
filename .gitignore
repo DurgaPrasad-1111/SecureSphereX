@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.claude/settings.local.json
+spike/
+*.tsbuildinfo
+
+# corpus/ handling is intentionally NOT decided here — DEC-1 (corpus storage:
+# Git-LFS vs external store) is not yet signed in DECISIONS.md. Do not add a
+# corpus/ rule until DEC-1 is resolved: an accidental ignore rule here would
+# BE DEC-1 decided by accident, in the worst direction, without anyone having
+# chosen it. See How-To-Start-Coding.md Step 1.

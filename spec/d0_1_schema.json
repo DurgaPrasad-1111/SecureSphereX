@@ -1,0 +1,1046 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securesphere.example/schemas/d0.1.schema.json",
+  "title": "SecureSphere X — D0.1 canonical contract",
+  "$defs": {
+    "SecurityEvidence": {
+      "type": "object",
+      "properties": {
+        "targetResourceId": {
+          "type": "string"
+        },
+        "analysisSessionId": {
+          "type": "string"
+        },
+        "evidenceId": {
+          "type": "string"
+        },
+        "collectionContext": {
+          "$ref": "#/$defs/CollectionContext"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceByCategory"
+        }
+      },
+      "required": [
+        "targetResourceId",
+        "analysisSessionId",
+        "evidenceId",
+        "collectionContext",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "description": "Complete Security Evidence for one analysis pass.\n\nImmutable on creation (Domain Model §5.2). Every category is always present as an object; individual fields carry their own tri-state. A module never receives a missing category — it receives a category whose fields are `notCollected`."
+    },
+    "CollectionContext": {
+      "type": "object",
+      "properties": {
+        "collector": {
+          "$ref": "#/$defs/CollectorKind"
+        },
+        "collectorVersion": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "number",
+          "enum": [
+            0,
+            1,
+            2
+          ]
+        },
+        "passOrdinal": {
+          "type": "number"
+        },
+        "collectedOn": {
+          "type": "string",
+          "description": "Day granularity only. Rule Engine §20.3 — no precise timestamps."
+        },
+        "evidenceContractVersion": {
+          "type": "string",
+          "const": "1.1.0"
+        }
+      },
+      "required": [
+        "collector",
+        "collectorVersion",
+        "tier",
+        "passOrdinal",
+        "collectedOn",
+        "evidenceContractVersion"
+      ],
+      "additionalProperties": false
+    },
+    "CollectorKind": {
+      "type": "string",
+      "enum": [
+        "extension",
+        "capture_harness",
+        "backend"
+      ]
+    },
+    "EvidenceByCategory": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/$defs/UrlEvidence"
+        },
+        "transport": {
+          "$ref": "#/$defs/TransportEvidence"
+        },
+        "dns": {
+          "$ref": "#/$defs/DnsEvidence"
+        },
+        "redirect": {
+          "$ref": "#/$defs/RedirectEvidence"
+        },
+        "loginInterface": {
+          "$ref": "#/$defs/LoginInterfaceEvidence"
+        },
+        "scriptRuntime": {
+          "$ref": "#/$defs/ScriptRuntimeEvidence"
+        },
+        "domainRepresentation": {
+          "$ref": "#/$defs/DomainRepresentationEvidence"
+        },
+        "downloadContext": {
+          "$ref": "#/$defs/DownloadContextEvidence"
+        },
+        "permissionContext": {
+          "$ref": "#/$defs/PermissionContextEvidence"
+        }
+      },
+      "required": [
+        "url",
+        "transport",
+        "dns",
+        "redirect",
+        "loginInterface",
+        "scriptRuntime",
+        "domainRepresentation",
+        "downloadContext",
+        "permissionContext"
+      ],
+      "additionalProperties": false
+    },
+    "UrlEvidence": {
+      "type": "object",
+      "properties": {
+        "fullUrl": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "scheme": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "host": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "port": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "path": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "queryPresent": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "registrableDomain": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "subdomainLabels": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "isIpLiteral": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "totalLength": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "percentEncodedSegmentCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        }
+      },
+      "required": [
+        "fullUrl",
+        "scheme",
+        "host",
+        "port",
+        "path",
+        "queryPresent",
+        "registrableDomain",
+        "subdomainLabels",
+        "isIpLiteral",
+        "totalLength",
+        "percentEncodedSegmentCount"
+      ],
+      "additionalProperties": false
+    },
+    "Observation<string>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "NotCollectedReason": {
+      "type": "string",
+      "enum": [
+        "api_unavailable",
+        "permission_denied",
+        "tier_not_reached",
+        "network_unreachable",
+        "timeout",
+        "cross_origin_blocked",
+        "collector_error",
+        "policy_suppressed",
+        "not_applicable"
+      ]
+    },
+    "Observation<number>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Observation<boolean>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Observation<string[]>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransportEvidence": {
+      "type": "object",
+      "properties": {
+        "isHttps": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "certificateSubject": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "subjectAlternativeNames": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "validFrom": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "validTo": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "issuer": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "chainComplete": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "chainTrusted": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        }
+      },
+      "required": [
+        "isHttps",
+        "certificateSubject",
+        "subjectAlternativeNames",
+        "validFrom",
+        "validTo",
+        "issuer",
+        "chainComplete",
+        "chainTrusted"
+      ],
+      "additionalProperties": false
+    },
+    "DnsEvidence": {
+      "type": "object",
+      "properties": {
+        "resolves": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "aRecordCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "aaaaRecordCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "nameServers": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "cnameTarget": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "mxPresent": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "txtRecordCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "dnssecDeployed": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        }
+      },
+      "required": [
+        "resolves",
+        "aRecordCount",
+        "aaaaRecordCount",
+        "nameServers",
+        "cnameTarget",
+        "mxPresent",
+        "txtRecordCount",
+        "dnssecDeployed"
+      ],
+      "additionalProperties": false
+    },
+    "RedirectEvidence": {
+      "type": "object",
+      "properties": {
+        "initialUrl": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "finalUrl": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "chain": {
+          "$ref": "#/$defs/Observation%3Cdef-interface-215528978-6618-6785-215528978-0-15830%5B%5D%3E"
+        },
+        "hopCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "crossedRegistrableDomain": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        }
+      },
+      "required": [
+        "initialUrl",
+        "finalUrl",
+        "chain",
+        "hopCount",
+        "crossedRegistrableDomain"
+      ],
+      "additionalProperties": false
+    },
+    "Observation<def-interface-215528978-6618-6785-215528978-0-15830[]>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RedirectHop"
+              }
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RedirectHop": {
+      "type": "object",
+      "properties": {
+        "fromUrl": {
+          "type": "string"
+        },
+        "toUrl": {
+          "type": "string"
+        },
+        "mechanism": {
+          "$ref": "#/$defs/RedirectMechanism"
+        },
+        "statusCode": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fromUrl",
+        "toUrl",
+        "mechanism",
+        "statusCode"
+      ],
+      "additionalProperties": false
+    },
+    "RedirectMechanism": {
+      "type": "string",
+      "enum": [
+        "http_3xx",
+        "javascript",
+        "meta_refresh",
+        "unknown"
+      ]
+    },
+    "LoginInterfaceEvidence": {
+      "type": "object",
+      "properties": {
+        "credentialFormPresent": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "forms": {
+          "$ref": "#/$defs/Observation%3Cdef-interface-215528978-7349-7646-215528978-0-15830%5B%5D%3E"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/Observation%3CLoginFingerprint%3E"
+        }
+      },
+      "required": [
+        "credentialFormPresent",
+        "forms",
+        "fingerprint"
+      ],
+      "additionalProperties": false
+    },
+    "Observation<def-interface-215528978-7349-7646-215528978-0-15830[]>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LoginFormObservation"
+              }
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LoginFormObservation": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CredentialField"
+          }
+        },
+        "method": {
+          "$ref": "#/$defs/FormMethod"
+        },
+        "actionUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actionRegistrableDomain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "injectedAfterLoad": {
+          "type": "boolean"
+        },
+        "injectingScriptOrigin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fields",
+        "method",
+        "actionUrl",
+        "actionRegistrableDomain",
+        "injectedAfterLoad",
+        "injectingScriptOrigin"
+      ],
+      "additionalProperties": false
+    },
+    "CredentialField": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CredentialFieldKind"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "autocompleteDisabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "hidden",
+        "autocompleteDisabled"
+      ],
+      "additionalProperties": false
+    },
+    "CredentialFieldKind": {
+      "type": "string",
+      "enum": [
+        "password",
+        "otp",
+        "pin",
+        "username",
+        "email"
+      ]
+    },
+    "FormMethod": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "POST",
+        "OTHER"
+      ]
+    },
+    "Observation<LoginFingerprint>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "$ref": "#/$defs/LoginFingerprint"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LoginFingerprint": {
+      "type": "object",
+      "properties": {
+        "fingerprintAlgorithmVersion": {
+          "type": "string"
+        },
+        "fieldComposition": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CredentialFieldKind"
+          }
+        },
+        "titleTokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "faviconHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heroImagePerceptualHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dominantColors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "fingerprintAlgorithmVersion",
+        "fieldComposition",
+        "titleTokens",
+        "faviconHash",
+        "heroImagePerceptualHash",
+        "dominantColors"
+      ],
+      "additionalProperties": false,
+      "description": "Login-interface fingerprint (Rule Engine §7.2, §20.7).\n\nFeature classes are chosen for stability under redesign and difficulty of variation under impersonation. Raw DOM structure is deliberately excluded — too brittle.\n\nThis is EVIDENCE, not store content. It describes the CURRENT page. The Authentication History Store is the ACEM's reference data (§20.11)."
+    },
+    "ScriptRuntimeEvidence": {
+      "type": "object",
+      "properties": {
+        "listenerOnCredentialField": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "clientSideTransmissionObserved": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "transmissionEndpoints": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "dynamicScriptLoadCount": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        },
+        "dynamicScriptOrigins": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "credentialInterfaceInjected": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        }
+      },
+      "required": [
+        "listenerOnCredentialField",
+        "clientSideTransmissionObserved",
+        "transmissionEndpoints",
+        "dynamicScriptLoadCount",
+        "dynamicScriptOrigins",
+        "credentialInterfaceInjected"
+      ],
+      "additionalProperties": false
+    },
+    "DomainRepresentationEvidence": {
+      "type": "object",
+      "properties": {
+        "unicodeDomain": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "punycodeDomain": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "isIdn": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "containsNonAscii": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "scriptsUsed": {
+          "$ref": "#/$defs/Observation%3Cstring%5B%5D%3E"
+        },
+        "isMixedScript": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "confusableSkeleton": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        }
+      },
+      "required": [
+        "unicodeDomain",
+        "punycodeDomain",
+        "isIdn",
+        "containsNonAscii",
+        "scriptsUsed",
+        "isMixedScript",
+        "confusableSkeleton"
+      ],
+      "additionalProperties": false
+    },
+    "DownloadContextEvidence": {
+      "type": "object",
+      "properties": {
+        "downloadUrl": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "downloadRegistrableDomain": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "referrerUrl": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "referrerRegistrableDomain": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "declaredFilename": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "declaredExtension": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "declaredMimeType": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "hasCompoundExtension": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        }
+      },
+      "required": [
+        "downloadUrl",
+        "downloadRegistrableDomain",
+        "referrerUrl",
+        "referrerRegistrableDomain",
+        "declaredFilename",
+        "declaredExtension",
+        "declaredMimeType",
+        "hasCompoundExtension"
+      ],
+      "additionalProperties": false
+    },
+    "PermissionContextEvidence": {
+      "type": "object",
+      "properties": {
+        "requestedPermission": {
+          "$ref": "#/$defs/Observation%3CSensitivePermission%3E"
+        },
+        "requestingOrigin": {
+          "$ref": "#/$defs/Observation%3Cstring%3E"
+        },
+        "precededByUserGesture": {
+          "$ref": "#/$defs/Observation%3Cboolean%3E"
+        },
+        "pageAgeMs": {
+          "$ref": "#/$defs/Observation%3Cnumber%3E"
+        }
+      },
+      "required": [
+        "requestedPermission",
+        "requestingOrigin",
+        "precededByUserGesture",
+        "pageAgeMs"
+      ],
+      "additionalProperties": false
+    },
+    "Observation<SensitivePermission>": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "present"
+            },
+            "value": {
+              "$ref": "#/$defs/SensitivePermission"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "notCollected"
+            },
+            "reason": {
+              "$ref": "#/$defs/NotCollectedReason"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SensitivePermission": {
+      "type": "string",
+      "enum": [
+        "camera",
+        "microphone",
+        "geolocation",
+        "notifications",
+        "clipboard_read"
+      ]
+    }
+  }
+}

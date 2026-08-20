@@ -1,0 +1,1478 @@
+openapi: 3.1.0
+
+# ============================================================================
+# SecureSphere X — OpenAPI 3.1 Specification
+#
+# PROJECTION, NOT AUTHORITY.
+# Derived from: Backend Architecture v1.3 · Canonical Boundary Contracts
+#               D0.10 v1.1.0 · API Contract v1.2
+#
+# Canonical-backed payloads are referenced by external $ref into schemas
+# GENERATED from the D0.x TypeScript sources. No canonical schema is written
+# by hand in this document (API Contract §18.1).
+#
+# Transport-only payloads are defined in components/schemas. This document is
+# their canonical source, per API Contract §18.1.
+# ============================================================================
+
+info:
+  title: SecureSphere X API
+  version: 1.2.0
+  summary: Browser-based phishing and credential-theft protection platform
+  description: |
+    Implementation contract projected from the approved architecture baseline.
+
+    **This document is not a source of architectural truth.** Every path,
+    operation, parameter and schema traces to Backend Architecture v1.3 and
+    API Contract v1.2. Discrepancies are classified as Translation Defects or
+    Architecture Change Requests and resolved in those documents, never here.
+
+    ## Two departures from HTTP convention, both architectural
+
+    **Evaluation unavailability returns 200, not 503.** Backend §1.2 establishes
+    that backend evaluation supplies better evidence rather than authority; a
+    client controls its own enforcement regardless. Its absence therefore
+    degrades the response rather than failing the request, and the body may
+    legitimately be `null`. Returning 503 would change client behaviour at the
+    exact moment a user waits at a credential gate.
+
+    **An over-long k-anonymity prefix is rejected, never truncated.** Truncating
+    would conceal a client attempting to disclose more than policy permits.
+
+    ## What this API deliberately does not contain
+
+    No session creation, report creation, client enrolment, token exchange,
+    history deletion, Domain Security State, Knowledge Metadata, rule weights,
+    suppressions, replay, Tier 0/1 evidence, or Authentication History surface.
+    Each absence is an approved architectural decision recorded in API
+    Contract §16.
+  contact:
+    name: SecureSphere X Architecture Owner
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://{host}/
+    description: Deployment host
+    variables:
+      host:
+        default: api.securesphere.example
+        description: Environment-specific host
+
+tags:
+  - name: Analysis
+    description: |
+      Tier 2 gate submission, current state, session finalisation.
+      **Owner:** Backend §5.1 Analysis Controller.
+  - name: Intervention
+    description: |
+      Intervention and disposition reporting.
+      **Owner:** Backend §5.2 Intervention Controller.
+  - name: ThreatIntelligence
+    description: |
+      k-anonymous prefix lookup.
+      **Owner:** Backend §5.3 Threat Intelligence Controller.
+  - name: RuleDistribution
+    description: |
+      Versioned rule-set distribution.
+      **Owner:** Backend §5.4 Rule Distribution Controller.
+  - name: Dashboard
+    description: |
+      History, session detail, reports, resource summaries.
+      **Owner:** Backend §5.5 Dashboard Controller.
+  - name: Identity
+    description: |
+      Registration, authentication, MFA, preferences, disclosure.
+      **Owner:** Backend §5.6 Identity Controller.
+  - name: Health
+    description: |
+      Liveness, readiness, version.
+      **Owner:** Backend §5.7 Health and Readiness Controller.
+
+# No document-level default: every operation states its own requirement,
+# because two disjoint principal surfaces exist (API Contract P-7).
+security: []
+
+paths:
+
+  # ==========================================================================
+  # ANALYSIS CONTROLLER — Backend §5.1
+  # ==========================================================================
+
+  /v1/analysis/sessions/{sessionId}/gates:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      operationId: submitGate
+      summary: Submit accumulated evidence at a Tier 2 gate
+      description: |
+        Submits evidence accumulated across Tier 0, Tier 1 and Tier 2 at a gate
+        event, and receives the backend adjudication.
+
+        **This operation materialises the Analysis Session.** No creation
+        endpoint exists: a session is materialised implicitly on its first gate,
+        under the client-generated `sessionId` (Backend §2.4). A navigation that
+        never reaches a gate produces no backend record at all.
+
+        **Idempotent on `(sessionId, gateOrdinal)`** (Backend §12.3). A retry
+        after timeout returns the committed result and creates no second
+        evaluation. Evidence may already be committed when a client times out.
+
+        **Gate ordinals are dense and monotonic.** A submission with
+        `gateOrdinal = n` is rejected until `n − 1` has committed.
+
+        **A 200 response does not imply evaluation succeeded.** Where the
+        evaluation path is unavailable the response is 200 with either a
+        degraded view or a `null` body. See the 200 response description.
+      tags: [Analysis]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GateSubmissionRequest'
+      responses:
+        '200':
+          description: |
+            Adjudicated, or evaluation unavailable.
+
+            **Body is `SecurityStateView` when evaluation completed**, or when
+            evaluation was unavailable and a prior committed state exists — in
+            which case `degraded` is `true` and `degradedExplanation` identifies
+            evaluation unavailability.
+
+            **Body is `null` when evaluation was unavailable and no prior state
+            exists.** With no committed pass, `state` and `sourcePassResultId`
+            have no values and a partial view cannot be constructed. This is
+            intended, not an error.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+            X-Contract-Version: { $ref: '#/components/headers/ContractVersion' }
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: './d0_9_schema.json#/$defs/SecurityStateView'
+                  - type: 'null'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/analysis/sessions/{sessionId}/state:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      operationId: getSessionState
+      summary: Retrieve current security state for a session
+      description: |
+        Returns the Current Security State for a materialised session.
+
+        **Read-your-writes** immediately after a gate response: the commit path
+        is primary-only and no replica participates (LDD DI-2).
+
+        Returns 404 where no gate has yet been submitted, because the session
+        has not been materialised.
+      tags: [Analysis]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Current state, or `null` where no pass has committed.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+            Cache-Control: { $ref: '#/components/headers/CacheControlNoStore' }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: './d0_9_schema.json#/$defs/SecurityStateView'
+                  - type: 'null'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/analysis/sessions/{sessionId}/finalization:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      operationId: finalizeSession
+      summary: Finalise an Analysis Session
+      description: |
+        Finalises the session, making it immutable.
+
+        **Side effect: report metadata is created** within the same unit of work
+        that appends the Analysis Reference (Backend §4.8). No report creation
+        endpoint exists; this is the sole creation path, which is what makes the
+        one-report-per-session relationship structural.
+
+        **Idempotent on `sessionId`.** Finalisation is terminal; a repeat call
+        returns 204.
+      tags: [Analysis]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizationRequest'
+      responses:
+        '204':
+          description: Finalised, or already finalised.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ==========================================================================
+  # INTERVENTION CONTROLLER — Backend §5.2
+  # ==========================================================================
+
+  /v1/analysis/sessions/{sessionId}/interventions:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      operationId: reportInterventionPresented
+      summary: Report that an intervention was presented to the user
+      description: |
+        Records that a warning or block was presented, setting the intervention
+        lock on the corresponding pass (Rule Engine §11.4). Also raised as an
+        audit event.
+
+        **Accepts no tier, score or finding** (Backend §5.2, BI-32). The backend
+        already holds the tier: the lock is set on a pass whose `effectiveTier`
+        the backend itself computed.
+
+        D0.10's `reportInterventionPresented` carries a `tier` parameter because
+        it is a Role A → Role B in-process interface where no trust boundary is
+        crossed. This HTTP projection narrows it.
+
+        **Idempotent on `(sessionId, interventionOrdinal)`.**
+      tags: [Intervention]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterventionPresentedRequest'
+      responses:
+        '204':
+          description: Recorded.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: No committed pass corresponds to this intervention.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /v1/analysis/sessions/{sessionId}/interventions/{interventionOrdinal}/disposition:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - $ref: '#/components/parameters/InterventionOrdinal'
+    put:
+      operationId: reportUserDisposition
+      summary: Report how the user resolved an intervention
+      description: |
+        Records the user's disposition. **Recorded as an audit event only and
+        not persisted as domain data** (Backend §5.2, §10.10): `app_user` must
+        never embed analytical data, and the intervention lock is already
+        carried on the pass.
+
+        Guard G-02, which must not learn from an overridden intervention, is
+        enforced client-side against the client-local Authentication History
+        Store and does not depend on this report.
+
+        Naturally idempotent — a PUT of a single value.
+      tags: [Intervention]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispositionRequest'
+      responses:
+        '204':
+          description: Recorded as an audit event.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ==========================================================================
+  # THREAT INTELLIGENCE CONTROLLER — Backend §5.3
+  # ==========================================================================
+
+  /v1/intelligence/lookups:
+    post:
+      operationId: lookupIntelligenceByPrefix
+      summary: k-anonymous threat intelligence lookup
+      description: |
+        Returns every intelligence entry in a hash-prefix bucket. The client
+        performs the final match locally, so the backend learns a bucket
+        containing many domains and never which one (Backend §10.13.5).
+
+        **POST rather than GET is deliberate.** A prefix in a query string
+        appears in access logs, proxy logs and browser history; a request body
+        appears in none of them. The operation has no side effect and is freely
+        retryable.
+
+        **Prefix length must equal the configured value exactly.** A longer
+        prefix is rejected with 422 and **never truncated** — accepting it would
+        disclose more than policy permits, and truncating would conceal a client
+        attempting to do so.
+      tags: [ThreatIntelligence]
+      security:
+        - extensionCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntelligenceLookupRequest'
+      responses:
+        '200':
+          description: |
+            All entries in the prefix bucket. An empty bucket is a normal result
+            and the client treats it as no match.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntelligenceLookupResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: |
+            Prefix length does not equal the configured value. Never truncated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  # ==========================================================================
+  # RULE DISTRIBUTION CONTROLLER — Backend §5.4
+  # ==========================================================================
+
+  /v1/rulesets/current:
+    get:
+      operationId: getCurrentRuleSetVersion
+      summary: Current recommended rule-set version
+      description: Rule sets are not public; authentication is required.
+      tags: [RuleDistribution]
+      security:
+        - extensionCredential: []
+      responses:
+        '200':
+          description: Current recommended version and its integrity digest.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControlNoCache' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetPointer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/rulesets/{ruleSetVersion}:
+    parameters:
+      - $ref: '#/components/parameters/RuleSetVersion'
+    get:
+      operationId: getRuleSetByVersion
+      summary: Fetch a released rule-set artifact by version
+      description: |
+        A released rule-set version is immutable, hence the long-lived cache
+        directive. **An unreleased version is never served** — LDD H-2 makes an
+        unreleased row unreferencable, and serving one would place a mutable
+        artifact on a replay path.
+      tags: [RuleDistribution]
+      security:
+        - extensionCredential: []
+      responses:
+        '200':
+          description: The rule-set artifact.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControlImmutable' }
+          content:
+            application/json:
+              schema:
+                $ref: './d0_3_schema.json#/$defs/RuleSet'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Version exists but is not released.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/IntegrityFailure' }
+
+  /v1/rulesets/{ruleSetVersion}/digest:
+    parameters:
+      - $ref: '#/components/parameters/RuleSetVersion'
+    get:
+      operationId: getRuleSetDigest
+      summary: Integrity digest for a released rule-set version
+      tags: [RuleDistribution]
+      security:
+        - extensionCredential: []
+      responses:
+        '200':
+          description: Integrity digest.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControlImmutable' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleSetDigest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ==========================================================================
+  # DASHBOARD CONTROLLER — Backend §5.5
+  # Response depth fixed by AD-5, AC-8, AC-9.
+  # ==========================================================================
+
+  /v1/dashboard/history:
+    get:
+      operationId: getAnalysisHistory
+      summary: The user's saved analysis references
+      description: |
+        Returns the analysis references the user has **explicitly saved**,
+        newest first.
+
+        **This is not the user's browsing analysis history, and cannot be.**
+        `analysis_session` carries no user column, the extension credential
+        identifies no user, and a user token cannot submit evidence. The sole
+        user→session association in the model is `saved_analysis_reference`
+        (API Contract §6.1).
+
+        Cursor-paginated: the analytical record grows without bound, and offset
+        pagination degrades and skips under concurrent insertion.
+      tags: [Dashboard]
+      security:
+        - userToken: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/FilterTier'
+        - $ref: '#/components/parameters/FilterFrom'
+        - $ref: '#/components/parameters/FilterTo'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: A page of saved analysis references.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoryPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/dashboard/sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      operationId: getSessionDetail
+      summary: Explanation-level detail for a session
+      description: |
+        Returns the **explanation-level view only** (AD-5).
+
+        Does not return base or effective weights, suppression applications,
+        guard evaluations, subsumption records, scoring entries, capability
+        markers, or raw evidence content. The full Analysis Pass Result exists
+        for replay and forensics and is reachable only through the offline
+        replay tool (Backend §4.11).
+
+        Two structural reasons: D0.9's `ExplanationItem` is the user-facing
+        explanation contract and carries no weight; and rule sets are kept
+        behind authentication, so exposing per-pass weights would permit
+        reconstructing a rule set from enough session details.
+      tags: [Dashboard]
+      security:
+        - userToken: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Explanation-level session detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/dashboard/reports/{reportId}:
+    parameters:
+      - $ref: '#/components/parameters/ReportId'
+    get:
+      operationId: getReport
+      summary: Retrieve report metadata
+      description: |
+        Report metadata only. Analytical detail resolves through the referenced
+        session and is subject to the depth limits of `getSessionDetail`.
+      tags: [Dashboard]
+      security:
+        - userToken: []
+      responses:
+        '200':
+          description: Report metadata and its projection.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/dashboard/resources/{resourceIdentity}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdentity'
+    get:
+      operationId: getResourceSummary
+      summary: Summary for a Security Resource
+      description: |
+        **Does not return Domain Security State or Knowledge Metadata** (AC-8).
+        Neither has a defined shape — the opening of Persistence §35 is
+        unreadable and the Knowledge Metadata field set is unplaced — and both
+        are classified internal, persistence-only states with no API
+        representation.
+      tags: [Dashboard]
+      security:
+        - userToken: []
+      responses:
+        '200':
+          description: Resource summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ==========================================================================
+  # IDENTITY CONTROLLER — Backend §5.6
+  # No client enrolment and no token exchange exist. This inventory is complete.
+  # ==========================================================================
+
+  /v1/identity/registrations:
+    post:
+      operationId: registerUser
+      summary: Create a dashboard user account
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegistrationRequest' }
+      responses:
+        '201':
+          description: Account created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '409':
+          description: Account already exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/identity/sessions:
+    post:
+      operationId: login
+      summary: Authenticate and obtain tokens
+      description: |
+        Authentication failure returns a uniform message with constant-time
+        comparison and never distinguishes an unknown account from a wrong
+        password (Backend §5.6).
+
+        Rate limited per account **and** per source address.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: |
+            Authenticated. Where MFA is enrolled, `mfaRequired` is `true` and
+            only a partial-authentication token is issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401':
+          description: Authentication failed. Uniform message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/identity/sessions/refresh:
+    post:
+      operationId: refreshTokens
+      summary: Rotate access and refresh tokens
+      description: |
+        Refresh tokens rotate with reuse detection (Backend §10.7). Presenting a
+        previously used refresh token invalidates the chain.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Rotated tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401':
+          description: Refresh token invalid, expired, or reused.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/identity/sessions/current:
+    delete:
+      operationId: logout
+      summary: Revoke the current authentication session
+      description: |
+        Revokes the refresh token. **An authentication session is not analytical
+        data**, so the prohibition on deleting the analytical record does not
+        apply (API Contract §8.6).
+      tags: [Identity]
+      security:
+        - userToken: []
+      responses:
+        '204':
+          description: Session revoked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/identity/mfa/factors:
+    get:
+      operationId: listMfaFactors
+      summary: List enrolled MFA factors
+      description: Secret material is never returned; only factor descriptors.
+      tags: [Identity]
+      security:
+        - userToken: []
+      responses:
+        '200':
+          description: Enrolled factors.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MfaFactor' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: enrolMfaFactor
+      summary: Enrol an MFA factor
+      tags: [Identity]
+      security:
+        - userToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaEnrolmentRequest' }
+      responses:
+        '201':
+          description: Factor enrolled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaEnrolmentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /v1/identity/mfa/challenges:
+    post:
+      operationId: verifyMfaChallenge
+      summary: Verify an MFA challenge
+      description: Consumes a partial-authentication token and issues full tokens.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MfaChallengeRequest' }
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401':
+          description: Challenge failed or partial token invalid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/identity/preferences:
+    get:
+      operationId: getPreferences
+      summary: Retrieve user preferences
+      tags: [Identity]
+      security:
+        - userToken: []
+      responses:
+        '200':
+          description: Preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Preferences' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      operationId: updatePreferences
+      summary: Replace user preferences
+      tags: [Identity]
+      security:
+        - userToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Preferences' }
+      responses:
+        '200':
+          description: Updated preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Preferences' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /v1/identity/disclosure:
+    get:
+      operationId: getAuthenticationHistoryDisclosure
+      summary: Authentication History disclosure text
+      description: |
+        Returns the user-facing disclosure required by Rule Engine §20.9.7.
+
+        **This endpoint returns explanatory text about the client-local
+        Authentication History Store. It never returns store content**, which is
+        never transmitted off-device in any form (BI-25).
+      tags: [Identity]
+      security:
+        - userToken: []
+      responses:
+        '200':
+          description: Disclosure text.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisclosureText' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ==========================================================================
+  # HEALTH CONTROLLER — Backend §5.7
+  # Unversioned: these report deployment health, not API-version health.
+  # ==========================================================================
+
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Liveness probe
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Process responsive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LivenessStatus' }
+
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      description: |
+        **Ready requires the database reachable, the Evaluation Port healthy,
+        and a valid rule set loaded.** A backend with no valid rule set is not
+        ready, because it cannot evaluate (Backend §5.7).
+
+        Detail requires authentication; the status code does not.
+      tags: [Health]
+      security:
+        - {}
+        - extensionCredential: []
+        - userToken: []
+      responses:
+        '200':
+          description: Ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessStatus' }
+        '503':
+          description: Not ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessStatus' }
+
+  /health/version:
+    get:
+      operationId: getVersion
+      summary: Deployment version manifest
+      tags: [Health]
+      security:
+        - extensionCredential: []
+        - userToken: []
+      responses:
+        '200':
+          description: Version manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VersionManifest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+# ============================================================================
+components:
+
+  # --------------------------------------------------------------------------
+  # SECURITY SCHEMES — Backend §10.1, §10.1.1
+  # Two disjoint principal surfaces. No endpoint accepts both.
+  # --------------------------------------------------------------------------
+  securitySchemes:
+    extensionCredential:
+      type: http
+      scheme: bearer
+      description: |
+        The credential embedded in the extension build, presented on **each
+        request** (Backend §10.1.1). There is no token exchange and no endpoint
+        issues, derives or refreshes anything from it.
+
+        It identifies the **build**, not the installation. It is assumed public
+        — it ships in a package the user controls — and confers no authority
+        beyond submitting evidence about the submitter's own sessions and
+        fetching rule sets. **It is not a rate-limiting key**; extension
+        endpoints are limited per source address.
+
+    userToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Asymmetrically signed JWT (EdDSA or RS256), carrying subject, principal
+        type, issued-at, expiry and key identifier. Verification keys are
+        distributed without granting issuance.
+
+  # --------------------------------------------------------------------------
+  # PARAMETERS
+  # --------------------------------------------------------------------------
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: |
+        **Client-generated** at navigation (Backend §4.3). **Authoritative**:
+        any `analysisSessionId` in the body must equal it, and a mismatch is a
+        semantic validation failure.
+      schema: { type: string, format: uuid }
+
+    InterventionOrdinal:
+      name: interventionOrdinal
+      in: path
+      required: true
+      description: 1-based, dense within the session.
+      schema: { type: integer, minimum: 1 }
+
+    RuleSetVersion:
+      name: ruleSetVersion
+      in: path
+      required: true
+      schema: { type: string, pattern: '^rules-v\d+\.\d+\.\d+$' }
+
+    ReportId:
+      name: reportId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+    ResourceIdentity:
+      name: resourceIdentity
+      in: path
+      required: true
+      description: Deterministic UUIDv5 over policy version and canonical form.
+      schema: { type: string, format: uuid }
+
+    ContractVersion:
+      name: X-Contract-Version
+      in: header
+      required: true
+      description: |
+        The D0.x contract version the client is emitting. A version outside the
+        supported range yields 409 carrying that range.
+      schema: { type: string, pattern: '^\d+\.\d+\.\d+$' }
+
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: |
+        Client-supplied trace identifier; generated when absent and echoed on
+        every response. **Not a security token**, and must not be used to
+        correlate one user's activity across sessions.
+      schema: { type: string }
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque. Its encoding is not contractual.
+      schema: { type: string }
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+
+    FilterTier:
+      name: tier
+      in: query
+      required: false
+      description: Canonical `RiskTier` member. Filtering never widens what a principal may read.
+      schema: { $ref: './d0_4_schema.json#/$defs/RiskTier' }
+
+    FilterFrom:
+      name: from
+      in: query
+      required: false
+      schema: { type: string, format: date }
+
+    FilterTo:
+      name: to
+      in: query
+      required: false
+      schema: { type: string, format: date }
+
+  # --------------------------------------------------------------------------
+  # HEADERS
+  # --------------------------------------------------------------------------
+  headers:
+    CorrelationId:
+      description: Trace identifier, echoed or generated.
+      schema: { type: string }
+    ContractVersion:
+      description: The contract version applied.
+      schema: { type: string }
+    RateLimitRemaining:
+      description: Requests remaining in the current window.
+      schema: { type: integer }
+    RetryAfter:
+      description: Seconds.
+      schema: { type: integer }
+    CacheControlNoStore:
+      schema: { type: string, const: 'no-store' }
+    CacheControlNoCache:
+      schema: { type: string, const: 'no-cache' }
+    CacheControlImmutable:
+      description: A released rule-set version never changes.
+      schema: { type: string, const: 'public, max-age=31536000, immutable' }
+
+  # --------------------------------------------------------------------------
+  # REUSABLE RESPONSES — Backend §12.1 error model
+  # --------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Authentication absent, expired or invalid.
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Forbidden:
+      description: |
+        Authenticated but not permitted — wrong principal type, or resource not
+        owned. **Never 404 for an unowned resource** (API Contract §6.2,
+        Backend §5.5).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    NotFound:
+      description: Resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Conflict:
+      description: |
+        Contract version mismatch · invalid state transition · concurrency
+        conflict · non-dense ordinal · immutable resource.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    ValidationFailed:
+      description: |
+        Schema or semantic validation failure. **Unknown fields are rejected,
+        never ignored** (BI-37).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    PayloadTooLarge:
+      description: Payload exceeds bound.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    UnsupportedMediaType:
+      description: Content type is not `application/json`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    IntegrityFailure:
+      description: Rule-set integrity verification failed; an alert is raised.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  # --------------------------------------------------------------------------
+  # SCHEMAS — TRANSPORT-ONLY
+  #
+  # This document is the canonical source for these (API Contract §18.1).
+  # None restates a D0.x element; where one is needed it is referenced.
+  #
+  # Canonical-backed payloads appear ONLY as external $ref into the flat
+  # ./d0_*_schema.json files, produced from the D0.x TypeScript sources.
+  # --------------------------------------------------------------------------
+  schemas:
+
+    Error:
+      type: object
+      description: |
+        `code` is the contract; `message` is not. Consumers key on `code`, so a
+        message rewrite never breaks them. Never carries a stack trace, SQL, an
+        internal path, an upstream message, or evidence content.
+      required: [code, message, correlationId, fieldErrors]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Stable and machine-readable; never localised.
+        message: { type: string }
+        correlationId: { type: string }
+        fieldErrors:
+          oneOf:
+            - type: array
+              items:
+                type: object
+                required: [path, code]
+                additionalProperties: false
+                properties:
+                  path: { type: string }
+                  code: { type: string }
+            - type: 'null'
+        supported:
+          description: Present only on `CONTRACT_VERSION_UNSUPPORTED`.
+          type: object
+          required: [min, max]
+          additionalProperties: false
+          properties:
+            min: { type: string }
+            max: { type: string }
+
+    GateSubmissionRequest:
+      type: object
+      description: |
+        The HTTP projection of D0.10 `InvocationContext` carrying D0.1 evidence.
+
+        **`tier` is excluded** (Backend §5.1, BI-32): the backend derives it and
+        the client does not report it. Every other member is a D0.10
+        `InvocationContext` field; this document defines none of them.
+      required: [analysisSessionId, targetResourceId, trigger, isPrivateContext, gateOrdinal, evidence]
+      additionalProperties: false
+      properties:
+        analysisSessionId:
+          type: string
+          format: uuid
+          description: Must equal the path `sessionId`; a mismatch is a 422.
+        targetResourceId: { type: string, format: uuid }
+        trigger:
+          $ref: './d0_4_schema.json#/$defs/PassTrigger'
+        isPrivateContext: { type: boolean }
+        gateOrdinal:
+          type: integer
+          minimum: 1
+          description: |
+            D0.10 v1.1.0. Half of the idempotency key `(sessionId, gateOrdinal)`;
+            dense and monotonic within the session.
+
+            **Narrowed from the canonical form, deliberately.** D0.10 types this
+            member `number | null`. This projection narrows it twice:
+
+            - **null is excluded.** The canonical null case covers Tier 0 and
+              Tier 1 invocations, which are not gates and have no HTTP surface
+              (Backend §2.4, BI-26). At a gate endpoint the value is always
+              present, and admitting null would break the idempotency key
+              `(sessionId, gateOrdinal)`.
+            - **number narrowed to integer, minimum 1.** Backend §2.4 defines the
+              gate ordinal as a 1-based index, dense and monotonic.
+
+            Both narrowings restate constraints the architecture already states;
+            neither is introduced here. A type generated from this document is a
+            strict subtype of the canonical member, not a variant of it.
+        evidence:
+          type: array
+          items:
+            $ref: './d0_1_schema.json#/$defs/SecurityEvidence'
+
+    FinalizationRequest:
+      type: object
+      required: [finalizedOn]
+      additionalProperties: false
+      properties:
+        finalizedOn:
+          type: string
+          format: date
+          description: Day granularity (LDD §17.2).
+
+    InterventionPresentedRequest:
+      type: object
+      description: |
+        HTTP projection of D0.10 `reportInterventionPresented`, narrowed per
+        Backend §5.2. **No tier, score or finding.**
+      required: [interventionOrdinal, response]
+      additionalProperties: false
+      properties:
+        interventionOrdinal: { type: integer, minimum: 1 }
+        response:
+          $ref: './d0_9_schema.json#/$defs/RecommendedResponse'
+
+    DispositionRequest:
+      type: object
+      required: [disposition]
+      additionalProperties: false
+      properties:
+        disposition:
+          $ref: './d0_10_schema.json#/$defs/UserDisposition'
+
+    IntelligenceLookupRequest:
+      type: object
+      required: [hashPrefix]
+      additionalProperties: false
+      properties:
+        hashPrefix:
+          type: string
+          description: |
+            Length must equal the configured value **exactly**. Longer is
+            rejected, never truncated.
+
+    IntelligenceEntry:
+      type: object
+      description: |
+        Transport projection of a TIR Intelligence Object. Members derive from
+        LDD `tir.intelligence_object` under NM-1 canonical naming. Internals not
+        listed here are not exposed.
+      required: [indicatorKind, indicatorDigest, confidence, validityFrom, validityTo]
+      additionalProperties: false
+      properties:
+        indicatorKind: { type: string }
+        indicatorDigest: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        validityFrom: { type: string, format: date }
+        validityTo:
+          oneOf: [{ type: string, format: date }, { type: 'null' }]
+
+    IntelligenceLookupResponse:
+      type: object
+      required: [bucket]
+      additionalProperties: false
+      properties:
+        bucket:
+          type: array
+          items: { $ref: '#/components/schemas/IntelligenceEntry' }
+
+    RuleSetPointer:
+      type: object
+      required: [ruleSetVersion, digest]
+      additionalProperties: false
+      properties:
+        ruleSetVersion: { type: string }
+        digest: { type: string }
+
+    RuleSetDigest:
+      type: object
+      required: [digest]
+      additionalProperties: false
+      properties:
+        digest: { type: string }
+
+    HistoryEntry:
+      type: object
+      required: [sessionId, resourceIdentity, effectiveTier, finalizedOn, degraded]
+      additionalProperties: false
+      properties:
+        sessionId: { type: string, format: uuid }
+        resourceIdentity: { type: string, format: uuid }
+        effectiveTier: { $ref: './d0_4_schema.json#/$defs/RiskTier' }
+        finalizedOn: { type: string, format: date }
+        degraded: { type: boolean }
+
+    HistoryPage:
+      type: object
+      required: [entries, nextCursor]
+      additionalProperties: false
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/HistoryEntry' }
+        nextCursor:
+          oneOf: [{ type: string }, { type: 'null' }]
+          description: Null means the end of the collection.
+
+    SessionDetail:
+      type: object
+      description: |
+        Explanation-level only (AD-5). No weights, suppressions, guard
+        evaluations, subsumption, scoring entries, capability markers or raw
+        evidence.
+      required: [sessionId, resourceIdentity, effectiveTier, degraded, degradedReason, ruleSetVersion, finalizedOn, explanations]
+      additionalProperties: false
+      properties:
+        sessionId: { type: string, format: uuid }
+        resourceIdentity: { type: string, format: uuid }
+        effectiveTier: { $ref: './d0_4_schema.json#/$defs/RiskTier' }
+        degraded: { type: boolean }
+        degradedReason:
+          oneOf: [{ type: string }, { type: 'null' }]
+        ruleSetVersion: { type: string }
+        finalizedOn: { type: string, format: date }
+        explanations:
+          type: array
+          items:
+            $ref: './d0_9_schema.json#/$defs/ExplanationItem'
+
+    ReportView:
+      type: object
+      description: |
+        Report metadata only; analytical content resolves through the referenced
+        session.
+
+        **`reportKind` is deliberately absent.** LDD §15.3.2 registers
+        `skr.report_kind` as a storage-only enumeration, and NM-2 prohibits
+        exposing one without first promoting it to a canonical contract. API
+        Contract §8.5.3 does not require it. Recorded as Translation Defect
+        TD-1, corrected by omission.
+
+        `descriptor` is an open object because LDD models it as JSONB with no
+        defined shape. Recorded as Translation Issue TI-5.
+      required: [reportId, analysisSessionId, descriptor, generatedOn]
+      additionalProperties: false
+      properties:
+        reportId: { type: string, format: uuid }
+        analysisSessionId: { type: string, format: uuid }
+        descriptor: { type: object }
+        generatedOn: { type: string, format: date }
+
+    ResourceSummary:
+      type: object
+      description: |
+        **No Domain Security State and no Knowledge Metadata** (AC-8).
+      required: [resourceIdentity, score, tier, degraded, analysisCount]
+      additionalProperties: false
+      properties:
+        resourceIdentity: { type: string, format: uuid }
+        score: { type: integer, minimum: 0 }
+        tier: { $ref: './d0_4_schema.json#/$defs/RiskTier' }
+        degraded: { type: boolean }
+        analysisCount: { type: integer, minimum: 0 }
+
+    RegistrationRequest:
+      type: object
+      required: [email, password, displayName]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        displayName: { type: string }
+
+    UserProfile:
+      type: object
+      required: [userId, displayName, status]
+      additionalProperties: false
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        status: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      additionalProperties: false
+      properties:
+        refreshToken: { type: string }
+
+    TokenResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, tokenType, mfaRequired]
+      additionalProperties: false
+      properties:
+        accessToken:
+          oneOf: [{ type: string }, { type: 'null' }]
+        refreshToken:
+          oneOf: [{ type: string }, { type: 'null' }]
+        expiresIn: { type: integer }
+        tokenType: { type: string, const: Bearer }
+        mfaRequired: { type: boolean }
+        partialToken:
+          oneOf: [{ type: string }, { type: 'null' }]
+
+    MfaFactor:
+      type: object
+      description: Secret material is never returned.
+      required: [factorId, factorKind, status, enrolledAt]
+      additionalProperties: false
+      properties:
+        factorId: { type: string, format: uuid }
+        factorKind: { type: string }
+        status: { type: string }
+        enrolledAt: { type: string, format: date }
+
+    MfaEnrolmentRequest:
+      type: object
+      required: [factorKind]
+      additionalProperties: false
+      properties:
+        factorKind: { type: string }
+
+    MfaEnrolmentResponse:
+      type: object
+      required: [factorId, factorKind, provisioning]
+      additionalProperties: false
+      properties:
+        factorId: { type: string, format: uuid }
+        factorKind: { type: string }
+        provisioning:
+          type: string
+          description: One-time provisioning material; never retrievable again.
+
+    MfaChallengeRequest:
+      type: object
+      required: [partialToken, factorId, code]
+      additionalProperties: false
+      properties:
+        partialToken: { type: string }
+        factorId: { type: string, format: uuid }
+        code: { type: string }
+
+    Preferences:
+      type: object
+      additionalProperties: false
+      properties:
+        entries:
+          type: object
+          additionalProperties: true
+      required: [entries]
+
+    DisclosureText:
+      type: object
+      description: |
+        Explanatory text about the client-local Authentication History Store.
+        **Never store content** (BI-25).
+      required: [version, body]
+      additionalProperties: false
+      properties:
+        version: { type: string }
+        body: { type: string }
+
+    LivenessStatus:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { type: string, const: live }
+
+    ReadinessStatus:
+      type: object
+      description: |
+        `ready` is returned to every caller. **`checks` is returned only to an
+        authenticated principal** — Backend §5.7 makes the readiness *status*
+        unauthenticated and the readiness *detail* authenticated, and API
+        Contract §8.7 states the same. It is therefore optional here rather than
+        required.
+      required: [ready]
+      additionalProperties: false
+      properties:
+        ready: { type: boolean }
+        checks:
+          type: object
+          required: [database, evaluationPort, ruleSetLoaded]
+          additionalProperties: false
+          properties:
+            database: { type: boolean }
+            evaluationPort: { type: boolean }
+            ruleSetLoaded:
+              type: boolean
+              description: A backend with no valid rule set is not ready.
+
+    VersionManifest:
+      type: object
+      required: [apiVersion, contractVersions, ruleSetVersion, schemaVersion]
+      additionalProperties: false
+      properties:
+        apiVersion: { type: string }
+        contractVersions:
+          type: object
+          additionalProperties: { type: string }
+        ruleSetVersion: { type: string }
+        schemaVersion: { type: string }

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securesphere.example/schemas/d0.9.schema.json",
+  "title": "SecureSphere X — D0.9 canonical contract",
+  "$defs": {
+    "SecurityStateView": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/CurrentSecurityState"
+        },
+        "recommendedResponse": {
+          "$ref": "#/$defs/RecommendedResponse"
+        },
+        "explanations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExplanationItem"
+          }
+        },
+        "degraded": {
+          "type": "boolean",
+          "description": "§15.2 — when true, Role A SHALL NOT present an unqualified safe state."
+        },
+        "degradedExplanation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "interventionLocked": {
+          "type": "boolean",
+          "description": "§11.4 — an intervention already presented cannot be withdrawn."
+        },
+        "sourcePassResultId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "recommendedResponse",
+        "explanations",
+        "degraded",
+        "degradedExplanation",
+        "interventionLocked",
+        "sourcePassResultId"
+      ],
+      "additionalProperties": false
+    },
+    "CurrentSecurityState": {
+      "type": "object",
+      "properties": {
+        "analysisSessionId": {
+          "type": "string"
+        },
+        "targetResourceId": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "tier": {
+          "$ref": "#/$defs/RiskTier"
+        },
+        "ruleSetVersion": {
+          "type": "string"
+        },
+        "degraded": {
+          "type": "boolean"
+        },
+        "sourcePassResultId": {
+          "type": "string"
+        },
+        "passOrdinal": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "analysisSessionId",
+        "targetResourceId",
+        "score",
+        "tier",
+        "ruleSetVersion",
+        "degraded",
+        "sourcePassResultId",
+        "passOrdinal"
+      ],
+      "additionalProperties": false
+    },
+    "RiskTier": {
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "High"
+      ]
+    },
+    "RecommendedResponse": {
+      "type": "string",
+      "enum": [
+        "Allow",
+        "Warn",
+        "Block"
+      ]
+    },
+    "ExplanationItem": {
+      "type": "object",
+      "properties": {
+        "ruleId": {
+          "$ref": "#/$defs/RuleId"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "namedOrigin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "aiGenerated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ruleId",
+        "summary",
+        "namedOrigin",
+        "aiGenerated"
+      ],
+      "additionalProperties": false,
+      "description": "Explanation payload. §1.1 requires every decision to decompose into the findings that produced it.\n\n`namedOrigin` carries CRED-02's matched origin so the warning can say \"this resembles the login page of <site you have used>\" rather than the markedly less persuasive \"a site you use\". This is why the store holds plaintext origins (§20.9)."
+    },
+    "RuleId": {
+      "type": "string"
+    },
+    "Origin": {
+      "type": "string",
+      "description": "scheme://host[:port] — never a path, query, or fragment."
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securesphere.example/schemas/d0.4.schema.json",
+  "title": "SecureSphere X — D0.4 canonical contract",
+  "$defs": {
+    "PassTrigger": {
+      "type": "string",
+      "enum": [
+        "navigation_commit",
+        "dom_ready",
+        "gate_credential_submit",
+        "gate_download_initiate",
+        "gate_permission_request",
+        "advisory_reevaluation"
+      ]
+    },
+    "RiskTier": {
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "High"
+      ]
+    }
+  }
+}

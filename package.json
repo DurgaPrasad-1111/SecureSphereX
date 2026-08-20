@@ -1,0 +1,20 @@
+{
+  "name": "securesphere-x",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test:fixtures": "echo \"test:fixtures: stub (Step 8 implements this)\"",
+    "test:properties": "echo \"test:properties: stub (Stage 1b / G-9 implements this)\"",
+    "validate:ruleset": "echo \"validate:ruleset: stub (Step 11 implements this)\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
