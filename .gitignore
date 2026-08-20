@@ -21,3 +21,8 @@ corpus/*
 # Downloaded input for tools/capture/ (Tranco top-10k list, 186,894 bytes).
 # Regenerable, not a copy of anything in spec/, does not belong in git.
 tools/capture/tranco_top10k.csv
+
+# Python bytecode cache and capture-run logs. Neither is source or record —
+# INDEX.jsonl is the record.
+tools/capture/__pycache__/
+tools/capture/*.log
