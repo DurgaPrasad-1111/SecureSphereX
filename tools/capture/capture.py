@@ -33,6 +33,7 @@ import hashlib
 import io
 import json
 import os
+import random
 import sys
 import time
 
@@ -224,28 +225,38 @@ def capture_one(
     outcome = "success"
 
     started = time.time()
+    browser = None
+    ctx = None
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx = browser.new_context(user_agent=USER_AGENT, ignore_https_errors=True)
-        page = ctx.new_page()
-
-        def on_response(resp):
-            nonlocal response_headers, http_status
-            if resp.request.is_navigation_request():
-                if 300 <= resp.status < 400:
-                    redirect_chain.append({
-                        "fromUrl": resp.url,
-                        "toUrl": resp.headers.get("location", ""),
-                        "statusCode": resp.status,
-                        "mechanism": "http_3xx",
-                    })
-                elif response_headers is None:
-                    response_headers = dict(resp.headers)
-                    http_status = resp.status
-
-        page.on("response", on_response)
-
+        # Widened to cover launch()/new_context()/new_page(), not just
+        # page.goto(). A Chromium launch timeout previously propagated
+        # straight out of this function, out of main()'s poll loop, and
+        # killed an unattended poller outright — observed directly during
+        # this session's first two launch attempts, unrelated to any
+        # feed-specific issue. Same principle as load_feed_urls's 429
+        # handling: a transient failure here must degrade to a recorded
+        # outcome, not take the whole process down.
         try:
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(user_agent=USER_AGENT, ignore_https_errors=True)
+            page = ctx.new_page()
+
+            def on_response(resp):
+                nonlocal response_headers, http_status
+                if resp.request.is_navigation_request():
+                    if 300 <= resp.status < 400:
+                        redirect_chain.append({
+                            "fromUrl": resp.url,
+                            "toUrl": resp.headers.get("location", ""),
+                            "statusCode": resp.status,
+                            "mechanism": "http_3xx",
+                        })
+                    elif response_headers is None:
+                        response_headers = dict(resp.headers)
+                        http_status = resp.status
+
+            page.on("response", on_response)
+
             page.goto(url, timeout=FETCH_TIMEOUT_MS, wait_until="load")
             page.wait_for_timeout(2000)             # allow scripts to settle
             rendered_dom = page.content()
@@ -257,8 +268,10 @@ def capture_one(
         except Exception as exc:                     # noqa: BLE001
             outcome = classify_error(exc)
         finally:
-            ctx.close()
-            browser.close()
+            if ctx is not None:
+                ctx.close()
+            if browser is not None:
+                browser.close()
 
     duration_ms = int((time.time() - started) * 1000)
 
@@ -432,38 +445,97 @@ def load_feed_urls(feed: str) -> list[dict[str, Any]]:
         ]
 
     if feed == "phishtank":
+        # PhishTank's own headers state the anonymous quota exactly:
+        # x-request-limit 75 per x-request-limit-interval 259200s — one
+        # request per 57.6 minutes. An unhandled exception here must never
+        # kill a 48-hour unattended process (that is what happened on the
+        # first launch attempt: a bare 429 propagated out of this function,
+        # out of load_feed_urls, out of main()'s while-loop, and took the
+        # whole poller down). On 429: exponential backoff with jitter,
+        # capped, up to a fixed attempt budget. On ANY final failure —
+        # exhausted retries, a non-429 HTTP error, a network error, a
+        # malformed response — return an empty list. An empty list just
+        # means this poll cycle captures nothing from this feed; that is
+        # recoverable. A raised exception is not.
         params = {}
         key = os.environ.get("PHISHTANK_APP_KEY")
         if key:
             params["app_key"] = key
-        resp = httpx.get(
-            "https://data.phishtank.com/data/online-valid.csv",
-            params=params,
-            timeout=30,
-            follow_redirects=True,
-        )
-        resp.raise_for_status()
-        reader = csv.DictReader(io.StringIO(resp.text))
-        entries = []
-        for row in reader:
-            target = (row.get("target") or "").strip()
-            entries.append({
-                "url": row["url"],
-                "id": row.get("phish_id"),
-                "verified": (row.get("verified", "").strip().lower() == "yes"),
-                "reportedOn": (row.get("submission_time") or "")[:10] or None,
-                # "Other" is PhishTank's own value for "no specific brand
-                # identified" — treated as null, not as a brand name.
-                "target": target if target and target.lower() != "other" else None,
-            })
-        return entries
+
+        max_attempts = 5
+        base_delay_s = 2.0
+        max_delay_s = 60.0
+        resp = None
+
+        try:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    resp = httpx.get(
+                        "https://data.phishtank.com/data/online-valid.csv",
+                        params=params,
+                        timeout=30,
+                        follow_redirects=True,
+                    )
+                    resp.raise_for_status()
+                    break
+                except httpx.HTTPStatusError as exc:
+                    is_429 = exc.response.status_code == 429
+                    if not is_429 or attempt == max_attempts:
+                        print(
+                            f"load_feed_urls(phishtank): giving up after {attempt} "
+                            f"attempt(s): {exc}. Returning empty for this poll cycle.",
+                            file=sys.stderr,
+                        )
+                        return []
+                    delay = min(base_delay_s * (2 ** (attempt - 1)), max_delay_s)
+                    delay += random.uniform(0, delay * 0.25)  # jitter
+                    print(
+                        f"load_feed_urls(phishtank): 429, backing off {delay:.1f}s "
+                        f"(attempt {attempt}/{max_attempts})",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
+
+            if resp is None:
+                return []
+
+            reader = csv.DictReader(io.StringIO(resp.text))
+            entries = []
+            for row in reader:
+                target = (row.get("target") or "").strip()
+                entries.append({
+                    "url": row["url"],
+                    "id": row.get("phish_id"),
+                    "verified": (row.get("verified", "").strip().lower() == "yes"),
+                    "reportedOn": (row.get("submission_time") or "")[:10] or None,
+                    # "Other" is PhishTank's own value for "no specific brand
+                    # identified" — treated as null, not as a brand name.
+                    "target": target if target and target.lower() != "other" else None,
+                })
+            return entries
+        except Exception as exc:  # noqa: BLE001 — feed loaders must not crash the poller
+            print(f"load_feed_urls(phishtank): unexpected error, returning empty: {exc}", file=sys.stderr)
+            return []
+
+    if feed == "tranco":
+        # Same URL construction the --tranco branch already uses: last CSV
+        # column is the domain, prefixed https://. Resolved relative to this
+        # script's own location, not cwd — CORPUS_DIR's cwd-relative path
+        # already caused one wrong-location bug this session; not repeating
+        # that pattern here.
+        csv_path = Path(__file__).parent / "tranco_top10k.csv"
+        rows = [r.strip().split(",") for r in csv_path.read_text().splitlines() if r.strip()]
+        return [
+            {"url": f"https://{r[-1]}", "id": None, "verified": None, "reportedOn": None, "target": None}
+            for r in rows
+        ]
 
     raise ValueError(f"unknown feed: {feed}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="SecureSphere X corpus capture")
-    ap.add_argument("--feed", choices=["phishtank", "openphish"])
+    ap.add_argument("--feed", choices=["phishtank", "openphish", "tranco"])
     ap.add_argument("--tranco", type=Path, help="CSV of negatives")
     ap.add_argument("--poll", type=int, metavar="MINUTES")
     ap.add_argument("--once", action="store_true")
@@ -491,9 +563,13 @@ def main() -> int:
         return 2
 
     while True:
+        # Label convention (unchanged, extended): "tranco" is the negatives
+        # source, hardcoded to "benign" here exactly as the --tranco branch
+        # above hardcodes it; every other feed is "phishing".
+        label = "benign" if args.feed == "tranco" else "phishing"
         for entry in load_feed_urls(args.feed)[: args.limit]:
             snap = capture_one(
-                entry["url"], "phishing", args.feed,
+                entry["url"], label, args.feed,
                 impersonated_brand=entry.get("target"),
                 feed_verified=entry.get("verified"),
                 reported_on=entry.get("reportedOn"),
