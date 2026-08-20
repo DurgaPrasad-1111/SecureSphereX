@@ -27,10 +27,16 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import csv
+import gzip
 import hashlib
+import io
 import json
+import os
 import sys
 import time
+
+import httpx
 from dataclasses import dataclass, asdict
 from datetime import date
 from pathlib import Path
@@ -312,13 +318,42 @@ def capture_one(
     return snapshot
 
 
+def append_index(snapshot: dict[str, Any], path: Path) -> None:
+    """
+    DEC-1 Implementation §1. One line per snapshot, append-only. This is the
+    record that survives if payload is lost — S-2b, S-3, and S-4/S-5 all
+    depend on it. `INDEX.jsonl` is committed; payload under corpus/ is not.
+    """
+    entry = {
+        "snapshotId": snapshot["snapshotId"],
+        "capturedOn": snapshot["capturedOn"],
+        "label": snapshot["provenance"]["label"],
+        "feed": snapshot["provenance"]["feed"],
+        "feedRecordId": snapshot["provenance"]["feedRecordId"],
+        "impersonatedBrand": snapshot["provenance"]["impersonatedBrand"],
+        "split": snapshot["split"]["split"],
+        "splitKey": snapshot["split"]["splitKey"],
+        "assignmentFunctionVersion": snapshot["split"]["assignmentFunctionVersion"],
+        "fetchOutcome": snapshot["fetch"]["outcome"],
+        "httpStatus": snapshot["fetch"]["httpStatus"],
+        "domContentHash": snapshot["raw"]["domContentHash"],
+        "bytes": path.stat().st_size,
+        "relativePath": str(path.relative_to(CORPUS_DIR)),
+    }
+    index_path = CORPUS_DIR / "INDEX.jsonl"
+    with index_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def persist(snapshot: dict[str, Any]) -> Path:
     day = snapshot["capturedOn"]
     label = snapshot["provenance"]["label"]
     out_dir = CORPUS_DIR / label / day
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{snapshot['snapshotId']}.json"
-    path.write_text(json.dumps(snapshot, ensure_ascii=False))
+    path = out_dir / f"{snapshot['snapshotId']}.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write(json.dumps(snapshot, ensure_ascii=False))
+    append_index(snapshot, path)
     return path
 
 
@@ -334,8 +369,9 @@ def report() -> None:
     by_label: dict[str, Counter] = defaultdict(Counter)
     splits: dict[str, Counter] = defaultdict(Counter)
 
-    for path in CORPUS_DIR.rglob("*.json"):
-        snap = json.loads(path.read_text())
+    for path in CORPUS_DIR.rglob("*.json.gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            snap = json.loads(f.read())
         label = snap["provenance"]["label"]
         by_label[label][snap["fetch"]["outcome"]] += 1
         splits[label][snap["split"]["split"]] += 1
@@ -376,14 +412,53 @@ def report() -> None:
 
 def load_feed_urls(feed: str) -> list[dict[str, Any]]:
     """
-    Replace with real feed clients. Both PhishTank and OpenPhish publish
-    downloadable lists; PhishTank additionally supplies a verification flag and
-    frequently a target brand — capture both, they are needed later.
+    Both PhishTank and OpenPhish publish downloadable lists; PhishTank
+    additionally supplies a verification flag and frequently a target brand
+    (often "Other" — not every entry names one) — captured where supplied.
+
+    PhishTank's anonymous quota is shared and tight (observed: 75 requests
+    per 259200s / 3 days) — this can 429 without any key at all, independent
+    of registration. PHISHTANK_APP_KEY is read from the environment and
+    applied if set, but is not required to succeed.
     """
-    raise NotImplementedError(
-        f"Implement the {feed} client. Capture: url, feed record id, "
-        "verification status, report date, and target brand where supplied."
-    )
+    if feed == "openphish":
+        # Free community feed: bare URL list, no metadata whatsoever.
+        resp = httpx.get("https://openphish.com/feed.txt", timeout=15, follow_redirects=True)
+        resp.raise_for_status()
+        return [
+            {"url": line.strip(), "id": None, "verified": None, "reportedOn": None, "target": None}
+            for line in resp.text.splitlines()
+            if line.strip()
+        ]
+
+    if feed == "phishtank":
+        params = {}
+        key = os.environ.get("PHISHTANK_APP_KEY")
+        if key:
+            params["app_key"] = key
+        resp = httpx.get(
+            "https://data.phishtank.com/data/online-valid.csv",
+            params=params,
+            timeout=30,
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+        reader = csv.DictReader(io.StringIO(resp.text))
+        entries = []
+        for row in reader:
+            target = (row.get("target") or "").strip()
+            entries.append({
+                "url": row["url"],
+                "id": row.get("phish_id"),
+                "verified": (row.get("verified", "").strip().lower() == "yes"),
+                "reportedOn": (row.get("submission_time") or "")[:10] or None,
+                # "Other" is PhishTank's own value for "no specific brand
+                # identified" — treated as null, not as a brand name.
+                "target": target if target and target.lower() != "other" else None,
+            })
+        return entries
+
+    raise ValueError(f"unknown feed: {feed}")
 
 
 def main() -> int:

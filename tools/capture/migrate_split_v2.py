@@ -25,6 +25,7 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import sys
@@ -159,7 +160,7 @@ def main() -> int:
     guard_against_post_calibration_run()
     _self_test()
 
-    paths = sorted(CORPUS_DIR.rglob("*.json"))
+    paths = sorted(CORPUS_DIR.rglob("*.json.gz"))
     if not paths:
         print("Corpus is empty; nothing to migrate.")
         return 0
@@ -173,7 +174,8 @@ def main() -> int:
     today = date.today().isoformat()
 
     for path in paths:
-        snap = json.loads(path.read_text())
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            snap = json.loads(f.read())
         split_block = snap.get("split", {})
 
         if split_block.get("assignmentFunctionVersion") == SPLIT_FUNCTION_VERSION:
@@ -204,7 +206,8 @@ def main() -> int:
                 "proportions": SPLIT_PROPORTIONS,
                 "assignedOn": today,
             }
-            path.write_text(json.dumps(snap, ensure_ascii=False))
+            with gzip.open(path, "wt", encoding="utf-8") as f:
+                f.write(json.dumps(snap, ensure_ascii=False))
 
     total = moved + unchanged + already_v2
     print(f"\n{'APPLIED' if args.apply else 'DRY RUN'} — {total} snapshots\n")
