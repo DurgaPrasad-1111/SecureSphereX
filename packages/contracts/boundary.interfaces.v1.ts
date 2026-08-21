@@ -43,23 +43,29 @@ export interface CrossOriginMatch {
   readonly origin: Origin;
   readonly registrableDomain: string;
   readonly similarity: number;          // score only — τ_sim is applied by
-                                        // CRED-02 at Stage 2 (§13.2)
+  // CRED-02 at Stage 2 (§13.2)
 }
 
 export type AuthStoreLookupResult =
-  | { readonly status: 'available';
-      readonly originPresent: boolean;
-      readonly lifecycleState: 'PROVISIONAL' | 'ESTABLISHED' | null;
-      /** Present origin: drift vs current-algorithm-version revisions. */
-      readonly fingerprintDrift: number | null;
-      /** Absent origin: best ESTABLISHED match elsewhere. */
-      readonly bestCrossOriginMatch: CrossOriginMatch | null }
+  | {
+    readonly status: 'available';
+    readonly originPresent: boolean;
+    readonly lifecycleState: 'PROVISIONAL' | 'ESTABLISHED' | null;
+    /** Present origin: drift vs current-algorithm-version revisions. */
+    readonly fingerprintDrift: number | null;
+    /** Absent origin: best ESTABLISHED match elsewhere. */
+    readonly bestCrossOriginMatch: CrossOriginMatch | null
+  }
   /** §20.11 — NEVER reported as "no match found". */
-  | { readonly status: 'versionMismatch';
-      readonly storedAlgorithmVersions: readonly string[] }
+  | {
+    readonly status: 'versionMismatch';
+    readonly storedAlgorithmVersions: readonly string[]
+  }
   /** §15.3 — CRED-02 becomes unevaluable; pass marked degraded. */
-  | { readonly status: 'unavailable';
-      readonly reason: 'store_corrupt' | 'store_rebuilding' | 'io_error' };
+  | {
+    readonly status: 'unavailable';
+    readonly reason: 'store_corrupt' | 'store_rebuilding' | 'io_error'
+  };
 
 export interface AuthStoreReader {
   /**
@@ -109,7 +115,7 @@ export interface AuthStoreWriter {
 
 export interface AuthStoreEntrySummary {
   readonly origin: Origin;              // plaintext — transparency over
-                                        // obscurity (§20.9)
+  // obscurity (§20.9)
   readonly lifecycleState: 'PROVISIONAL' | 'ESTABLISHED';
   readonly firstSeenOn: string;         // day granularity (§20.3)
   readonly lastSeenOn: string;
@@ -163,6 +169,10 @@ export interface SecurityStateView {
 }
 
 export interface SecurityStatePublisher {
+  /**
+   * In-memory only — §16.1's ≤10 ms Tier-0 budget requires `get()` to
+   * never perform I/O (disk, network, or otherwise).
+   */
   get(analysisSessionId: string): SecurityStateView | null;
   subscribe(
     analysisSessionId: string,
@@ -280,4 +290,7 @@ export interface InterventionReporter {
  *      partial score reaches Current Security State.
  * B-13 Where `degraded` is true, Role A SHALL NOT present an unqualified
  *      safe state (§15.2).
+ * B-14 A subscription established via `subscribe()` ends when its Session
+ *      ends; Role B fires no further callback afterward (§3.5).
  * ──────────────────────────────────────────────────────────────────────── */
+
