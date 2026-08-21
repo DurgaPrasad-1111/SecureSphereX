@@ -68,7 +68,7 @@ rule, the gzip pipeline, and the committed index are all built against it, and c
 is running. Signature makes it formally binding.
 
 **Decision:** ☑ External store (`corpus/**` git-ignored except `INDEX.jsonl`)
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -93,7 +93,7 @@ decision by default. It is the correct answer and matches the working tree, so i
 appearing first is a decision being made without a decision being taken.
 
 **Decision:** ☑ Ratify dotted filenames in `packages/contracts/`
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -136,7 +136,7 @@ not line number). This decision gates Step 6 and therefore Steps 7, 8, and 11.
 
 **Decision:** ☑ Approved — apply per Step 6, Annex A-1…A-5 (A-3 = 23 sites incl.
 `createSession`; A-4 = 9 sites, `reportedOn` nullable)
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -161,7 +161,7 @@ to run `npm run typecheck`. Both land before Step 12.
 
 **Decision:** ☐ Approved — G-8 = validator, conformance check = G-11; G-1 runs
 `npm run typecheck`
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -188,7 +188,7 @@ producer), which reinforces that these modules are correctly deferred until thei
 producers and consumers both exist.
 
 **Decision:** ☐ Approved — `ssl`/`dns` as conformant stubs until a rule consumes them
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -205,7 +205,7 @@ gate (`G-10`) or a working schema generator exist yet, and Stage 0 sign-off must
 read as implying either. This keeps week 1–2 scope from silently expanding.
 
 **Decision:** ☐ Approved as scoped
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -235,7 +235,7 @@ available. Silent drift (names attached as convenient, nothing amended) is expli
 ruled out.
 
 **Decision:** ☐ Approved — accountability model + reduced-staffing amendment as above
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -255,7 +255,7 @@ this is a change to predicate meaning and therefore a **MINOR** version bump, no
 PATCH. This decision also gates Step 6 (A-6) and Step 11.
 
 **Decision:** ☐ Approved — add `RuleSet.pslVersion` (A-6), MINOR bump per §14.1
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
@@ -295,7 +295,7 @@ rule-set parameters and **must not be assumed equal** — which is the whole rea
 are registered separately.
 
 **Decision:** ☐ Approved — one `fingerprintSimilarity`, two independent thresholds
-**Signed by:** _______________________  **Date:** ______________
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
 ---
 
