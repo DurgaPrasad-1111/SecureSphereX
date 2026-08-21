@@ -57,10 +57,10 @@ declare const AnalysisSessionIdBrand: unique symbol;
 declare const TargetResourceIdBrand: unique symbol;
 declare const PassResultIdBrand: unique symbol;
 declare const FindingIdBrand: unique symbol;
+declare const DayStampBrand: unique symbol;
 
 /** Identifies an Analysis Session. */
 export type AnalysisSessionId = string & { readonly [AnalysisSessionIdBrand]: true };
-
 /** Identifies the resource under analysis. */
 export type TargetResourceId = string & { readonly [TargetResourceIdBrand]: true };
 
@@ -69,6 +69,9 @@ export type PassResultId = string & { readonly [PassResultIdBrand]: true };
 
 /** Identifies a single Finding. */
 export type FindingId = string & { readonly [FindingIdBrand]: true };
+
+/** A calendar date at DAY granularity — 'YYYY-MM-DD' (§20.3). */
+export type DayStamp = string & { readonly [DayStampBrand]: true };
 /* ────────────────────────────────────────────────────────────────────────
  * 1. OBSERVATION TRI-STATE
  *
@@ -120,7 +123,7 @@ export interface CollectionContext {
   readonly tier: 0 | 1 | 2;
   readonly passOrdinal: number;          // 1-based within the Analysis Session
   /** Day granularity only. Rule Engine §20.3 — no precise timestamps. */
-  readonly collectedOn: string;          // ISO 8601 date, e.g. "2026-07-25"
+  readonly collectedOn: DayStamp;          // ISO 8601 date, e.g. "2026-07-25"
   readonly evidenceContractVersion: typeof EVIDENCE_CONTRACT_VERSION;
 }
 

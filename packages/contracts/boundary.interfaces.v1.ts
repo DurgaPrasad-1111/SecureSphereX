@@ -20,7 +20,7 @@
  * STATUS: FROZEN at Stage 0.
  */
 
-import type { Origin, LoginFingerprint, AnalysisSessionId, TargetResourceId } from './evidence.contract.v1';
+import type { Origin, LoginFingerprint, AnalysisSessionId, TargetResourceId, DayStamp } from './evidence.contract.v1';
 import type { RuleId, Tier } from './ruleset.format.v1';
 import type {
   RiskTier, PassTrigger, AnalysisPassResult, CurrentSecurityState,
@@ -117,8 +117,8 @@ export interface AuthStoreEntrySummary {
   readonly origin: Origin;              // plaintext — transparency over
   // obscurity (§20.9)
   readonly lifecycleState: 'PROVISIONAL' | 'ESTABLISHED';
-  readonly firstSeenOn: string;         // day granularity (§20.3)
-  readonly lastSeenOn: string;
+  readonly firstSeenOn: DayStamp;         // day granularity (§20.3)
+  readonly lastSeenOn: DayStamp;
   readonly successfulAuthCount: number;
 }
 

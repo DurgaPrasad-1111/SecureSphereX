@@ -21,7 +21,7 @@
  * STATUS: FROZEN at Stage 0.
  */
 
-import type { SecurityEvidence } from './evidence.contract.v1';
+import type { SecurityEvidence, DayStamp } from './evidence.contract.v1';
 
 export const SNAPSHOT_FORMAT_VERSION = '1.1.0' as const;
 
@@ -70,7 +70,7 @@ export interface LabelProvenance {
   /** Feed's own verification status, where the feed provides one. */
   readonly feedVerified: boolean | null;
   /** Day granularity. Feed report date, not capture date. */
-  readonly reportedOn: string | null;
+  readonly reportedOn: DayStamp | null;
   readonly feedRecordId: string | null;
 
   /**
@@ -128,7 +128,7 @@ export interface SplitAssignment {
     readonly test: number;
   };
   /** Day granularity. */
-  readonly assignedOn: string;
+  readonly assignedOn: DayStamp;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ export interface ExtractionRecord {
   readonly extractorVersion: string;
   readonly evidenceContractVersion: string;
   /** Day granularity. */
-  readonly extractedOn: string;
+  readonly extractedOn: DayStamp;
   readonly evidence: SecurityEvidence;
 }
 
@@ -195,7 +195,7 @@ export interface Snapshot {
 
   /** Day granularity. Capture recency matters: a phishing snapshot
    *  captured weeks after its feed report is likely a dead domain. */
-  readonly capturedOn: string;
+  readonly capturedOn: DayStamp;
 
   readonly provenance: LabelProvenance;
   readonly split: SplitAssignment;
@@ -227,7 +227,7 @@ export interface GoldenCorpusEntry {
   readonly expectedTier: 'Low' | 'Medium' | 'High';
   readonly expectedMatchedRules: readonly string[];
   /** Frozen on entry. A golden entry is never re-derived in place. */
-  readonly frozenOn: string;
+  readonly frozenOn: DayStamp;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

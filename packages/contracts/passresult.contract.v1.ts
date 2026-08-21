@@ -16,7 +16,7 @@
  *
  * STATUS: FROZEN at Stage 0.
  */
-import type { AnalysisSessionId, TargetResourceId, PassResultId, FindingId } from './evidence.contract.v1';
+import type { AnalysisSessionId, TargetResourceId, PassResultId, FindingId, DayStamp } from './evidence.contract.v1';
 import type { ModuleId, UnevaluableReason } from './evaluation.contract.v1';
 import type { RuleId, SuppressionId, Tier } from './ruleset.format.v1';
 
@@ -226,7 +226,7 @@ export interface AnalysisPassResult {
   readonly trigger: PassTrigger;
 
   /** Day granularity (§20.3). */
-  readonly evaluatedOn: string;
+  readonly evaluatedOn: DayStamp;
 
   /** Traceability: the Stage 1 output this pass consumed. */
   readonly evaluationRefs: readonly string[];
