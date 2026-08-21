@@ -39,7 +39,7 @@ import time
 
 import httpx
 from dataclasses import dataclass, asdict
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -163,8 +163,14 @@ def assign_split(split_key: str) -> str:
     return "test"
 
 
-def snapshot_id_for(url: str, captured_on: str, attempt: int) -> str:
-    return hashlib.sha256(f"{url}|{captured_on}|{attempt}".encode()).hexdigest()[:32]
+def snapshot_id_for(captured_at: str, url: str) -> str:
+    # captured_at is a full-precision UTC ISO timestamp, unique per capture.
+    # DEFECT-7: keying on the day + attempt=1 caused same-day re-captures to
+    # collide and overwrite (violates S-1). Timestamp identity makes each
+    # capture distinct. NOT keyed on attempt — attemptOrdinal is reserved for
+    # real fetch retries (snapshot_format_v1.ts:57). NOT keyed on the day —
+    # the retired split-v1 model.
+    return hashlib.sha256(f"{captured_at}|{url}".encode()).hexdigest()[:32]
 
 
 # ── Fetch outcome taxonomy (D0.5 §1) ─────────────────────────────────────
@@ -212,8 +218,9 @@ def capture_one(
 ) -> dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
-    captured_on = date.today().isoformat()          # day granularity (§20.3)
-    sid = snapshot_id_for(url, captured_on, attempt)
+    captured_at = datetime.now(timezone.utc).isoformat()   # identity + collision safety
+    captured_on = date.today().isoformat()                 # §20.3: body stays day-granular
+    sid = snapshot_id_for(captured_at, url)
     split_key = registrable_domain(url)             # split-v2 (D0.5 §3)
 
     redirect_chain: list[dict[str, Any]] = []
@@ -331,13 +338,13 @@ def capture_one(
     return snapshot
 
 
-def append_index(snapshot: dict[str, Any], path: Path) -> None:
+def index_entry_for(snapshot: dict[str, Any], path: Path) -> dict[str, Any]:
     """
-    DEC-1 Implementation §1. One line per snapshot, append-only. This is the
-    record that survives if payload is lost — S-2b, S-3, and S-4/S-5 all
-    depend on it. `INDEX.jsonl` is committed; payload under corpus/ is not.
+    The DEC-1 Implementation §1 field set, derived from a snapshot and the
+    path it was (or will be) written to. Shared by append_index() and
+    reconcile_index() so the two can't drift out of sync with each other.
     """
-    entry = {
+    return {
         "snapshotId": snapshot["snapshotId"],
         "capturedOn": snapshot["capturedOn"],
         "label": snapshot["provenance"]["label"],
@@ -353,6 +360,15 @@ def append_index(snapshot: dict[str, Any], path: Path) -> None:
         "bytes": path.stat().st_size,
         "relativePath": str(path.relative_to(CORPUS_DIR)),
     }
+
+
+def append_index(snapshot: dict[str, Any], path: Path) -> None:
+    """
+    DEC-1 Implementation §1. One line per snapshot, append-only. This is the
+    record that survives if payload is lost — S-2b, S-3, and S-4/S-5 all
+    depend on it. `INDEX.jsonl` is committed; payload under corpus/ is not.
+    """
+    entry = index_entry_for(snapshot, path)
     index_path = CORPUS_DIR / "INDEX.jsonl"
     with index_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -364,10 +380,75 @@ def persist(snapshot: dict[str, Any]) -> Path:
     out_dir = CORPUS_DIR / label / day
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{snapshot['snapshotId']}.json.gz"
+    if path.exists():
+        # DEFECT-7 guard: with timestamp-keyed identity a collision should be
+        # impossible. Raising rather than overwriting turns a silent S-1
+        # violation into a loud one if this assumption is ever wrong again
+        # (§15.1 — degraded capability must be loud, not silent).
+        raise RuntimeError(
+            f"snapshot id collision: {path} already exists. Timestamp-keyed "
+            "identity should make this impossible; refusing to overwrite "
+            "raw material (D0.5 S-1)."
+        )
     with gzip.open(path, "wt", encoding="utf-8") as f:
         f.write(json.dumps(snapshot, ensure_ascii=False))
     append_index(snapshot, path)
     return path
+
+
+# ── Index reconciliation (DEFECT-7 §4) ───────────────────────────────────
+#
+# The pre-fix identity scheme (day + attempt=1) let a same-day re-capture of
+# the same URL collide and silently overwrite the on-disk file, while
+# append_index() still appended a new line — leaving old INDEX.jsonl holding
+# multiple lines that cite the same path with different bytes/hash, only the
+# LAST one of which matches what is actually on disk now. This cannot
+# recover the overwritten raw material; it makes the index stop lying about
+# what survived.
+
+def reconcile_index() -> None:
+    index_path = CORPUS_DIR / "INDEX.jsonl"
+
+    old_lines: list[dict[str, Any]] = []
+    if index_path.exists():
+        for line in index_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                old_lines.append(json.loads(line))
+    old_count = len(old_lines)
+
+    # Collision count: distinct relativePaths that had more than one line
+    # pointing at them in the OLD index — files that were silently
+    # overwritten one or more times under the pre-fix identity scheme.
+    lines_per_path: dict[str, int] = {}
+    for entry in old_lines:
+        rp = entry.get("relativePath")
+        if rp is not None:
+            lines_per_path[rp] = lines_per_path.get(rp, 0) + 1
+    collided_paths = sum(1 for n in lines_per_path.values() if n > 1)
+
+    if index_path.exists():
+        backup_path = index_path.with_name("INDEX.jsonl.pre-reconcile")
+        backup_path.write_text(index_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    new_lines: list[str] = []
+    for path in sorted(CORPUS_DIR.rglob("*.json.gz")):
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            snap = json.loads(f.read())
+        new_lines.append(json.dumps(index_entry_for(snap, path), ensure_ascii=False))
+
+    index_path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""), encoding="utf-8")
+    new_count = len(new_lines)
+
+    print("INDEX.jsonl RECONCILE")
+    print("=" * 60)
+    print(f"  old line count      {old_count}")
+    print(f"  new line count      {new_count}")
+    print(f"  lines dropped       {old_count - new_count}")
+    print(f"  collided paths      {collided_paths}  "
+          f"(distinct files that had >1 index line pointing at them — "
+          f"the damage this reconcile is correcting)")
+    print(f"\nBackup of the pre-reconcile index: {index_path.with_name('INDEX.jsonl.pre-reconcile')}")
 
 
 # ── Reporting (D0.5 invariants S-4, S-5) ─────────────────────────────────
@@ -540,10 +621,16 @@ def main() -> int:
     ap.add_argument("--poll", type=int, metavar="MINUTES")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--reconcile-index", action="store_true",
+                     help="DEFECT-7: rebuild INDEX.jsonl from on-disk *.json.gz truth")
     ap.add_argument("--limit", type=int, default=200)
     args = ap.parse_args()
 
     _self_test()
+
+    if args.reconcile_index:
+        reconcile_index()
+        return 0
 
     if args.report:
         report()
