@@ -251,6 +251,10 @@ export interface RuleSet {
 
   /** §14.1 semantic version, e.g. "rules-v0.1.0". */
   readonly ruleSetVersion: string;
+    /** §14.1: PSL version the registrable-domain comparisons were authored
+   *  against. A PSL update can shift an eTLD+1 boundary and change a
+   *  sameSite outcome under identical evidence — recorded for G-10 replay. */
+  readonly pslVersion: string;
   readonly released: boolean;
   /** §12.2: a released version is immutable. Integrity is checked at load;
    *  failure is fail-closed (§15.3). */

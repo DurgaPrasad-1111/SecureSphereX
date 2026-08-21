@@ -49,13 +49,37 @@ export type FetchOutcome =
   | 'blocked_or_cloaked'    // served an interstitial / bot wall
   | 'navigation_error';
 
-export interface FetchRecord {
-  readonly outcome: FetchOutcome;
-  readonly httpStatus: number | null;
+/* A-5 (DEC-3 Q5): discriminated union on `outcome`. Impossible field
+ * combinations (e.g. an httpStatus on a timeout, a finalUrl on a DNS
+ * failure) are now unrepresentable rather than merely discouraged. */
+interface FetchRecordBase {
   readonly durationMs: number;
-  readonly finalUrl: string | null;
   readonly attemptOrdinal: number;    // retries are separate snapshots
 }
+
+export type FetchRecord =
+  | (FetchRecordBase & {
+      readonly outcome: 'success';
+      readonly httpStatus: number;
+      readonly finalUrl: string;
+    })
+  | (FetchRecordBase & {
+      readonly outcome: 'http_error';
+      readonly httpStatus: number;
+      readonly finalUrl: string | null;
+    })
+  | (FetchRecordBase & {
+      readonly outcome:
+        | 'dns_resolution_failed'
+        | 'tls_handshake_failed'
+        | 'timeout'
+        | 'redirect_loop'
+        | 'empty_document'
+        | 'blocked_or_cloaked'
+        | 'navigation_error';
+      readonly httpStatus: null;
+      readonly finalUrl: string | null;
+    });
 
 /* ────────────────────────────────────────────────────────────────────────
  * 2. LABEL AND PROVENANCE
