@@ -20,7 +20,7 @@
  * STATUS: FROZEN at Stage 0.
  */
 
-import type { Origin, LoginFingerprint } from './evidence.contract.v1';
+import type { Origin, LoginFingerprint, AnalysisSessionId, TargetResourceId } from './evidence.contract.v1';
 import type { RuleId, Tier } from './ruleset.format.v1';
 import type {
   RiskTier, PassTrigger, AnalysisPassResult, CurrentSecurityState,
@@ -88,7 +88,7 @@ export interface AuthRecordRequest {
   /** G-02: user proceeded past a Warn or Block in this Session. */
   readonly interventionOverriddenInSession: boolean;
   readonly isPrivateContext: boolean;
-  readonly analysisSessionId: string;
+  readonly analysisSessionId: AnalysisSessionId;
 }
 
 export type AuthRecordOutcome =
@@ -173,9 +173,9 @@ export interface SecurityStatePublisher {
    * In-memory only — §16.1's ≤10 ms Tier-0 budget requires `get()` to
    * never perform I/O (disk, network, or otherwise).
    */
-  get(analysisSessionId: string): SecurityStateView | null;
+  get(analysisSessionId: AnalysisSessionId): SecurityStateView | null;
   subscribe(
-    analysisSessionId: string,
+    analysisSessionId: AnalysisSessionId,
     onChange: (view: SecurityStateView) => void,
   ): () => void;
 }
@@ -188,8 +188,8 @@ export interface SecurityStatePublisher {
  * ════════════════════════════════════════════════════════════════════════ */
 
 export interface InvocationContext {
-  readonly analysisSessionId: string;
-  readonly targetResourceId: string;
+  readonly analysisSessionId: AnalysisSessionId;
+  readonly targetResourceId: TargetResourceId;
   readonly tier: Tier;
   readonly trigger: PassTrigger;
   /** Propagated so the store write path can honour §20.8. */
@@ -217,7 +217,7 @@ export type PassInvocationResult =
 
 export interface AnalysisInvoker {
   /** §3.1 — one Session per Target Resource per navigation. */
-  createSession(targetUrl: string, isPrivateContext: boolean): Promise<string>;
+  createSession(targetUrl: string, isPrivateContext: boolean): Promise<AnalysisSessionId>;
 
   /**
    * Tier 0 and Tier 1 — LOCAL ONLY.
@@ -235,7 +235,7 @@ export interface AnalysisInvoker {
   runGatePass(ctx: InvocationContext, evidenceRef: string): Promise<PassInvocationResult>;
 
   /** §3.5 — navigation away, tab close, or timeout. */
-  finalizeSession(analysisSessionId: string): Promise<void>;
+  finalizeSession(analysisSessionId: AnalysisSessionId): Promise<void>;
 }
 
 /* ── Feedback path: Role A → Role B ────────────────────────────────────── */
@@ -253,13 +253,13 @@ export type UserDisposition = 'heeded' | 'overridden' | 'dismissed';
  */
 export interface InterventionReporter {
   reportInterventionPresented(
-    analysisSessionId: string,
+    analysisSessionId: AnalysisSessionId,
     response: RecommendedResponse,
     tier: RiskTier,
   ): Promise<void>;
 
   reportUserDisposition(
-    analysisSessionId: string,
+    analysisSessionId: AnalysisSessionId,
     disposition: UserDisposition,
   ): Promise<void>;
 }

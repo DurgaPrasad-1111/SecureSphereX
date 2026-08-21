@@ -16,7 +16,7 @@
  *
  * STATUS: FROZEN at Stage 0.
  */
-
+import type { AnalysisSessionId, TargetResourceId, PassResultId, FindingId } from './evidence.contract.v1';
 import type { ModuleId, UnevaluableReason } from './evaluation.contract.v1';
 import type { RuleId, SuppressionId, Tier } from './ruleset.format.v1';
 
@@ -40,11 +40,11 @@ export interface CorrelationContext {
 }
 
 export interface CorrelationFinding {
-  readonly findingId: string;
+  readonly findingId: FindingId;
   readonly contractVersion: typeof PASS_RESULT_CONTRACT_VERSION;
 
-  readonly targetResourceId: string;
-  readonly analysisSessionId: string;
+  readonly targetResourceId: TargetResourceId;
+  readonly analysisSessionId: AnalysisSessionId;
   readonly passOrdinal: number;
 
   readonly ruleId: RuleId;
@@ -69,7 +69,7 @@ export interface CorrelationFinding {
 
 export type RuleOutcome =
   | { readonly ruleId: RuleId; readonly outcome: 'matched';
-      readonly findingId: string }
+      readonly findingId: FindingId }
   | { readonly ruleId: RuleId; readonly outcome: 'notMatched' }
   | { readonly ruleId: RuleId; readonly outcome: 'unevaluable';
       readonly reason: UnevaluableReason;
@@ -114,7 +114,7 @@ export interface SuppressionApplication {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface ScoringEntry {
-  readonly findingId: string;
+  readonly findingId: FindingId;
   readonly ruleId: RuleId;
   readonly ruleType: 'primary' | 'aggravator';
   readonly parentRuleId: RuleId | null;
@@ -216,11 +216,11 @@ export type PassTrigger =
   | 'advisory_reevaluation';   // Tier 2, Phase II second forward pass
 
 export interface AnalysisPassResult {
-  readonly passResultId: string;
+  readonly passResultId: PassResultId;
   readonly contractVersion: typeof PASS_RESULT_CONTRACT_VERSION;
 
-  readonly targetResourceId: string;
-  readonly analysisSessionId: string;
+  readonly targetResourceId: TargetResourceId;
+  readonly analysisSessionId: AnalysisSessionId;
   readonly passOrdinal: number;          // 1-based
   readonly tier: Tier;
   readonly trigger: PassTrigger;
@@ -252,8 +252,8 @@ export interface AnalysisPassResult {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface CurrentSecurityState {
-  readonly analysisSessionId: string;
-  readonly targetResourceId: string;
+  readonly analysisSessionId: AnalysisSessionId;
+  readonly targetResourceId: TargetResourceId;
   readonly score: number;
   readonly tier: RiskTier;
   readonly ruleSetVersion: string;

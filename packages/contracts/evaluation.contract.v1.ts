@@ -13,6 +13,7 @@
 import type {
   Origin, CollectionContext,
   CredentialFieldKind, FormMethod, RedirectMechanism, SensitivePermission,
+  AnalysisSessionId, TargetResourceId
 } from './evidence.contract.v1';
 
 export const EVALUATION_CONTRACT_VERSION = '1.1.0' as const;
@@ -265,8 +266,8 @@ export interface SecurityEvaluation<M extends ModuleId = ModuleId> {
   readonly contractVersion: typeof EVALUATION_CONTRACT_VERSION;
 
   /* Domain Representation Elements — §8.3.5 */
-  readonly targetResourceId: string;
-  readonly analysisSessionId: string;
+  readonly targetResourceId: TargetResourceId;
+  readonly analysisSessionId: AnalysisSessionId;
   readonly passOrdinal: number;
   readonly moduleId: M;
   readonly moduleVersion: string;

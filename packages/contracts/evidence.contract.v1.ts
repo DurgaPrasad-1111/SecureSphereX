@@ -42,7 +42,33 @@ export function toOrigin(url: string): Origin | null {
     return null;
   }
 }
+/* ────────────────────────────────────────────────────────────────────────
+ * IDENTIFIER BRANDS (Annex A-3, DEC-3)
+ *
+ * Four identifier types are branded so they cannot be interchanged at a
+ * call site. Unbranded, each is a bare `string`: passing an
+ * `analysisSessionId` where a `findingId` is expected compiles silently.
+ *
+ * Declared here because this file is the dependency-graph root — it
+ * imports nothing, so no import cycle is possible.
+ * ──────────────────────────────────────────────────────────────────────── */
 
+declare const AnalysisSessionIdBrand: unique symbol;
+declare const TargetResourceIdBrand: unique symbol;
+declare const PassResultIdBrand: unique symbol;
+declare const FindingIdBrand: unique symbol;
+
+/** Identifies an Analysis Session. */
+export type AnalysisSessionId = string & { readonly [AnalysisSessionIdBrand]: true };
+
+/** Identifies the resource under analysis. */
+export type TargetResourceId = string & { readonly [TargetResourceIdBrand]: true };
+
+/** Identifies an Analysis Pass Result. */
+export type PassResultId = string & { readonly [PassResultIdBrand]: true };
+
+/** Identifies a single Finding. */
+export type FindingId = string & { readonly [FindingIdBrand]: true };
 /* ────────────────────────────────────────────────────────────────────────
  * 1. OBSERVATION TRI-STATE
  *
@@ -282,8 +308,8 @@ export interface EvidenceByCategory {
  * whose fields are `notCollected`.
  */
 export interface SecurityEvidence {
-  readonly targetResourceId: string;      // stable across the Session (§3.1)
-  readonly analysisSessionId: string;
+  readonly targetResourceId: TargetResourceId;      // stable across the Session (§3.1)
+  readonly analysisSessionId: AnalysisSessionId;
   readonly evidenceId: string;
   readonly collectionContext: CollectionContext;
   readonly evidence: EvidenceByCategory;
