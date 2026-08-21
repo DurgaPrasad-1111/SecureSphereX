@@ -26,3 +26,7 @@ tools/capture/tranco_top10k.csv
 # INDEX.jsonl is the record.
 tools/capture/__pycache__/
 tools/capture/*.log
+
+# macOS
+.DS_Store
+**/.DS_Store
