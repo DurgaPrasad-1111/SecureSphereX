@@ -205,7 +205,7 @@ gate (`G-10`) or a working schema generator exist yet, and Stage 0 sign-off must
 read as implying either. This keeps week 1–2 scope from silently expanding.
 
 **Decision:** ☐ Approved as scoped
-**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
+**Signed by:** _______________________  **Date:** ______________
 
 ---
 
