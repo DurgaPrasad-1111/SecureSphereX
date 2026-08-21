@@ -107,3 +107,26 @@ for the gzip globs: a broken check that presents as success.
   itself is non-zero and verified — the audit passing with 0 domains is not
   evidence C0.6's check is meaningful, it's evidence the check hasn't been
   exercised on real reassignment data yet.
+
+---
+
+## DEFECT-8 (historical, mitigated by design) — jq/PATH fail-open in an earlier hook implementation
+
+An earlier `.sh` implementation of the frozen-file hook resolved `jq` via
+`PATH` and errored **before** checking the target path when `jq` was
+unresolved — failing **open** (the edit proceeded uncaught). Root cause: the
+Claude Code process's inherited `PATH` predated the `jq` install.
+
+The current `.mjs`/Node hook is immune by construction — no shell, no `jq`,
+no `PATH` lookup for a required external binary.
+
+- **Owner:** none — historical, no action needed against the current hook.
+- **Why recorded anyway:** it documents a silent-fail-open class for
+  frozen-file hooks generally — a required external dependency resolved via
+  an assumption about the calling environment's `PATH`, erroring closed on
+  the *check itself* rather than on the *edit it was supposed to gate*, and
+  thereby failing open. Relevant to DEFECT-4 (Bash coverage is a heuristic
+  tripwire, not a boundary) as a second, independent way a frozen-file guard
+  can silently stop working.
+- **Source:** `origin/main:1b92d08`, pre-session history — a superseded
+  parallel lineage, preserved here before the remote is overwritten.
