@@ -297,3 +297,31 @@ directions, reverted, confirmed CONFORMANT/exit 0 on real unmodified state.
 
 - **Owner:** CI conformance tooling (G-11).
 - **Status:** RESOLVED.
+
+---
+
+## DEFECT-11 — corpus/INDEX.jsonl carries pre-fix entries with no corresponding payload (found 2026-08-22)
+
+Finding: reconciling corpus/INDEX.jsonl against real corpus/**/*.json.gz files on
+disk shows 456 entries with no matching file anywhere — every one of them dated
+capturedOn 2026-08-20 (333) or 2026-08-21 (123). Every entry dated capturedOn
+2026-08-22 (315 and climbing, as capture is running live at time of writing) has
+a real file on disk. The split is exact and clean: nothing from before today has
+payload, everything captured today after today's dependency fix (httpx/playwright/
+tldextract install) does. The missing set is not explained by fetch failures — its
+fetchOutcome breakdown (success/http_error/dns_resolution_failed/timeout/etc.) is
+proportionally the same as the present set's, including 242 "success" outcomes
+with no file, so this isn't "failed fetches don't get files," it's a genuine
+payload-write gap from whatever produced index entries before today.
+
+Impact: does NOT affect DEFECT-6 (migrate_split_v2.py reads corpus/ files
+directly, never INDEX.jsonl). DOES affect anything that trusts INDEX.jsonl as
+ground truth without cross-checking real files — Step 13's --report flag, future
+metrics harness work.
+
+Not yet resolved — logged only. Decision needed: purge the 456 orphaned
+pre-2026-08-22 entries, or retain them as an explicit "known lost/never-written"
+record.
+
+- **Owner:** TBD — capture pipeline / corpus reconciliation.
+- **Status:** OPEN.
