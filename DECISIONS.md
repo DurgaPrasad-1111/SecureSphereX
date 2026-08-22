@@ -397,3 +397,20 @@ those points.
 
 **Decision:** _pending_
 **Signed by:** _pending_
+
+---
+
+## DEC-13 (CANDIDATE — unsigned, open) — Cross-environment corpus payload access mechanism
+
+**[R]** DEC-1 decided corpus payload never enters git and named two acceptable homes for it: "on disk (and/or an external store) outside version control." No endpoint, bucket, mount path, or credential scheme for the external-store option is recorded anywhere in DECISIONS.md, the codebase, or any config file.
+
+**[R]** A full-tree grep for object-store references (S3/GCS/bucket/blob/etc.) across the entire repository returns nothing beyond DEC-1's own prose and code comments discussing the decision itself — confirming no mechanism was ever built, not that one was lost or misconfigured.
+
+**[I]** The practical consequence surfaced concretely on 2026-08-22 during DEFECT-6's verification: a session running outside Durga's capture machine had zero path to real payload — no credentials, no reachable endpoint, no way to mount or fetch it, by design rather than by accident. This is not currently a problem — every step that needs real payload (Steps 2, 11, 13, 15) already runs on Durga's machine, where corpus/ holds the real files directly, satisfying DEC-1's "on disk" branch fully. The gap only bites if someone other than Durga, or some process other than local capture, ever needs to read real payload: CI running against real data, a teammate independently verifying something, disaster recovery if her machine is lost, or a handoff under reduced staffing (see DEC-7).
+
+**Question for architect ruling.** Is cross-environment access to real corpus payload ever going to be needed — and if so, by what mechanism (a genuine external object store with credentials, a sync/transfer process onto whichever machine needs it, or something else)? Or is "payload lives only on the capture machine, INDEX.jsonl is the portable record" the permanent intended shape, in which case this is closed by ruling rather than by building anything?
+
+**Status.** Open. Blocks nothing today — current practice (payload on the capture machine, INDEX.jsonl as portable provenance) is fully sufficient and matches DEC-1 as written. Becomes relevant if: (a) CI or any automated process ever needs to validate against real payload rather than just INDEX.jsonl, (b) someone other than Durga needs read access to real snapshots, (c) Durga's machine becomes unavailable and payload needs recovering or relocating. Should be resolved before any of those points, not discovered at them.
+
+**Decision:** _pending_
+**Signed by:** _pending_
