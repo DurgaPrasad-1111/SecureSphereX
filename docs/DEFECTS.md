@@ -130,3 +130,58 @@ no `PATH` lookup for a required external binary.
   can silently stop working.
 - **Source:** `origin/main:1b92d08`, pre-session history — a superseded
   parallel lineage, preserved here before the remote is overwritten.
+
+---
+
+## DEFECT-5 — Phantom module-authority document (identified and resolved 2026-08-21)
+
+Finding: RuleEngine-Spec-v0_8.md cites an external "ECE Internal Module
+Specifications" (lines 27, 195) not present in the 46-file corpus; the register
+notes that document is itself already incomplete.
+
+Impact: appeared to leave the module interface without an authority document,
+blocking Step 15.
+
+Resolution: RESOLVED (DEC-11). Module register is in §2.6 (closed at ten modules);
+interface signature is in evaluation.contract.v1.ts. Modules 1–7 detail is supplied
+by typed findings rather than prose — a recorded narrowing. No reconstruction
+attempted; external doc deferred to Phase II.
+
+- **Owner:** Architecture Owner.
+- **Status:** RESOLVED.
+
+---
+
+## DEFECT-7 — Snapshot-identity collision (found and fixed 2026-08-21; recorded
+retrospectively — documents an already-committed fix)
+
+Finding: snapshot_id_for keyed identity on (url, day, attempt=1). A same-day
+re-capture produced a colliding snapshotId, overwriting the prior snapshot file
+while appending a duplicate INDEX.jsonl line — violating S-1 immutability.
+
+Resolution: FIXED. Identity re-keyed on a full-precision UTC timestamp; capturedOn
+kept day-granular (§20.3); attemptOrdinal left for genuine fetch retries; persist()
+raises on any path collision; INDEX.jsonl rebuilt from on-disk truth. Commits
+fa7694a, 69ec038, cf0210b (verified present, touching the capture pipeline).
+
+- **Owner:** capture pipeline.
+- **Status:** FIXED.
+
+---
+
+## DEFECT-9 — Partial typecheck coverage (identified 2026-08-21; latent)
+
+Finding: root tsconfig.json references only packages/contracts. packages/engine,
+apps/extension, apps/harness exist but have no tsconfig.json and are absent from
+the references array, so `tsc -b` never type-checks them — the vacuous-gate failure
+CLAUDE.md warns of, same class as DEFECT-1.
+
+Impact: currently none — those packages have no consumers of the contracts yet
+(verified by grep). Becomes active when Step 8/11/15 writes contract-consuming code
+there.
+
+Resolution: track now, fix at Step 12 — wire each package's tsconfig.json + root
+references so the typecheck gate is total.
+
+- **Owner:** Step 12.
+- **Status:** OPEN (latent).

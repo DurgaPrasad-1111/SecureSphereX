@@ -316,3 +316,42 @@ are registered separately.
 
 **To unblock the critical path today, sign DEC-1, DEC-2, DEC-3, DEC-8.** The rest gate
 later steps and can be signed in any order.
+
+---
+
+## DEC-11 — DEFECT-5 resolution: the authoritative module contract
+
+**[R]** SecureSphereX-RuleEngine-Spec-v0_8.md cites an external "ECE Internal Module
+Specifications" document (lines 27, 195) as defining the evaluation modules. That
+document is not among the 46 corpus files. The register itself notes the external
+ECE document is already incomplete — it "REQUIRES three corresponding addendum
+entries to remain the complete module register" — so it was never a settled
+authority to begin with.
+
+**[I]** The citation does not block implementation. The two things a module requires
+are both present and authoritative in the corpus:
+  - The MODULE REGISTER — the complete set of ten modules, each module's evidence
+    category, rules served, and shared prohibitions (consumes only its own evidence
+    category; produces exactly one Security Evaluation per pass; SHALL NOT correlate,
+    assign confidence, apply thresholds, classify the Target Resource, or produce a
+    Security Decision) — is fully specified in §2.6, closed at ten modules (line 775).
+  - The MODULE INTERFACE SIGNATURE is defined by the D0.1 contract
+    evaluation.contract.v1.ts (ModuleId, the evaluated/unevaluable result shape, the
+    per-module findings types), frozen and audited.
+
+**The narrowing, stated openly.** For modules 1–7 (URL, SSL, DNS, Redirect, Login
+Form, JavaScript, Homograph), the register's "Defined in" column cites the absent
+ECE document for per-module behavioural detail. For Phase I that detail is supplied
+by evaluation.contract.v1.ts's per-module findings types — a TYPED rather than prose
+specification. This is a genuine narrowing, and it is recorded here rather than
+papered over.
+
+**Conclusion.** The §2.6 register together with evaluation.contract.v1.ts are the
+authoritative module specification for Phase I. No prose reconstruction of the
+external ECE document is required or attempted — reconstructing an absent authority
+would fabricate it. Any future need for the external document is a Phase II
+documentation task. This unblocks Step 15.
+
+**Decision:** Accept §2.6 register + evaluation.contract.v1.ts as the authoritative
+module contract; ECE external document deferred to Phase II.
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
