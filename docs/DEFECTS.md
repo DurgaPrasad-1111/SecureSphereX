@@ -114,6 +114,23 @@ for the gzip globs: a broken check that presents as success.
   itself is non-zero and verified — the audit passing with 0 domains is not
   evidence C0.6's check is meaningful, it's evidence the check hasn't been
   exercised on real reassignment data yet.
+- **Status:** FIXED, pending real-data verification. The `already_v2` branch
+  now populates `domains_by_split` and `snapshots_per_domain`, keyed on the
+  snapshot's stored `splitKey` (never re-derived — S-2b treats `splitKey` as
+  immutable once assigned); a `split-v2` snapshot missing `splitKey` raises
+  rather than being silently skipped. Correctness of this logic is confirmed
+  via an isolated synthetic seeded-violation test (scratch directory outside
+  the repo, synthetic schema-valid snapshots, one deliberate straddling
+  violation): the pre-fix script reproduces the defect exactly (0 domains,
+  `S-2a straddling domains: 0`, exit 0, despite the seeded violation); the
+  patched script reports the correct non-zero domain count, flags the seeded
+  domain under `FAIL`, and exits 1. The fix has **not** been verified
+  against real captured corpus payload — no real payload is reachable from
+  this environment (`corpus/` here holds only `INDEX.jsonl`; payload lives
+  outside git per DEC-1, and no object-store endpoint or credentials exist
+  in this environment to reach it). Real-data verification remains an open
+  follow-up, to run whenever real `corpus/` payload becomes accessible here,
+  or when Durga runs the same protocol independently on her own machine.
 
 ---
 

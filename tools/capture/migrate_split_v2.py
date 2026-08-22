@@ -181,6 +181,23 @@ def main() -> int:
         if split_block.get("assignmentFunctionVersion") == SPLIT_FUNCTION_VERSION:
             already_v2 += 1
             new_dist[split_block["split"]] += 1
+
+            # DEFECT-6 fix: an already-split-v2 snapshot still counts toward
+            # the domain-level distribution and the S-2a straddling check.
+            # Key on the STORED splitKey — never re-derive via
+            # registrable_domain() here. S-2b requires splitKey be treated
+            # as immutable once assigned; re-deriving it would let a later
+            # PSL update silently reclassify an already-assigned snapshot.
+            split_key = split_block.get("splitKey")
+            if not split_key:
+                raise ValueError(
+                    f"{path}: assignmentFunctionVersion is {SPLIT_FUNCTION_VERSION!r} "
+                    "but splitKey is missing. Refusing to skip it silently — that "
+                    "would just relocate the vacuous-pass defect (DEFECT-6) rather "
+                    "than fix it."
+                )
+            domains_by_split[split_block["split"]].add(split_key)
+            snapshots_per_domain[split_key] += 1
             continue
 
         url = snap["raw"]["requestedUrl"]
