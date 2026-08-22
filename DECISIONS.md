@@ -355,3 +355,45 @@ documentation task. This unblocks Step 15.
 **Decision:** Accept §2.6 register + evaluation.contract.v1.ts as the authoritative
 module contract; ECE external document deferred to Phase II.
 **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
+
+---
+
+## DEC-12 (CANDIDATE — unsigned, open) — Sanctioned constructors for the
+five brands
+
+**[R]** DEC-3 signed the four ID brands (AnalysisSessionId,
+TargetResourceId, PassResultId, FindingId) via Annex A-3 as TYPES ONLY.
+DayStamp was added by Annex A-4 under DEC-3 on the same basis. No
+sanctioned constructor was authorized for any of the five.
+
+**[R]** Only Origin has a sanctioned constructor: `toOrigin()` at
+evidence.contract.v1.ts:36, which parses the URL and returns null on
+failure. Invariant I-9 records that Origin values enter the type
+system exclusively through it: "Only toOrigin() constructs an Origin.
+No cast, no assertion. The store write path (D0.8) accepts Origin
+exclusively (§20.3)."
+
+**[I]** Currently the five brands enter the type system by `as` cast
+at every boundary — fixtures do this today (Step 8, commit 6060d63);
+the capture pipeline will do it when reading its own snapshot output;
+the engine will do it when reading corpus payloads. No runtime
+validation exists for any of the five. A malformed DayStamp (e.g. a
+full ISO-8601 timestamp) satisfies `as DayStamp` silently — which is
+the exact class of over-precision §20.3 forbids and the A-4 branding
+under DEC-3 was intended to prevent.
+
+**Question for architect ruling.** Do the five brands get parse-validated
+constructors modelled on toOrigin, and if so, does each of the five get
+one or only those whose value has an enforceable format (DayStamp does;
+opaque IDs may not)? Or is `as`-cast at boundaries deliberately
+accepted, with validation deferred to producer-side testing?
+
+**Status.** Open. Blocks nothing today — the current `as`-cast pattern
+compiles and Step 8 is closed against it. Becomes relevant when: (a) the
+capture pipeline ingests external data (Step 2 continuation), (b) the
+engine reads corpus payloads (Step 15+), (c) any producer of these
+values is written to run outside a fixture. Should be resolved before
+those points.
+
+**Decision:** _pending_
+**Signed by:** _pending_

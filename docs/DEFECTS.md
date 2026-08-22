@@ -185,3 +185,13 @@ references so the typecheck gate is total.
 
 - **Owner:** Step 12.
 - **Status:** OPEN (latent).
+
+---
+
+## DEC-12 candidate (Step 8 finding)
+
+Five branded types have no sanctioned constructor; values enter via
+unvalidated `as` cast at every boundary. Documented as DEC-12 (candidate,
+open) in DECISIONS.md. Not a defect — a deliberate deferral of a decision
+the corpus does not force. Revisit before the capture pipeline or engine
+ingests untrusted string input.
