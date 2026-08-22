@@ -71,14 +71,21 @@ jobs:
 
       # ── G-11 — contract ↔ LDD conformance (DEC-4) ─────────────────────
       #
-      # contract-conformance-check.py extracts canonical enums from the D0.x
-      # TypeScript sources and storage enums from the LDD, applies the NM-1
+      # tools/ci/contract-conformance-check.py extracts canonical enums from
+      # the D0.x TypeScript sources in packages/contracts/, compares against
+      # storage enums pinned from the LDD (tools/ci/storage-enums.json,
+      # digest-checked against the LDD on every run), applies the NM-1
       # mapping, and fails the build on any divergence. Named G-11 per DEC-4:
       # G-8 belongs to the rule-set static validator above. spec/ci.yml
       # contains no reference to contract-conformance-check.py — this step
-      # wires it into CI for the first time.
+      # wires it into CI for the first time. Runs the tools/ci/ working copy,
+      # not spec/'s frozen original — spec/'s copy is BASE-anchored to its
+      # own directory, which (since it lives in spec/) means it validates
+      # against the six frozen pre-amendment contract .ts files also in
+      # spec/, not the amended contracts this codebase actually builds
+      # against.
       - name: 'G-11  Contract ↔ LDD conformance'
-        run: python3 spec/contract-conformance-check.py
+        run: python3 tools/ci/contract-conformance-check.py
 
   tests:
     runs-on: ubuntu-latest

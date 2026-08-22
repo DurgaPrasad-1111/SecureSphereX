@@ -260,3 +260,40 @@ still guards on `if: hashFiles('rulesets/*.json') != ''`, which is false
 until Step 11 or later produces a rule set. Its absence of effect is
 intentional at this stage, not an oversight; no action needed until a rule
 set exists to validate.
+
+---
+
+## DEFECT-10 — G-11 validated the frozen pre-amendment contracts, not the amended ones (found 2026-08-22; reconciled clean)
+
+Finding: commit abb9286 ("Step 12: apply DEC-4 to working CI configuration")
+wired gate G-11 to run `spec/contract-conformance-check.py` directly.
+That script's *.ts glob is BASE-anchored to its own file's directory (E-21's
+fix) — correct in isolation, but since the only copy of the script lived in
+spec/, BASE resolved to spec/, and spec/ also holds the six FROZEN ORIGINAL
+contract .ts files (pre-DEC-3-amendment: unbranded IDs/dates, no FetchRecord
+discriminated union, no pslVersion). So G-11 was validating enum shapes
+against contracts nothing in the actual codebase builds against — the
+amended packages/contracts/ versions were never checked.
+
+Impact: reconciled clean. Independently diffed all ten enum-bearing types
+(ModuleId, EvidenceCategory, PassTrigger, ConsistencyAssessment,
+UnevaluableReason, NotCollectedReason, CollectorKind, RedirectMechanism,
+RiskTier, RuleType) between spec/*.ts and packages/contracts/*.ts — all ten
+are set-identical. DEC-3's amendments (A-1…A-6) touched ID/date branding,
+FetchRecord's shape, and pslVersion, none of which are simple string-literal
+union types this check inspects, so no divergence was actually hiding
+behind the gap. The risk was real even though nothing was currently wrong:
+a future amendment touching one of these ten types would have gone
+unchecked by G-11 silently.
+
+Resolution: new working copy at tools/ci/contract-conformance-check.py,
+scanning packages/contracts/*.ts instead. G-11 in .github/workflows/ci.yml
+repointed to it. spec/contract-conformance-check.py is untouched (frozen);
+its own scope (E-21) is unaffected by this — the bug was in what G-11 ran
+against, not in spec/'s copy itself. Verified the new check can actually
+detect drift: seeded a mismatch (skr.risk_tier: high→severe), confirmed
+NON-CONFORMANT/exit 1 with the exact mismatched values reported both
+directions, reverted, confirmed CONFORMANT/exit 0 on real unmodified state.
+
+- **Owner:** CI conformance tooling (G-11).
+- **Status:** RESOLVED.
