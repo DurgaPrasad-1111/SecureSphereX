@@ -20,6 +20,12 @@ WHAT IT DOES
 USAGE
     python migrate_split_v2.py --dry-run
     python migrate_split_v2.py --apply
+
+NOTE: spec/migrate_split_v2.py (frozen, imported at Stage 0) still globs
+*.json and reads plain text. THIS file was corrected to *.json.gz /
+gzip.open in eb22612 (the DEC-1 gzip change) and is the one that actually
+runs. Do not treat spec/'s copy as reflecting current behavior for this
+script specifically.
 """
 
 from __future__ import annotations
