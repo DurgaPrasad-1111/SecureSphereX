@@ -33,12 +33,20 @@ deterministic given the (persisted) Advisory Finding, no stronger claim.
 Every module conforms to the same contract (§2.6, line 168): it consumes
 **only its own evidence category**, produces **exactly one Security
 Evaluation per pass**, and does so deterministically. The literal interface
-signature is defined in the ECE Internal Module Specifications document
-(§2.6, line 195, "REQUIRES addendum entries for modules 8, 9, and 10") —
-that document is outside this note's reading list (Step 9 scoped this note to
-§2.6, §4, §5.1 only) and outside this note's scope; treat the properties
-above as the contract, and consult ECE Module Specs directly for the
-signature itself.
+signature comes from `packages/contracts/evaluation.contract.v1.ts` directly
+(DEC-11: the "ECE Internal Module Specifications" document this section
+previously pointed to does not exist anywhere in the 46-file corpus —
+DEFECT-5, resolved — and DEC-11 named `evaluation.contract.v1.ts` as the
+actual source of the signature; modules 1–7 detail is supplied by typed
+findings rather than prose, a recorded narrowing).
+
+Concretely: `Evaluability<F>` (`evaluation.contract.v1.ts:60-62`) is the
+evaluated/unevaluable wrapper —
+`{ status: 'evaluated'; findings: F } | { status: 'unevaluable'; reason: UnevaluableReason }`.
+`SecurityEvaluation<M>` (`evaluation.contract.v1.ts:263-284`) is the full
+per-module envelope, whose `result` field is
+`Evaluability<FindingsByModule[M]>` — that's what "one Security Evaluation
+per pass" resolves to concretely for a given module `M`.
 
 | # | Module | Evidence category | Rules served |
 |---|---|---|---|
