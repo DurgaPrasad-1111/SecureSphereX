@@ -189,6 +189,9 @@ Resolution: FIXED. Identity re-keyed on a full-precision UTC timestamp; captured
 kept day-granular (§20.3); attemptOrdinal left for genuine fetch retries; persist()
 raises on any path collision; INDEX.jsonl rebuilt from on-disk truth. Commits
 fa7694a, 69ec038, cf0210b (verified present, touching the capture pipeline).
+Confirmed against real captured data 2026-08-22: independent duplicate-key check
+across 793 real INDEX.jsonl entries (Counter-based, keyed on snapshotId) found
+zero collisions.
 
 - **Owner:** capture pipeline.
 - **Status:** FIXED.
