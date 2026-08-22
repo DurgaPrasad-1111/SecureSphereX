@@ -1,0 +1,129 @@
+# Working CI configuration. Derived from spec/ci.yml per DEC-4 (G-8/G-11
+# rename; G-1 fix for DEFECT-1). spec/ci.yml is frozen audit baseline and is
+# NOT edited.
+
+name: CI
+
+# SecureSphere X — Stage 0 CI baseline (D0.7)
+#
+# Gates G-1 … G-7 run from day one, before there is anything to break.
+# Retrofitting architectural checks after drift has occurred is materially
+# harder than establishing them empty.
+#
+# G-8 (rule-set static validation) activates on the first rule set.
+# G-9 (property tests) activates in Stage 1b.
+# G-10 (deterministic replay) activates in Stage 6.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # ── G-1 — contract integrity ─────────────────────────────────────
+      - name: 'G-1  Typecheck (strict)'
+        run: npm run typecheck
+
+      - name: 'G-1  Lint'
+        run: npx eslint . --max-warnings=0
+
+      # ── G-2, G-3, G-6 — architectural invariants ─────────────────────
+      #
+      # G-2  Origin casts       — §20.3 origin-only persistence
+      # G-3  Engine purity      — §17.2 replay viability
+      # G-6  Transmission audit — §20.2 never-transmit
+      - name: 'G-2 G-3 G-6  Architectural gates'
+        run: node tools/ci/architectural-gates.mjs
+
+      # ── G-4, G-5 — package boundaries and store access ───────────────
+      - name: 'G-4 G-5  Dependency boundaries'
+        run: npx depcruise --config .dependency-cruiser.cjs packages apps tools
+
+      # ── G-7 — contract shape stability ───────────────────────────────
+      - name: 'G-7  Fixture round-trip'
+        run: npm run test:fixtures
+
+      # ── G-8 — rule-set static validation (§17.5) ─────────────────────
+      #
+      # V-1 … V-12 from D0.3 §8. V-6 machine-checks the layered-security
+      # invariant (§1.5): no primary rule's base weight reaches the High
+      # threshold. A PATCH-level weight change can violate it trivially, so
+      # it is checked rather than trusted to review.
+      - name: 'G-8  Rule-set static validation'
+        if: hashFiles('rulesets/*.json') != ''
+        run: npm run validate:ruleset
+
+      # ── G-11 — contract ↔ LDD conformance (DEC-4) ─────────────────────
+      #
+      # contract-conformance-check.py extracts canonical enums from the D0.x
+      # TypeScript sources and storage enums from the LDD, applies the NM-1
+      # mapping, and fails the build on any divergence. Named G-11 per DEC-4:
+      # G-8 belongs to the rule-set static validator above. spec/ci.yml
+      # contains no reference to contract-conformance-check.py — this step
+      # wires it into CI for the first time.
+      - name: 'G-11  Contract ↔ LDD conformance'
+        run: python3 spec/contract-conformance-check.py
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test -- --coverage
+
+      # ── G-9 — property tests (Stage 1b onward) ───────────────────────
+      #
+      # Suppression monotonicity; order-independence of maximum reduction;
+      # aggravator neutralisation on parent suppression. Randomised over
+      # generated finding sets, because these are the properties §4.3's
+      # determinism guarantee actually rests on.
+      - name: 'G-9  Property tests'
+        run: npm run test:properties --if-present
+
+  boundary-violation-check:
+    # Verifies the gates actually fail when they should. A gate that has never
+    # failed is a gate nobody has tested.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Deliberate violation must be rejected
+        run: |
+          mkdir -p packages/engine/src/__gatecheck__
+          cat > packages/engine/src/__gatecheck__/violation.ts <<'EOF'
+          // Deliberate G-3 violation. CI must reject this.
+          export const bad = () => (globalThis as any).window.location.href;
+          EOF
+          if node tools/ci/architectural-gates.mjs; then
+            echo "::error::G-3 did not reject a deliberate violation"
+            exit 1
+          fi
+          rm -rf packages/engine/src/__gatecheck__
+          echo "Gates correctly rejected the violation."

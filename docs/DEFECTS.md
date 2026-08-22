@@ -25,6 +25,13 @@ nothing.
   `tsc --noEmit`.
 - **Do NOT** edit root `tsconfig.json` to work around this — the fix belongs
   in `ci.yml`, at Step 12, not in the tsconfig shape.
+- **Status:** RESOLVED (DEC-4, working CI). Working `.github/workflows/ci.yml`
+  runs `npm run typecheck` (`tsc -b`, proven live) instead of the vacuous
+  `npx tsc --noEmit`. `spec/ci.yml` unchanged — divergence is the correct
+  governance shape for frozen artifacts. The same commit also adds a `G-11`
+  step, per DEC-4's naming ruling, running `contract-conformance-check.py`
+  in CI — an independent piece of DEC-4 implementation, not the closure of
+  a separately-numbered audit finding.
 
 ---
 
@@ -195,3 +202,44 @@ unvalidated `as` cast at every boundary. Documented as DEC-12 (candidate,
 open) in DECISIONS.md. Not a defect — a deliberate deferral of a decision
 the corpus does not force. Revisit before the capture pipeline or engine
 ingests untrusted string input.
+
+---
+
+## Working vs. `spec/` divergences (DEC-4, Step 12)
+
+`spec/ci.yml` is the frozen audit baseline and is never edited. Applying
+DEC-4 required a working CI configuration that differs from it in specific,
+authorized ways. Recorded here per governance discipline for frozen
+artifacts: every divergence from a frozen baseline is enumerated, not
+silently introduced.
+
+`.github/workflows/ci.yml` is that working configuration — a new file,
+derived from `spec/ci.yml`. A header comment on the file itself records this
+provenance and states that `spec/ci.yml` is not edited. Every job, trigger,
+and step not listed below is copied verbatim.
+
+1. **G-1 typecheck fix (DEFECT-1).** `run: npx tsc --noEmit` →
+   `run: npm run typecheck`. The step name is unchanged
+   (`'G-1  Typecheck (strict)'`). Rationale: `npx tsc --noEmit` at repo root
+   compiles zero files against the solution-style root `tsconfig.json` and
+   passes vacuously regardless of any contract error; `npm run typecheck`
+   (`tsc -b`) walks the project references and performs a real check.
+
+2. **G-11 conformance-check step added (DEC-4).** A new step,
+   `'G-11  Contract ↔ LDD conformance'`, running
+   `python3 spec/contract-conformance-check.py`, inserted immediately after
+   the existing `G-8` step. This is an addition, not a rename: `spec/ci.yml`
+   contains zero references to `contract-conformance`, `d0_`, or
+   `schema.json` (confirmed by grep) — the check was never wired into CI.
+   Per DEC-4, `G-8` in `ci.yml` correctly remains the name of the rule-set
+   static validator and is **not** touched; `G-11` is the identity DEC-4
+   assigns to `contract-conformance-check.py`'s CI step. Sanity-run locally
+   before wiring: `python3 spec/contract-conformance-check.py` exits 0,
+   `RESULT: CONFORMANT`, against the current corpus.
+
+**Follow-up, not implemented now.** `G-8` (rule-set static validator,
+V-1…V-13) has no runner in the working `ci.yml` yet — the existing step
+still guards on `if: hashFiles('rulesets/*.json') != ''`, which is false
+until Step 11 or later produces a rule set. Its absence of effect is
+intentional at this stage, not an oversight; no action needed until a rule
+set exists to validate.
