@@ -109,12 +109,10 @@ carry unequal snapshot counts; an audit that silently reports 0 domains
 gives no such basis. This is the same failure shape DEC-1 already flagged
 for the gzip globs: a broken check that presents as success.
 
-- **Owner:** Step 13.
-- **Do not tick C0.6** ("the S-2a audit passes") until the domain count
-  itself is non-zero and verified — the audit passing with 0 domains is not
-  evidence C0.6's check is meaningful, it's evidence the check hasn't been
-  exercised on real reassignment data yet.
-- **Status:** FIXED, pending real-data verification. The `already_v2` branch
+- **Owner:** Step 13 — closed via real-data verification on Durga's machine.
+- **C0.6 can now be ticked** — the domain count is non-zero and verified
+  against 337 real captured snapshots (2026-08-22).
+- **Status:** RESOLVED. The `already_v2` branch
   now populates `domains_by_split` and `snapshots_per_domain`, keyed on the
   snapshot's stored `splitKey` (never re-derived — S-2b treats `splitKey` as
   immutable once assigned); a `split-v2` snapshot missing `splitKey` raises
@@ -124,13 +122,17 @@ for the gzip globs: a broken check that presents as success.
   violation): the pre-fix script reproduces the defect exactly (0 domains,
   `S-2a straddling domains: 0`, exit 0, despite the seeded violation); the
   patched script reports the correct non-zero domain count, flags the seeded
-  domain under `FAIL`, and exits 1. The fix has **not** been verified
-  against real captured corpus payload — no real payload is reachable from
-  this environment (`corpus/` here holds only `INDEX.jsonl`; payload lives
-  outside git per DEC-1, and no object-store endpoint or credentials exist
-  in this environment to reach it). Real-data verification remains an open
-  follow-up, to run whenever real `corpus/` payload becomes accessible here,
-  or when Durga runs the same protocol independently on her own machine.
+  domain under `FAIL`, and exits 1. At the time of the code fix, this could
+  not be verified against real captured corpus payload — no real payload
+  was reachable from that environment.
+  Real-data verification completed 2026-08-22: --dry-run against 337 real
+  captured snapshots (all already split-v2, exercising the exact fixed code
+  path) shows 282 real domains tracked (non-zero, confirming domain-tracking
+  is genuinely active, not vacuous) and S-2a straddling domains: 0 — a
+  meaningful pass, since this same check logic was already proven capable of
+  failing on seeded violations earlier. All three original verification gaps
+  (synthetic straddling test, both missing-splitKey variants, real-data
+  dry-run) are now closed.
 
 ---
 
