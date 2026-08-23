@@ -56,13 +56,10 @@ jobs:
       #
       # G-2  Origin casts       — §20.3 origin-only persistence
       # G-3  Engine purity      — §17.2 replay viability
-      # G-6  Transmission audit — §20.2 never-transmit
-      #
-      # tools/ci/architectural-gates.mjs has never existed (DEFECT-13).
-      # Guarded the same way as G-1 Lint / G-8, so a missing script skips
-      # cleanly instead of failing on a module-not-found error.
+      # G-6  Transmission audit — §20.2 never-transmit (heuristic only —
+      #                            not real reachability analysis; see
+      #                            DEFECT-14. Does not fail the build.)
       - name: 'G-2 G-3 G-6  Architectural gates'
-        if: hashFiles('tools/ci/architectural-gates.mjs') != ''
         run: node tools/ci/architectural-gates.mjs
 
       # ── G-4, G-5 — package boundaries and store access ───────────────
@@ -129,17 +126,6 @@ jobs:
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never
     # failed is a gate nobody has tested.
-    #
-    # Job-level guard, not a bash-level one (DEFECT-13): the step below reads
-    # a NON-ZERO exit from `node tools/ci/architectural-gates.mjs` as "the
-    # gate correctly rejected the violation." A missing module also exits
-    # non-zero (MODULE_NOT_FOUND), indistinguishable at that level from a
-    # real rejection — so a bash-side check here would print a false
-    # "Gates correctly rejected the violation" while testing nothing at all.
-    # Guarding the whole job (its only purpose is testing this one script)
-    # skips it cleanly at the Actions level instead — shows as skipped, never
-    # as a false pass.
-    if: hashFiles('tools/ci/architectural-gates.mjs') != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

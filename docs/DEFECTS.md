@@ -395,9 +395,75 @@ normative but a real prior finding) documents the same defect shape in a
 different check: a gate demonstrated to work in isolation but never actually
 wired into CI, claimed as an operating control regardless.
 
-Not yet resolved — logged only. tools/ci/architectural-gates.mjs must be
-written implementing all three checks (G-2, G-3, G-6) as a deliberate
-implementation task — three genuine static-analysis checks, not a config fix.
+Resolution: RESOLVED. tools/ci/architectural-gates.mjs written, implementing
+G-2 and G-3 as real TypeScript-AST-based static checks (using the `typescript`
+compiler API already a project dependency, not text/regex matching), and G-6
+as an explicitly-labeled co-occurrence heuristic — see DEFECT-14 for why real
+reachability analysis was not attempted and is tracked separately.
+
+Verified against seeded violations, not just run clean once:
+- G-2: a throwaway file with `raw as unknown as Origin` outside `toOrigin()`
+  was NOT caught on the first attempt — a real bug, `__gatecheck__` had been
+  put in the scanner's own directory-exclude list, which would have also
+  silently defeated ci.yml's existing G-3 boundary-violation-check job (same
+  directory convention). Fixed by removing that exclusion; re-run caught the
+  seeded violation at the correct file:line, then passed clean after deletion.
+- G-3: a throwaway file with the EXACT violation ci.yml's own
+  boundary-violation-check job seeds (`(globalThis as any).window.location.href`)
+  was also NOT caught on the first attempt — the scanner excluded
+  property-name positions of member-access expressions to avoid flagging
+  unrelated `.window` properties, which also excluded this exact evasive
+  form. Fixed by removing that exclusion (over-flagging a hypothetical
+  unrelated `.window` property is the correct tradeoff for a purity gate);
+  re-run caught it, then passed clean after deletion.
+- G-6: a throwaway file referencing `AuthStoreReader` and calling `fetch()`
+  in the same file was correctly flagged as REVIEW (not FAIL — the heuristic
+  does not fail the build by design), then passed clean after deletion.
+- Real, current codebase: confirmed clean (G-2 OK, G-3 OK, G-6 OK) both
+  before seeding and after cleanup, and again under a full clean-install
+  (rm -rf node_modules && npm ci && npm run typecheck, both exit 0).
+
+Both hashFiles guards added for this defect (gates job step, and the
+boundary-violation-check job) removed — the script now genuinely exists.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED.
+
+---
+
+## DEFECT-14 — G-6's transmission audit is a co-occurrence heuristic, not reachability analysis (found 2026-08-23)
+
+Finding: §20.2 of the rule engine spec requires G-6 to "assert that no code
+path reachable from a network request constructor can read the store" — real
+interprocedural call-graph reachability analysis. tools/ci/architectural-gates.mjs
+does not implement this. It implements a weaker, explicitly-labeled heuristic:
+flag any file that both references `AuthStoreReader`/`AuthStoreWriter` and
+contains a network-call construct (`fetch(`, `XMLHttpRequest`, `axios`,
+`http(s).request(`) in the same file, as a manual-review trigger — not a
+proven violation, and it does not fail the build.
+
+Why real reachability analysis was not attempted: it requires building an
+actual call graph across packages/engine, resolving calls through interface
+dispatch (`AuthStoreReader`/`AuthStoreWriter` are interfaces with no concrete
+implementation yet — the store does not exist until week 4 per
+How-To-Start-Coding.md), higher-order functions, and async chains, then
+tracing dataflow from a network-constructor call site through that graph to
+a store read. That is a multi-day static-analysis effort, and there is
+currently no real call graph to trace against in the first place, since the
+store-reading code the audit is meant to protect doesn't exist yet. Attempting
+something that merely looks like reachability analysis tonight would have
+produced a shallow AST walk dressed up as more rigorous than it is — the
+exact "looks thorough, isn't" failure this session has spent all night
+catching in other places.
+
+Impact: G-6 currently provides no proof, in either direction, that §20.2
+holds. It is honest about this (code comment, ci.yml comment, this entry) —
+it is not silently presented as satisfying the gate.
+
+Not yet resolved — logged only. Real reachability analysis for G-6 should be
+built once the Authentication History Store has a concrete implementation to
+trace against (week 4+), when there is an actual call graph to analyze rather
+than interfaces alone.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** OPEN.
