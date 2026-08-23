@@ -1,8 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["node"],
-    "typeRoots": ["../packages/contracts/node_modules/@types"]
+    "types": ["node"]
   },
   "include": ["**/*.ts"]
 }

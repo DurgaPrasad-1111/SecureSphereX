@@ -97,8 +97,11 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # No unit-test suite exists yet — that's Stage 1b scope
+      # (Stage0-Completion-Pack.md §6 does not list it for Stage 0). Placeholder
+      # that no-ops honestly rather than failing on a script never meant to exist yet.
       - name: Unit tests
-        run: npm test -- --coverage
+        run: npm test --if-present -- --coverage
 
       # ── G-9 — property tests (Stage 1b onward) ───────────────────────
       #
