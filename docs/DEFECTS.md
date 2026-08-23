@@ -362,3 +362,42 @@ pass-through) should be authored before Stage 0 is considered fully closed.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** OPEN.
+
+---
+
+## DEFECT-13 — tools/ci/architectural-gates.mjs has never existed (found 2026-08-23)
+
+Finding: tools/ci/architectural-gates.mjs has never existed at any point in
+this repo's history — `git log --all --follow` for this exact path returns
+nothing. It is referenced unconditionally at two call sites in the frozen CI
+baseline (lines 48, 109) and the working ci.yml (lines 59, 141) — inherited
+faithfully from the baseline, not invented at Step 12 or later.
+
+docs/How-To-Start-Coding.md:630-656 (Step 12) explicitly assigns this file to
+Jayanth by name, to implement G-2 (no `as Origin`/`as unknown as Origin`
+casts outside `toOrigin()`), G-3 (no browser globals in packages/engine), and
+G-6 (nothing transmits Authentication History Store data). Step 12's CI-wiring
+portion landed (commit abb9286, DEC-4), but this specific assigned deliverable
+did not — a named, tracked gap, not an undiscovered one.
+
+Impact: both call sites are unguarded — no hashFiles conditional, unlike G-1
+(DEFECT-12) and G-8, which now have one. Every CI run fails here
+unconditionally, with a module-not-found error rather than a graceful skip,
+once earlier steps clear.
+
+Caught via the same discipline that caught DEFECT-12 and, earlier this
+session, the isSecureScheme/CRED-06 false premise — checking the frozen
+source directly rather than trusting a prior claim, including this session's
+own: the ci.yml comment this defect's fix corrects had itself claimed G-2 was
+"already implemented separately... via architectural-gates.mjs," which was
+untrue. The audit register's D-24b (spec/SecureSphereX-Audit-Report.md, not
+normative but a real prior finding) documents the same defect shape in a
+different check: a gate demonstrated to work in isolation but never actually
+wired into CI, claimed as an operating control regardless.
+
+Not yet resolved — logged only. tools/ci/architectural-gates.mjs must be
+written implementing all three checks (G-2, G-3, G-6) as a deliberate
+implementation task — three genuine static-analysis checks, not a config fix.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN.

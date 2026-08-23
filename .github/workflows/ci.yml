@@ -40,12 +40,14 @@ jobs:
       - name: 'G-1  Typecheck (strict)'
         run: npm run typecheck
 
-      # General ESLint was never part of G-1 (Stage0-Completion-Pack.md §3:
-      # G-1 is tsc --strict only) or any Stage 0 gate — the spec's only
-      # lint-labeled gate is G-2 (Origin-cast lint), already implemented
-      # separately below via architectural-gates.mjs. Deferred, not removed,
-      # until an eslint.config.js is actually authored; same
-      # hashFiles-guard pattern already used for G-8 below.
+      # G-1's Lint sub-check IS genuinely specified in the frozen CI baseline
+      # from the start (both 'G-1 Typecheck' and 'G-1 Lint' appear there,
+      # unchanged since before Step 12) — not scope creep; the gap is that no
+      # eslint.config.js has ever been authored to satisfy it (DEFECT-12).
+      # Deferred, not removed, via the same hashFiles-guard pattern already
+      # used for G-8 below. (Separately: G-2's Origin-cast check is NOT
+      # currently implemented at all — tools/ci/architectural-gates.mjs,
+      # referenced below, has never existed; tracked as DEFECT-13.)
       - name: 'G-1  Lint'
         if: hashFiles('eslint.config.js') != ''
         run: npx eslint . --max-warnings=0
