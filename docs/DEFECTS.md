@@ -330,3 +330,35 @@ record.
 
 - **Owner:** TBD — capture pipeline / corpus reconciliation.
 - **Status:** OPEN.
+
+---
+
+## DEFECT-12 — G-1's Lint sub-check has no eslint.config.js to run against (found 2026-08-23)
+
+Finding: the frozen CI baseline specifies G-1 as two separate steps under one
+"contract integrity" header — 'G-1 Typecheck (strict)' and 'G-1 Lint' — both
+present from the start, unchanged since before Step 12. The working CI config
+correctly carries both over. No eslint.config.js has ever been authored, so
+the Lint step fails immediately (`npx eslint . --max-warnings=0` finds no
+config) regardless of source content — every CI run has failed here since the
+lockfile/typecheck fixes let earlier steps finally succeed.
+
+Caught by checking the frozen baseline directly instead of trusting
+Stage0-Completion-Pack.md's rollup table, which omits the Lint sub-step
+entirely — the same "verify against the primary source, not the summary"
+discipline that caught several other issues this session (DEFECT-6/7/11's
+real-data reconciliation, A-3's targetFindingId over-match), not a one-off.
+
+Impact: currently deferred via `if: hashFiles('eslint.config.js') != ''`
+(matching G-8's existing not-yet-available pattern for rulesets/*.json), so
+CI no longer fails on it — but this means G-1's Lint check has never actually
+run, not once. It is a genuine, acknowledged gap, not scope creep correctly
+pruned (that was an earlier misdiagnosis in this same change, corrected here).
+
+Not yet resolved — logged only. A real minimal eslint.config.js (TypeScript-
+aware, matching this project's actual tsconfig conventions — strict, no
+unused locals — not maximally strict for its own sake, not an empty
+pass-through) should be authored before Stage 0 is considered fully closed.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN.
