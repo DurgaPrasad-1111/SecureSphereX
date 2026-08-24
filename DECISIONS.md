@@ -237,6 +237,24 @@ ruled out.
 **Decision:** ☐ Approved — accountability model + reduced-staffing amendment as above
 **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-21
 
+**Amendment — 2026-08-24:** DEC-7's original named-assignment model
+assumed dedicated per-person availability, which does not hold under
+college-project constraints. Amended as follows:
+
+Work is picked up by availability, not fixed advance assignment.
+Whoever picks up a piece of work becomes its accountable owner for
+that specific piece at commit time — the Responsibility Matrix's
+"Implementer" field is filled in retroactively, by whoever actually
+did the work, not assigned in advance.
+
+Peer review still happens. Whoever is next available reviews it,
+named explicitly in the commit or pull request. Review is not skipped
+because assignment is now flexible — accountability moved from
+"pre-assigned" to "named at the point of work," it did not disappear.
+
+**Decision:** ☑ Approved — DEC-7 amended as above
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 24-08-2026
+
 ---
 
 ## DEC-8 — `RuleSet.pslVersion` (Annex A-6)
