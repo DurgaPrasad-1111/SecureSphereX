@@ -467,3 +467,83 @@ than interfaces alone.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** OPEN.
+
+---
+
+## DEFECT-15 — LoginFormFindings.pageRegistrableDomain is permanently null; makes four live rules' comparisons vacuous (found 2026-08-24)
+
+Finding: `LoginInterfaceEvidence` (evidence.contract.v1.ts) carries exactly
+three fields — `credentialFormPresent`, `forms`, `fingerprint` — none of
+which represents the page's own URL or registrable domain. Per §2.6, the
+Login Form Evaluation module consumes only its own evidence category
+(`loginInterface`); it has no access to `UrlEvidence`, a different category,
+and no other field within `loginInterface` supplies a page-domain value
+either. There is no source anywhere in this module's input from which
+`LoginFormFindings.pageRegistrableDomain` can be genuinely derived.
+
+Implemented as: `pageRegistrableDomain` is unconditionally `null`
+(`packages/engine/modules/loginForm.ts`, documented at the assignment and in
+the module's header comment). The module otherwise stays evaluable —
+`credentialFormPresent` and `forms` are both genuinely derivable and are not
+withheld on account of this gap.
+
+**This null must not be conflated with `UrlFindings.registrableDomain`'s
+null.** That one is a confirmed-absent fact — an IP-literal URL genuinely
+has no registrable domain, positively observed. This one is a structural
+limitation of the `loginInterface` evidence category — the module was never
+given anything to observe in the first place. Same value, opposite meaning,
+depending on which module produced it.
+
+**This is load-bearing, not a footnote — four live rules read
+`loginForm.pageRegistrableDomain`** (confirmed directly against
+`rulesets/rules-v0.1.0.json`, not assumed from the contract's inline
+comments): **CRED-01**, **CRED-02**, **CRED-07**, and **CRED-A1**, each via a
+`notSameSite` comparison against it. With the field permanently `null`,
+every one of those comparisons is permanently vacuous — `notSameSite(x,
+null)` can never meaningfully resolve the "is this off-site" question these
+four rules depend on for their off-origin/injection-corroboration logic.
+This silently narrows all four rules' actual detection surface versus what
+§7.2 specifies, in a way no `V-` static check catches (V-2 confirms the path
+*resolves*; it says nothing about whether the resolved value is ever
+non-null).
+
+Resolution does **not** belong in this module, which correctly cannot see
+across evidence categories — narrowing its scope further to "fix" this would
+violate §2.6 in the other direction. Two live paths:
+- A future evidence-contract amendment (a new DEC) adding a page-domain field
+  to `LoginInterfaceEvidence`, mirroring how `UrlEvidence.registrableDomain`
+  already works for the `url` category; or
+- Stage 2/3 correlation reads `url`'s `registrableDomain` finding separately
+  and joins it against `loginForm`'s output at the point a rule predicate
+  actually needs both — analogous to how CRED-05/CRED-06 already read `url`
+  fields alongside their own module's findings (DEFECT-10's resolution).
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Blocks nothing today only because no rule has been
+  empirically validated yet (§18.2 — every rule is `Unvalidated`); this
+  becomes a real detection gap the moment CRED-01/02/07/A1 are calibrated or
+  measured against real data, since their off-site conjunct can never fire.
+
+**Related, minor — contract-comment drift against the live rule set.**
+Found while confirming which `loginForm.*` fields the rule set actually
+consumes (same investigation as above), not blocking anything today, but
+worth a permanent record since it's real drift between documentation and
+behavior:
+- `LoginFormFinding.hasAutocompleteDisabledCredential`
+  (evaluation.contract.v1.ts) carries no rule-tag comment at all, but
+  CRED-07's real predicate does read it (alongside
+  `hasHiddenCredentialField`, which *is* tagged `// CRED-07`).
+- `LoginFormFindings.credentialFormPresent` is commented `// CRED-01..07
+  gate`, implying all seven CRED rules read it. The live rule set shows only
+  five do — CRED-01, CRED-02, CRED-03, CRED-04, CRED-06. CRED-05 doesn't
+  touch `loginForm` at all (it's gated by `javascript`/`url` fields
+  instead), and CRED-07 relies entirely on its `exists(forms, …)` check
+  rather than a top-level `credentialFormPresent` gate.
+
+Neither discrepancy is a defect in the rule set or the module — both are
+implemented correctly against their own logic. The comments in the frozen
+contract are simply stale relative to how the rules were actually authored.
+Not actionable without touching a frozen file; recorded so a future reader
+doesn't trust the inline tags as ground truth without checking the live
+rule set, the same lesson DEFECT-10 already established for `spec/`'s
+pre-amendment contracts.
