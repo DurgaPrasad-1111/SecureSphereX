@@ -520,7 +520,7 @@ violate §2.6 in the other direction. Two live paths were identified:
   general pattern; corrected 2026-08-25 from an earlier, wrong citation of
   DEFECT-10 here, which is unrelated).
 
-**Resolution — 2026-08-25, commit `<PENDING — fill in real hash before push>`.**
+**Resolution — 2026-08-25, commit `5dc4c4885bb338613054a71500b112317cddf143`.**
 The second path was taken, authorized by Jayanth as Architecture Owner:
 CRED-01, CRED-02, CRED-07, and CRED-A1's `notSameSite` right-hand operand
 swapped from `loginForm.pageRegistrableDomain` to `url.registrableDomain`;
