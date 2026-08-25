@@ -660,7 +660,7 @@ former unless there's a reason CI shouldn't have both Python and Node
 available in the same step (it already does — `tools/ci/run-python.mjs`
 proves Node invoking Python already works in this repo's toolchain).
 
-**Resolution — 2026-08-25, commit `<PENDING — fill in real hash before push>`.**
+**Resolution — 2026-08-25, commit `f0f83402080387b603b15fb1ea8a8240e2253573` (short: `f0f8340`).**
 Wired `compute-ruleset-digest.mjs --verify` into `validate-ruleset.py` as
 `V-14`. Design choice resolved as recommended above: shells out via
 `subprocess`, rather than porting the SHA-256/canonicalization logic
