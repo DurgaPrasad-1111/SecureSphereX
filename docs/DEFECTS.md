@@ -631,6 +631,90 @@ page URL," or similar generic language is authored or audited — don't trust
 
 ---
 
+## DEFECT-18 — JavaScriptFindings has two ungroundable fields; makes CRED-05 and CRED-A1 both structurally unable to fire (found 2026-08-25)
+
+Finding: two of `JavaScriptFindings`' six fields cannot be honestly
+populated from `ScriptRuntimeEvidence`. This is the same *shape* of gap as
+DEFECT-15's `pageRegistrableDomain` (a `Findings` field with no groundable
+evidence source) — **not** DEFECT-16's shape (a rule's `requiredModules`
+missing a module its own predicate actually needs). Recording it separately
+rather than folding into DEFECT-16 as originally planned while investigating
+this module (`packages/engine/modules/javascript.ts`'s header comment now
+cites this entry, corrected before commit rather than left stale): even
+naming every module in a rule's `requiredModules` cannot fix either gap
+below, because §2.6 forbids a *module* — not a rule — from crossing
+evidence categories, regardless of
+what the rule that consumes its output lists.
+
+**`transmissionEndpointDomains`** — `ScriptRuntimeEvidence` has exactly one
+transmission-related field, `transmissionEndpoints: Observation<readonly
+string[]>` (raw endpoint strings — every field in this contract that
+genuinely holds a registrable domain says so explicitly in its name, e.g.
+`actionRegistrableDomain`, `downloadRegistrableDomain`; this one does not).
+Deriving a domain from a raw endpoint string requires PSL-equivalent
+registrable-domain extraction — exactly the class of logic a module must
+not perform (hard constraint, restated explicitly for this module).
+Reported as `[]` unconditionally.
+
+**`injectingScriptOriginDomain`** — the only evidence field that plausibly
+answers "which script's origin injected this" is
+`LoginFormObservation.injectingScriptOrigin` (`evidence.contract.v1.ts:221`)
+— but it lives inside `LoginInterfaceEvidence` (the `loginInterface`
+category, nested per-form), not `ScriptRuntimeEvidence`. Per §2.6 this
+module cannot reach into a different evidence category to get it.
+`ScriptRuntimeEvidence`'s own `dynamicScriptOrigins` is a flat, unlinked
+list — nothing ties any entry to `credentialInterfaceInjected`. Reported as
+`null` unconditionally. Confirmed adversarially, not assumed: even with a
+real injection event and real, plausible `dynamicScriptOrigins` data
+present (`packages/engine/modules/javascript.fixture.test.ts`, case 2), the
+module still correctly reports `null` rather than guessing.
+
+**Load-bearing consequence — both rules that read these fields are
+structurally unable to fire, for two different reasons:**
+
+- **CRED-A1** compares `notSameSite(javascript.injectingScriptOriginDomain,
+  url.registrableDomain)`. Tonight's DEFECT-15 fix made the *right* operand
+  real and groundable. This entry confirms the *left* operand independently
+  — it is always `null`, regardless of what the module observes
+  (`javascript.fixture.test.ts` case 6, an explicit reproducible record, not
+  just this defect-log claim). Fixing one side without the other left
+  CRED-A1 exactly where it started: unable to ground both sides of its own
+  comparison.
+- **CRED-05** is worse off, not just similarly affected: its only reference
+  to `transmissionEndpointDomains` is `exists(javascript.transmissionEndpointDomains,
+  notSameSite($, url.registrableDomain))` (confirmed the sole reference —
+  grepped `rulesets/rules-v0.1.0.json` directly). An `exists` quantifier over
+  a permanently-empty collection is vacuously false on every evaluation —
+  not "one ungroundable operand," but the entire third conjunct
+  permanently unsatisfiable. CRED-05 can never match, full stop, as long as
+  this field stays `[]`.
+
+Both consequences hold independent of whether a Stage 2 predicate evaluator
+exists yet (it doesn't — no engine anywhere in this repo currently executes
+`notSameSite`/`exists` against real data). This describes what *will* happen
+once one is built, not a live runtime bug today.
+
+Resolution does not belong in this module, for the same reason DEFECT-15's
+doesn't: narrowing scope further to "fix" this would violate §2.6 in the
+other direction. Same two live paths as DEFECT-15 — an evidence-contract
+amendment (adding a registrable-domain-bearing transmission-endpoint field,
+and a real link between `dynamicScriptOrigins` and
+`credentialInterfaceInjected`, possibly by moving/duplicating
+`injectingScriptOrigin` into `ScriptRuntimeEvidence` itself), or Stage 1
+producer-side extraction (computing domains before evidence is even
+handed to this module, so `transmissionEndpoints`/the injecting-origin
+field arrive pre-resolved).
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Not blocking today (no Stage 2 evaluator exists to
+  actually run either rule) but real: CRED-05 and CRED-A1 will both need
+  this resolved before either can contribute a finding once Stage 2 is
+  built — this is why building this module now, rather than deferring it,
+  surfaced the gap before it could be discovered later as a live-evaluation
+  failure instead of a design-time one.
+
+---
+
 ## DEFECT-17 — G-8's rule-set validator has no integrity-digest check; verification exists but isn't wired in (follow-up, found 2026-08-25)
 
 Finding: `tools/ci/compute-ruleset-digest.mjs` (added 2026-08-25, alongside
