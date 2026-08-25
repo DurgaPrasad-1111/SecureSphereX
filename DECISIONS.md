@@ -432,3 +432,28 @@ those points.
 
 **Decision:** _pending_
 **Signed by:** _pending_
+
+---
+
+## DEC-14 — Accept CRED-05 and CRED-A1 as non-functional for Phase I
+
+**[R]** DEFECT-18 confirmed both rules structurally unable to fire:
+CRED-05's transmissionEndpointDomains and CRED-A1's
+injectingScriptOriginDomain both require registrable-domain extraction
+from raw evidence (transmissionEndpoints, injectingScriptOrigin
+respectively) that no evidence-producer currently performs. Unlike
+DEFECT-15's fix, no existing field can be swapped in -- this requires
+a genuine evidence-contract amendment adding producer-extracted domain
+fields, plus corresponding producer-layer implementation.
+
+**[I]** Both rules remain SIGNED and PRESENT in rules-v0.2.0.json, but are
+accepted as non-functional for Phase I. This is a deliberate scope
+decision, not an oversight -- fixing it properly requires a contract
+amendment (new Annex) touching frozen evidence types, which deserves
+dedicated attention rather than a rushed fix.
+
+**Decision:** Accept CRED-05 and CRED-A1 as non-functional for Phase I.
+Defer the fix (evidence-contract amendment adding pre-extracted
+domain fields, mirroring url.registrableDomain's precedent) to a
+future decision, logged but not started.
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-25

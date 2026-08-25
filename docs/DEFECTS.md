@@ -706,12 +706,15 @@ handed to this module, so `transmissionEndpoints`/the injecting-origin
 field arrive pre-resolved).
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. Not blocking today (no Stage 2 evaluator exists to
-  actually run either rule) but real: CRED-05 and CRED-A1 will both need
-  this resolved before either can contribute a finding once Stage 2 is
-  built — this is why building this module now, rather than deferring it,
-  surfaced the gap before it could be discovered later as a live-evaluation
-  failure instead of a design-time one.
+- **Status:** DEC-14 (2026-08-25). CRED-05 and CRED-A1 accepted as
+  non-functional for Phase I, signed by Jayanth (Architecture Owner) —
+  both rules remain SIGNED and PRESENT in `rules-v0.2.0.json`, not
+  removed or disabled. The fix (an evidence-contract amendment adding
+  producer-extracted domain fields, mirroring `url.registrableDomain`'s
+  precedent, plus corresponding producer-layer implementation) is
+  deferred to a future decision — logged, not started. This closes the
+  question of what to do about the gap; it does not close the gap
+  itself, which remains real until that future amendment lands.
 
 ---
 
