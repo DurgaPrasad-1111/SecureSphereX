@@ -1,8 +1,8 @@
 {
   "formatVersion": "1.1.0",
-  "ruleSetVersion": "rules-v0.1.0",
+  "ruleSetVersion": "rules-v0.2.0",
   "released": false,
-  "integrityDigest": "sha256:1bd297e8e0d7d98e9363c1ca0270e6284d16a84d309834dd50c747c72d45cab7",
+  "integrityDigest": "sha256:fc2131844a2b4e611ccd1c6eb049e4d3ec37fce61de3c0f698e462c28e491bec",
   "pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
   "parameters": [
     {
@@ -156,20 +156,21 @@
             "where": {
               "op": "notSameSite",
               "left": "$.actionRegistrableDomain",
-              "right": "loginForm.pageRegistrableDomain"
+              "right": "url.registrableDomain"
             }
           }
         ]
       },
       "requiredModules": [
-        "loginForm"
+        "loginForm",
+        "url"
       ],
       "baseWeight": 45,
       "tier": 2,
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
       "lifecycleState": "Active",
       "rationale": "Detects credentials destined for a registrable domain other than the one the user believes they are visiting — the canonical structural signature of credential harvesting. Distinguished from CRED-05 (script-mediated exfiltration, invisible to this predicate) and CRED-04 (cross-site arrival without off-site submission).",
       "empiricalConfidence": "Unvalidated",
@@ -219,20 +220,21 @@
           {
             "op": "notSameSite",
             "left": "authContext.bestCrossOriginMatch.registrableDomain",
-            "right": "loginForm.pageRegistrableDomain"
+            "right": "url.registrableDomain"
           }
         ]
       },
       "requiredModules": [
         "loginForm",
-        "authContext"
+        "authContext",
+        "url"
       ],
       "baseWeight": 50,
       "tier": 2,
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
       "lifecycleState": "Active",
       "rationale": "The page structurally and visually resembles a login page the user has genuinely authenticated to, on a domain where they never have — the platform's strongest zero-hour signal, derived from the individual user's own history rather than any external blocklist. No other rule reads the Authentication History Store.",
       "empiricalConfidence": "Unvalidated",
@@ -504,20 +506,21 @@
             {
               "op": "notSameSite",
               "left": "$.actionRegistrableDomain",
-              "right": "loginForm.pageRegistrableDomain"
+              "right": "url.registrableDomain"
             }
           ]
         }
       },
       "requiredModules": [
-        "loginForm"
+        "loginForm",
+        "url"
       ],
       "baseWeight": 20,
       "tier": 2,
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
       "lifecycleState": "Active",
       "rationale": "Concealment of credential collection combined with off-site submission — the only rule triggered by field-level concealment (hidden or autocomplete-disabled) rather than by transport, destination pattern, or visual deception alone. Carries the lowest primary weight and requires the off-site conjunct to fire at all.",
       "empiricalConfidence": "Unvalidated",
@@ -559,20 +562,21 @@
           {
             "op": "notSameSite",
             "left": "javascript.injectingScriptOriginDomain",
-            "right": "loginForm.pageRegistrableDomain"
+            "right": "url.registrableDomain"
           }
         ]
       },
       "requiredModules": [
         "javascript",
-        "loginForm"
+        "loginForm",
+        "url"
       ],
       "baseWeight": 10,
       "tier": 1,
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
       "lifecycleState": "Active",
       "rationale": "INTERPRETIVE CHOICE, FLAGGED FOR REVIEW: §7.2 states this aggravator's parent requirement as \"CRED-01 or CRED-02\" (two possible parents), but RuleDefinition.parent is singular (RuleId | null) and §9.2/§9.3's aggregation model is likewise single-parent. CRED-01 was chosen as the sole parent — not derived from spec text, an explicit judgment call pending architect ruling. Consequence: this aggravator will NOT contribute when only CRED-02 (not CRED-01) is present, narrowing §7.2's literal 'or' behavior. Client-side injection of a credential interface from an off-site script is meaningful as corroboration and meaningless alone — this is why it carries no standalone weight.",
       "empiricalConfidence": "Unvalidated",
@@ -835,6 +839,11 @@
       "version": "0.1.0",
       "kind": "MINOR",
       "summary": "Initial rule set: eleven rules (nine primary, two aggravator), eleven parameters, three refinement sets, empty subsumption table (§10.4). TWO of THREE §6 suppressions included (S-01, S-02); A-01 (User-Trusted Origin) is OMITTED. Checked exhaustively across every module contract, not just the two most obviously relevant ones: no field anywhere represents a per-origin explicit user trust action. D0.8's lifecycleState is authentication-derived (repeated logins over time), architecturally distinct from A-01's \"explicit, recorded user trust action\" (a single deliberate click past a warning). Sharper framing of the gap: trust_validity_days IS a defined, frozen ParameterId (ruleset_format_v1.ts:70, tagged // A-01) — the spec froze A-01's tunable parameter without ever providing anywhere for its underlying guard data to live. §6.1 forbids an unguarded suppression (\"A suppression without guards is an exploitable bypass\"), and no V-check enforces non-empty guards, so shipping A-01 with guards: [] would be a silent, uncaught violation of a frozen architectural invariant. Needs either an evidence-contract amendment adding the missing evidence category, or confirmation that user-trust suppression is handled entirely outside the rule-set predicate mechanism."
+    },
+    {
+      "version": "0.2.0",
+      "kind": "MINOR",
+      "summary": "DEFECT-15 fix, authorized by Jayanth (Architecture Owner). CRED-01, CRED-02, CRED-07, and CRED-A1 each compared against loginForm.pageRegistrableDomain, which is permanently null — LoginInterfaceEvidence carries no page-domain field, so this module cannot report one (see loginForm.ts's header comment and DEFECT-15). All four notSameSite comparisons were permanently vacuous as a result. Swapped the right-hand operand to url.registrableDomain (a real, evidence-grounded field — DEFECT-16 names this as a recurring pattern, first hit by CRED-05/CRED-06 at v0.1.0 authoring) and added url to each rule's requiredModules, appended at the position matching that rule's existing first-appearance-order convention (verified per rule, not assumed). Predicate meaning changed for four rules — MINOR per §14.1, not PATCH. Each rule's lastModifiedIn bumped to 0.2.0 accordingly. Nothing else changed: same eleven rules, eleven parameters, three refinement sets, two suppressions, empty subsumption table. integrityDigest recomputed using the newly-committed tools/ci/compute-ruleset-digest.mjs (SHA-256 over canonical JSON, sorted keys, integrityDigest blanked before hashing — see that file's header for the exact algorithm); its --verify mode confirms this file's stored digest against a fresh recomputation."
     }
   ]
 }

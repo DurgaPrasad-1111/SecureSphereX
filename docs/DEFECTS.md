@@ -509,20 +509,40 @@ non-null).
 
 Resolution does **not** belong in this module, which correctly cannot see
 across evidence categories — narrowing its scope further to "fix" this would
-violate §2.6 in the other direction. Two live paths:
+violate §2.6 in the other direction. Two live paths were identified:
 - A future evidence-contract amendment (a new DEC) adding a page-domain field
   to `LoginInterfaceEvidence`, mirroring how `UrlEvidence.registrableDomain`
   already works for the `url` category; or
 - Stage 2/3 correlation reads `url`'s `registrableDomain` finding separately
   and joins it against `loginForm`'s output at the point a rule predicate
   actually needs both — analogous to how CRED-05/CRED-06 already read `url`
-  fields alongside their own module's findings (DEFECT-10's resolution).
+  fields alongside their own module's findings (DEFECT-16 names this as the
+  general pattern; corrected 2026-08-25 from an earlier, wrong citation of
+  DEFECT-10 here, which is unrelated).
 
-- **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. Blocks nothing today only because no rule has been
-  empirically validated yet (§18.2 — every rule is `Unvalidated`); this
-  becomes a real detection gap the moment CRED-01/02/07/A1 are calibrated or
-  measured against real data, since their off-site conjunct can never fire.
+**Resolution — 2026-08-25, commit `<PENDING — fill in real hash before push>`.**
+The second path was taken, authorized by Jayanth as Architecture Owner:
+CRED-01, CRED-02, CRED-07, and CRED-A1's `notSameSite` right-hand operand
+swapped from `loginForm.pageRegistrableDomain` to `url.registrableDomain`;
+`url` added to each rule's `requiredModules`, appended at the position
+matching that rule's existing first-appearance-order convention (verified
+individually per rule against how the other nine rules order theirs, not
+assumed). `ruleSetVersion` bumped `rules-v0.1.0` → `rules-v0.2.0` (MINOR per
+§14.1 — predicate meaning changed, not merely a weight/threshold); each
+affected rule's `lastModifiedIn` bumped to match; a new `changeLog` entry
+records the change. Verified before commit: the literal string
+`loginForm.pageRegistrableDomain` no longer appears anywhere in the file
+(grep-confirmed); all four rules now read `url.registrableDomain`, alongside
+CRED-05's pre-existing, untouched fifth occurrence; `npm run validate:ruleset`
+still reports `CONFORMANT` across all thirteen checks, with rule/parameter/
+refinementSet/suppression/subsumption counts unchanged (11/11/3/2/0).
+
+The first path (an evidence-contract amendment) remains open as a longer-term
+option — this resolution does not foreclose it, it just wasn't the one
+authorized here.
+
+- **Owner:** Jayanth (Architecture Owner) — authorized and directed this fix.
+- **Status:** RESOLVED.
 
 **Related, minor — contract-comment drift against the live rule set.**
 Found while confirming which `loginForm.*` fields the rule set actually
@@ -545,5 +565,102 @@ implemented correctly against their own logic. The comments in the frozen
 contract are simply stale relative to how the rules were actually authored.
 Not actionable without touching a frozen file; recorded so a future reader
 doesn't trust the inline tags as ground truth without checking the live
-rule set, the same lesson DEFECT-10 already established for `spec/`'s
-pre-amendment contracts.
+rule set.
+
+**Correction, 2026-08-25:** the line above originally cited "the same lesson
+DEFECT-10 already established" — wrong. DEFECT-10 is about G-11's CI
+conformance script scanning the frozen pre-amendment `spec/*.ts` instead of
+`packages/contracts/*.ts` for TypeScript enum types — unrelated to rule-set
+predicate field sourcing. Checked against DEFECT-10's actual entry before
+leaving this correction, not from memory. See DEFECT-16 for the real
+precedent this section's finding is part of.
+
+---
+
+## DEFECT-16 — `requiredModules` must reflect real `FindingPath` dependencies, not §7.1's summary column (pattern, bitten twice)
+
+Finding: §7.1's "Required Evaluations" table column reads as a rule's
+complete module dependency list, but it is a **summary**, not an exhaustive
+one. At least two separate rule-authoring passes have needed a module beyond
+what that column names, because the rule's actual predicate reads a "page"
+fact (registrable domain, transport scheme) that isn't available within the
+column's named module(s) alone. This has now happened twice, independently,
+which makes it a pattern worth naming rather than two unrelated one-off
+fixes:
+
+**Occurrence 1 — CRED-05 and CRED-06, found and resolved at rule-set
+authoring time** (commit `fd61b76`, "Step 11: rule-set authoring"). §7.1
+lists CRED-05's Required Evaluations as "JavaScript" only and CRED-06's as
+"LoginForm" only. Neither module's Findings type carries a page-domain or
+transport-scheme field: CRED-05's `¬same-site(transmission endpoint, page)`
+needed `url.registrableDomain` for "page"; CRED-06's `page scheme is HTTP`
+needed `url.isSecureScheme` (itself tagged `// CRED-06 reads this` directly
+in `evaluation.contract.v1.ts`, confirming the need was anticipated even
+though §7.1's column doesn't reflect it). Resolved at authoring by adding
+`url` to both rules' `requiredModules` — `requiredModules` was derived from
+which modules each predicate's `FindingPath`s actually touch, a proper
+superset of §7.1's column for these two, and documented as such at the time.
+
+**Occurrence 2 — CRED-01, CRED-02, CRED-07, CRED-A1, found during DEFECT-15's
+investigation, resolved 2026-08-25.** All four referenced
+`loginForm.pageRegistrableDomain` for the same kind of "page" comparison —
+but that field is permanently `null` (DEFECT-15: `LoginInterfaceEvidence`
+has no domain field to derive it from). Fixed the same shape as occurrence
+1: swapped to `url.registrableDomain`, added `url` to each rule's
+`requiredModules`. Authorized by Jayanth as Architecture Owner; see
+DEFECT-15's resolution note for the full detail (diffs, verification,
+commit).
+
+**The pattern, stated once:** §7.1's table names a rule's *headline* module
+dependency, not necessarily its complete one. A "page" reference inside a
+predicate is a recurring signal that a second module (almost always `url`)
+is actually required, regardless of what the table's column says. Worth
+checking explicitly the next time any rule referencing "page," "the
+page URL," or similar generic language is authored or audited — don't trust
+§7.1's column as exhaustive without tracing the predicate's actual
+`FindingPath`s.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** Both known occurrences now resolved and live in
+  `rulesets/rules-v0.1.0.json` (occurrence 1 at v0.1.0 authoring; occurrence
+  2 at v0.2.0, see DEFECT-15). This entry is kept open as a standing note,
+  not closed — the pattern itself (§7.1's column being a summary, not
+  exhaustive) can recur the next time a rule references a "page" fact, and
+  is worth checking explicitly then, not just documented after the fact
+  twice.
+
+---
+
+## DEFECT-17 — G-8's rule-set validator has no integrity-digest check; verification exists but isn't wired in (follow-up, found 2026-08-25)
+
+Finding: `tools/ci/compute-ruleset-digest.mjs` (added 2026-08-25, alongside
+the DEFECT-15 fix) can both compute and `--verify` a rule set's
+`integrityDigest` against its actual content — but `tools/ci/validate-ruleset.py`
+(the V-1…V-13 static validator wired to `npm run validate:ruleset` / gate G-8)
+does not call it. A rule set with a stale or hand-edited `integrityDigest`
+currently passes G-8 CONFORMANT regardless — none of V-1 through V-13 touches
+the digest field at all.
+
+This is exactly the failure shape §12.2 exists to prevent: "Integrity is
+checked at load; failure is fail-closed (§15.3)" — but nothing in this
+repo's CI path currently performs that check before release. The standalone
+script is a necessary precondition for closing this, not the closure itself;
+a human has to remember to run it by hand today.
+
+Resolution (not implemented now — deliberately out of scope for tonight's
+fix, per explicit instruction): wire `compute-ruleset-digest.mjs --verify`
+into `validate-ruleset.py` as a fourteenth check, `V-14`, alongside the
+existing thirteen. Needs a decision first, not just an implementation: does
+`V-14` live in the Python validator by shelling out to the `.mjs` script
+(cross-language dependency, but reuses the one committed, documented
+algorithm rather than reimplementing it twice), or does the digest algorithm
+get ported natively into `validate-ruleset.py` (no shell-out, but now two
+implementations of the same canonicalization to keep in sync)? Recommend the
+former unless there's a reason CI shouldn't have both Python and Node
+available in the same step (it already does — `tools/ci/run-python.mjs`
+proves Node invoking Python already works in this repo's toolchain).
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Not blocking today — `compute-ruleset-digest.mjs --verify`
+  can be run by hand (and was, for the DEFECT-15 fix) — but the gap is real:
+  G-8 currently cannot catch a stale or tampered digest on its own.
