@@ -660,7 +660,30 @@ former unless there's a reason CI shouldn't have both Python and Node
 available in the same step (it already does — `tools/ci/run-python.mjs`
 proves Node invoking Python already works in this repo's toolchain).
 
+**Resolution — 2026-08-25, commit `<PENDING — fill in real hash before push>`.**
+Wired `compute-ruleset-digest.mjs --verify` into `validate-ruleset.py` as
+`V-14`. Design choice resolved as recommended above: shells out via
+`subprocess`, rather than porting the SHA-256/canonicalization logic
+natively into Python — confirmed, not just asserted, that this is safe:
+`validate-ruleset.py` only ever runs as a child of
+`node tools/ci/run-python.mjs tools/ci/validate-ruleset.py`, so `node` is
+already resolved and already ran successfully before this process even
+started — shelling back out to it adds no new runtime dependency. Porting
+was reconsidered and rejected on a concrete basis: the `.mjs` script's own
+header documents that Python's `json.dumps` defaults to `ensure_ascii=True`
+(escaping non-ASCII to `\uXXXX`), the opposite of the `.mjs` canonicalization
+— and this rule set's prose fields use non-ASCII characters (`§`, `→`, `—`)
+extensively, so a naive port would silently diverge on identical content.
+One source of truth stays in the `.mjs` script.
+
+Tested properly, not just a clean pass: ran against the current, correct
+file (`V-14 OK`, `CONFORMANT`, all fourteen checks); temporarily corrupted
+the stored `integrityDigest` by one character (`...bec` → `...bea`),
+re-ran — `V-14 FAILS` with a message citing both the corrupted stored value
+and the correctly-recomputed value side by side, `RESULT: NON-CONFORMANT`,
+exit 1; restored the exact original byte-for-byte (`diff`-confirmed against
+a pre-corruption backup) and re-ran — `V-14 OK` again. File was never left
+corrupted.
+
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. Not blocking today — `compute-ruleset-digest.mjs --verify`
-  can be run by hand (and was, for the DEFECT-15 fix) — but the gap is real:
-  G-8 currently cannot catch a stale or tampered digest on its own.
+- **Status:** RESOLVED.

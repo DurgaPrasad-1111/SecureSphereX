@@ -1,9 +1,12 @@
-# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-13).
+# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-14).
 #
-# Thirteen checks, not twelve: ruleset.format.v1.ts's own header comment
-# records that V-13 (ItemPath scoping) was added at contract v1.1.0, after
-# Stage0-Completion-Pack.md §3 was written — that document still says
-# "V-1 … V-12" and is not updated here (out of scope; it's spec/, frozen).
+# Fourteen checks, not thirteen: V-1 … V-13 come from ruleset.format.v1.ts's
+# §8 (itself thirteen, not the twelve Stage0-Completion-Pack.md §3 still
+# says — that document is spec/, frozen, not updated here). V-14 is not in
+# ruleset.format.v1.ts at all — it closes DEFECT-17 (docs/DEFECTS.md):
+# integrityDigest had a documented algorithm (tools/ci/compute-ruleset-digest.mjs)
+# but nothing verified it as part of this gate, so a stale or hand-edited
+# digest passed CONFORMANT regardless. V-14 wires that verification in.
 #
 # Closed enums (ModuleId, ParameterId, RefinementSetId) are extracted from
 # packages/contracts/*.ts at run time, not hardcoded — so this validator
@@ -17,6 +20,7 @@ import glob
 import json
 import os
 import re
+import subprocess
 import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -186,6 +190,41 @@ def predicate_depth(pred):
     return 1
 
 
+def check_integrity_digest(ruleset_path):
+    """V-14: integrityDigest matches a fresh recomputation. Closes DEFECT-17.
+
+    Shells out to tools/ci/compute-ruleset-digest.mjs --verify rather than
+    porting its SHA-256/canonicalization logic natively into Python — one
+    source of truth for the algorithm, not two implementations that can
+    drift apart. This is safe here specifically: this script only ever runs
+    as a child of `node tools/ci/run-python.mjs tools/ci/validate-ruleset.py`
+    — node already resolved and ran successfully before this process even
+    started, so calling back out to it adds no new runtime dependency.
+
+    Porting was considered and rejected: the .mjs script's own header
+    documents a real divergence risk, not a hypothetical one — Python's
+    json.dumps defaults to ensure_ascii=True (escapes non-ASCII to \\uXXXX),
+    the opposite of the .mjs script's canonicalization, and this rule set's
+    prose fields use non-ASCII characters (§, →, —) extensively. A naive
+    port would silently compute a different digest for byte-identical
+    content.
+    """
+    digest_script = os.path.join(BASE, 'compute-ruleset-digest.mjs')
+    try:
+        result = subprocess.run(
+            ['node', digest_script, '--verify', ruleset_path],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        return [f"could not invoke 'node' to run {digest_script} — node should "
+                f"already be on PATH, since this script only ever runs as a "
+                f"child of a node process"]
+    if result.returncode != 0:
+        detail = result.stdout.strip() or result.stderr.strip() or f"exit {result.returncode}, no output"
+        return [f"integrityDigest mismatch — {detail}"]
+    return []
+
+
 REQUIRED_18_1_FIELDS = [
     'id', 'name', 'owner', 'introducedIn', 'lastModifiedIn', 'lifecycleState',
     'rationale', 'empiricalConfidence', 'knownFalsePositiveRisks', 'cweMappings', 'capecMappings',
@@ -194,8 +233,8 @@ REQUIRED_18_1_FIELDS = [
 MAX_PREDICATE_DEPTH = 12
 
 
-def validate(rs):
-    findings = {f'V-{i}': [] for i in range(1, 14)}
+def validate(rs, ruleset_path):
+    findings = {f'V-{i}': [] for i in range(1, 15)}
 
     rules_by_id = {r['id']: r for r in rs['rules']}
     param_ids_used = set()
@@ -281,6 +320,9 @@ def validate(rs):
         if r['lifecycleState'] not in ('Proposed', 'Active', 'Deprecated', 'Retired'):
             findings['V-11'].append(f"{r['id']}: unrecognized lifecycleState {r['lifecycleState']!r}")
 
+    # V-14 — integrityDigest matches a fresh recomputation (DEFECT-17)
+    findings['V-14'].extend(check_integrity_digest(ruleset_path))
+
     return findings
 
 
@@ -289,12 +331,12 @@ def main():
         print(f"ERROR: rule set not found at {RULESET_PATH}", file=sys.stderr)
         sys.exit(2)
     rs = load_ruleset(RULESET_PATH)
-    findings = validate(rs)
+    findings = validate(rs, RULESET_PATH)
 
     print(f"{'CHECK':<8} {'STATUS':<8} DETAIL")
     print("-" * 78)
     any_fail = False
-    for i in range(1, 14):
+    for i in range(1, 15):
         key = f'V-{i}'
         viols = findings[key]
         if viols:
