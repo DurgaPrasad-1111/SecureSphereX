@@ -333,6 +333,7 @@ are registered separately.
 | DEC-9 | B1.5 ownership | week 4 | Open by design |
 | DEC-16 | A-01 evidence gap (zero guards in the live rule set) | Stage 4 (any rule-set version adding A-01) | When convenient |
 | DEC-17 | S-01 guard narrowing (2 of 3 §6.2 conditions live) | Stage 4 (S-01 itself unaffected; a future rule-set revision if closed) | When convenient |
+| DEC-18 | `blockedBy` has no domain-scoping mechanism (S-02 live case) | Stage 4 (S-02 itself unaffected today; a future domain-divergent case) | When convenient |
 
 **To unblock the critical path today, sign DEC-1, DEC-2, DEC-3, DEC-8.** The rest gate
 later steps and can be signed in any order.
@@ -1306,3 +1307,81 @@ Findings data directly at all, only the already-built outputs of Stages
 `ScoringEntry` Stage 5/6 boundary noted above — an architectural
 question for whoever scaffolds Stage 5, not an DEC-15 or Architecture
 Owner ruling.
+
+---
+
+## DEC-18 (CANDIDATE — unsigned, open) — `blockedBy` has no domain-scoping mechanism
+
+**[R]** §6.3 (S-02 — Federated Identity Provider)'s guard conditions
+state, in part: "`eTLD+1(form.action)` matches a registry entry by exact
+string equality... **And** CRED-03 has not fired **against the action
+domain**." (emphasis on the literal text, not added elsewhere.) The
+"Critical guard rationale" row makes the intent explicit: "Without the
+CRED-03 guard, an attacker registering a confusable lookalike of a
+registry entry would obtain automatic exemption from the strongest
+credential rule. The guard closes this directly" — the guard is meant to
+be scoped to whether CRED-03 fired on the SAME domain S-02 is being
+asked to exempt, not merely whether CRED-03 fired anywhere in the pass.
+
+**[R]** What's actually typed today:
+`SuppressionDefinition.blockedBy: readonly RuleId[]`
+(`ruleset.format.v1.ts:230`) — bare rule IDs, no per-entry domain or
+other scoping value. Its own doc comment: "Negative guards: if ANY
+holds, the suppression does NOT apply" — describing exactly the coarser
+check, not a domain-scoped one. `CorrelationFinding`
+(`passresult.contract.v1.ts:42-59`) carries no domain field of any
+kind — `evaluationRefs: readonly string[]` references which evaluations
+contributed, but nothing about which registrable domain a finding
+concerns.
+
+**[I]** Implemented in `packages/engine/stage4.ts` as the coarser,
+type-supported check: did the named `blockedBy` rule fire **at all this
+pass** — matching `ruleset.format.v1.ts`'s own simpler framing exactly,
+not inventing a stricter interpretation the types don't support. Found
+during Stage 4's implementation (not a dedicated dependency-check pass),
+documented first in `stage4.ts`'s header comment and that commit's
+message; formalized here as its own entry per instruction, same category
+of gap as DEC-17 (S-01's self-narrowing) — found via implementation,
+living only in a code comment and a commit message until now.
+
+**This affects S-02 specifically — the only live `blockedBy` user
+today**, and **is SHIPPED and LIVE, not hypothetical**, same framing as
+DEC-17: `rulesets/rules-v0.1.0.json`'s S-02 entry
+(`blockedBy: ["CRED-03"]`) is the current, active suppression
+definition. Confirmed empirically against the real fixture pipeline
+(`packages/engine/stage4.fixture.test.ts`'s integration run): for the
+`off-origin-post` fixture, CRED-03 and CRED-01 both fire in the same
+pass, and S-02 is correctly recorded as blocked
+(`blockedByRuleId: 'CRED-03'`) — under the coarser check, this is
+correct by coincidence in that specific case (there is only one domain
+in play), not proof the domain-scoped and pass-wide checks always agree.
+No case in the current 4 fixtures exercises a scenario where they would
+diverge (CRED-03 firing on a DIFFERENT domain than the one S-02 is
+evaluating) — the gap is real but not yet observed to produce a wrong
+answer in this corpus, which is different from confirming it never
+would.
+
+**Question for architect ruling — no recommendation invented, the
+corpus does not lean toward one:**
+What would close the gap? Two shapes present themselves from the type
+system as it stands, neither decided here: (a) add a domain field to
+`CorrelationFinding` (or a derived per-finding domain lookup) so
+`blockedBy` checking can compare domains, not just rule identity; or (b)
+give `blockedBy` entries a richer shape than a bare `RuleId` — e.g.
+pairing a rule ID with which `FindingPath` on that rule's own Findings
+carries the domain to compare against. Which is closer to the frozen
+contracts' intent, whether either is a permissible amendment under the
+current freeze, and whether the coarser pass-wide check is simply an
+accepted permanent narrowing instead (mirroring how DEC-17 leaves S-01's
+narrowing as a live option) are all open.
+
+**Status.** Open. Blocks: nothing observably today (the current 4
+fixtures never exercise a domain-divergent case), but the gap is real
+and shipped — any future scenario where CRED-03 fires on a different
+domain than the one S-02 evaluates would be handled by the coarser,
+possibly-incorrect check. Does not block Stage 4 scaffolding itself,
+already built against the coarser check with this narrowing documented
+inline.
+
+**Decision:** _pending_
+**Signed by:** _pending_

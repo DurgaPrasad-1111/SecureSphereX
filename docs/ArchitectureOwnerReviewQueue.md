@@ -144,6 +144,43 @@ knowing even though nothing is currently broken by it.
 
 ---
 
+### DEC-18 — `blockedBy` has no domain-scoping mechanism
+
+**How long open:** found while implementing Stage 4
+(`packages/engine/stage4.ts`, 2026-08-26) — not a dedicated dependency-
+check finding this time, but a real implementation-time discovery,
+formalized here the same day it was found.
+
+**What's being decided:** §6.3 (S-02) requires "CRED-03 has not fired
+**against the action domain**" — a domain-scoped negative guard. The
+actual type, `SuppressionDefinition.blockedBy: readonly RuleId[]`, is
+bare rule IDs with no domain-scoping mechanism, and `CorrelationFinding`
+carries no domain field at all. Implemented as the coarser, type-
+supported check — did the named rule fire at all this pass — matching
+`ruleset.format.v1.ts`'s own simpler doc-comment framing, not a stricter
+interpretation the types don't support.
+
+**Current recommendation:** None — genuinely open, the same way DEC-16
+is for A-01. Two shapes present themselves (a domain field on
+`CorrelationFinding`, or a richer `blockedBy` entry shape pairing a rule
+ID with a domain-bearing `FindingPath`), but which is right, or whether
+the coarser check is an accepted permanent narrowing instead, is not
+decided here.
+
+**What resolving it unblocks:** Nothing observably today — confirmed
+against the real fixture pipeline, the one live case (S-02's
+`blockedBy: ['CRED-03']`, exercised by `off-origin-post`) happens to give
+the same answer under either the coarse or domain-scoped check, since
+only one domain is in play in that fixture. **This affects S-02
+specifically and is shipped/live today**, same framing as DEC-17 —
+worth knowing even though nothing is currently observed to be wrong.
+Becomes relevant the moment a real pass has CRED-03 firing on a
+different domain than the one S-02 is evaluating.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-18`.
+
+---
+
 ### DEC-12 — Sanctioned constructors for the five brands
 
 **How long open:** no explicit open-date recorded in `DECISIONS.md`.
@@ -340,6 +377,7 @@ decision gates Step 6 and therefore Steps 7, 8, and 11."
 | DEC-15 (`moduleVersion`, `indicators`, `consistency`, `summary`) | 🚧 Open | 2026-08-26 | A complete Stage 1 envelope; does not by itself block Stage 2 (see DEC-15 amendment) |
 | DEC-16 (A-01 evidence gap, zero guards) | 🚧 Open | ~Step 11 authoring | A-01 addable to a future rule-set version; 5 target rules get zero user-trust reduction today |
 | DEC-17 (S-01 guard narrowing, live+shipped) | 🚧 Open | ~Step 11 authoring | Nothing functionally — spec-vs-implementation gap in a rule already live and relied upon |
+| DEC-18 (`blockedBy` no domain-scoping, S-02 live) | 🚧 Open | 2026-08-26 (found during Stage 4 build) | Nothing observably today; a future domain-divergent CRED-03/S-02 case |
 | DEC-12 (brand constructors) | 🚧 Open | ~2026-08-21 (Step 8) | Nothing today; relevant when the engine ingests corpus payloads or capture ingests external data |
 | DEC-13 (cross-environment payload access) | 🚧 Open | 2026-08-22 | Nothing today; relevant if CI/a teammate/disaster recovery ever needs real payload |
 | DEFECT-11 (456 orphaned index entries) | 🚧 Open | 2026-08-22 | `INDEX.jsonl`-trusting tooling (Step 13 `--report`, future metrics harness) |
