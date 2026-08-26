@@ -72,6 +72,164 @@ file (currently the last entry).
 
 ---
 
+### DEC-12 — Sanctioned constructors for the five brands
+
+**How long open:** no explicit open-date recorded in `DECISIONS.md`.
+Contextually tied to Step 8 (fixture authoring) — the same working
+session as DEC-3's 2026-08-21 signing, per its own text ("fixtures do
+this today (Step 8, commit 6060d63)").
+
+**What's being decided:** `AnalysisSessionId`, `TargetResourceId`,
+`PassResultId`, `FindingId`, and `DayStamp` were branded as TYPES ONLY by
+DEC-3's Annex A-3/A-4 — no sanctioned constructor exists for any of the
+five (unlike `Origin`, which has `toOrigin()`). They currently enter the
+type system via unvalidated `as` cast at every boundary.
+
+**Current recommendation:** None recorded — `DECISIONS.md` poses the
+question without a stated lean: do the five brands get parse-validated
+constructors modelled on `toOrigin()` (all five, or only the ones with an
+enforceable format, e.g. `DayStamp` vs. opaque IDs), or is `as`-cast at
+boundaries deliberately accepted with validation deferred to producer-side
+testing?
+
+**What resolving it unblocks:** Nothing today (`DECISIONS.md`: "Blocks
+nothing today — the current `as`-cast pattern compiles and Step 8 is
+closed against it"). Becomes relevant when the capture pipeline ingests
+external data, the engine reads corpus payloads, or any producer of these
+values runs outside a fixture.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-12` (lines 379-417).
+
+---
+
+### DEC-13 — Cross-environment corpus payload access mechanism
+
+**How long open:** since at least 2026-08-22 (its own text: "surfaced
+concretely on 2026-08-22 during DEFECT-6's verification").
+
+**What's being decided:** DEC-1 named "on disk (and/or an external
+store)" as corpus payload's home but never specified a mechanism —
+no endpoint, bucket, mount path, or credential scheme is recorded
+anywhere. Is cross-environment access to real payload ever needed, and if
+so by what mechanism — or is "payload lives only on the capture machine,
+`INDEX.jsonl` is the portable record" the permanent intended shape?
+
+**Current recommendation:** None recorded — `DECISIONS.md` states the
+question without a stated lean.
+
+**What resolving it unblocks:** Nothing today (current practice is fully
+sufficient and matches DEC-1 as written). Becomes relevant if CI or any
+automated process needs to validate against real payload, someone other
+than Durga needs read access, or Durga's machine becomes unavailable.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-13` (lines 421-434).
+
+---
+
+### DEFECT-11 — 456 orphaned `corpus/INDEX.jsonl` entries
+
+**How long open:** since 2026-08-22 (its own header: "found 2026-08-22").
+
+**What's being decided:** 456 `INDEX.jsonl` entries dated before
+2026-08-22 have no corresponding payload file on disk — a genuine
+payload-write gap in whatever produced index entries before that date's
+dependency fix, not a fetch-failure artifact (confirmed: the
+`fetchOutcome` breakdown is proportionally identical between the missing
+and present sets). Purge the 456 orphaned entries, or retain them as an
+explicit "known lost/never-written" record?
+
+**Current recommendation:** None recorded — `docs/DEFECTS.md` states
+"Decision needed" without a stated lean. Owner recorded as "TBD — capture
+pipeline / corpus reconciliation," not yet assigned to a person.
+
+**What resolving it unblocks:** Nothing today (does not affect DEFECT-6's
+resolution, which reads `corpus/` files directly, never `INDEX.jsonl`).
+Affects anything that trusts `INDEX.jsonl` as ground truth without
+cross-checking real files — Step 13's `--report` flag, future metrics
+harness work.
+
+**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-11` (lines 308-333).
+
+---
+
+### DEFECT-19 — `RedirectFindings` ungroundable domain fields (CRED-04 dead, PM-01 degraded)
+
+**How long open:** since 2026-08-26 (found and logged this session).
+
+**What's being decided:** `RedirectEvidence` has no registrable-domain
+fields, only raw URL strings — `RedirectFindings.initialRegistrableDomain`
+and `.finalRegistrableDomain` are reported unconditionally `null`.
+Confirmed directly against `rulesets/rules-v0.1.0.json`: **CRED-04 is
+structurally unable to fire** (its `notSameSite` conjunct can never
+match), and **PM-01 is degraded** to its page-age arm only. Two live
+fix paths: an evidence-contract amendment adding registrable-domain (or
+same-site-boolean) fields to `RedirectEvidence`, or Stage 1 producer-side
+extraction computing them before evidence reaches the module.
+
+**Current recommendation:** None recorded — `docs/DEFECTS.md` presents
+both paths without a stated lean, explicitly deferring to "the same
+Architecture Owner ruling" DEC-14 used for the analogous CRED-05/CRED-A1
+gap.
+
+**What resolving it unblocks:** CRED-04 (currently non-functional) and
+full PM-01 functionality (currently degraded to one arm).
+
+**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-19` (lines 721-805).
+
+---
+
+### DEFECT-20 — `PermissionContextFindings.requestingRegistrableDomain` ungroundable (not currently load-bearing)
+
+**How long open:** since 2026-08-26 (found and logged this session).
+
+**What's being decided:** Same shape of gap as DEFECT-19 —
+`PermissionContextEvidence.requestingOrigin` is a raw origin string, no
+registrable-domain field exists to ground
+`PermissionContextFindings.requestingRegistrableDomain`. **Unlike
+DEFECT-19, confirmed by grep that no live rule reads this field** — lower
+priority.
+
+**Current recommendation:** None recorded.
+
+**What resolving it unblocks:** Nothing today — recorded for completeness
+and in case a future rule version starts reading it.
+
+**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-20` (lines 809-828).
+
+---
+
+### Ruleset filename/version mismatch (not a DEC or DEFECT entry — flagged separately)
+
+**How long open:** mismatch created 2026-08-25 (`docs/DEFECTS.md`
+DEFECT-15's resolution commit `5dc4c4885bb338613054a71500b112317cddf143`
+bumped the internal `ruleSetVersion` from `rules-v0.1.0` to
+`rules-v0.2.0`, authorized by Jayanth as Architecture Owner, without
+renaming the file); first flagged as a naming inconsistency 2026-08-26.
+
+**What's being decided:** `rulesets/rules-v0.1.0.json`'s filename still
+reads `v0.1.0`; its own `ruleSetVersion` field reads `"rules-v0.2.0"`.
+Two scripts (`tools/ci/compute-ruleset-digest.mjs`,
+`tools/ci/validate-ruleset.py`) default-path to the `v0.1.0` filename.
+Everything currently works because nothing enforces filename↔content
+agreement, not because the mismatch is resolved.
+
+**Current recommendation:** None offered — this has been explicitly
+reserved by standing instruction across multiple prior sessions ("Do not
+rename `rulesets/rules-v0.1.0.json` or touch its version field... leave
+the fix to me"), not attempted here either, in compliance with that
+standing instruction.
+
+**What resolving it unblocks:** Nothing functionally today (both
+scripts' defaults still resolve correctly since the file hasn't moved) —
+this is a hygiene/consistency question, not a functional blocker.
+
+**Verbatim source:** `rulesets/rules-v0.1.0.json` line 3
+(`"ruleSetVersion": "rules-v0.2.0"`) vs. the file's own name; not
+recorded as a numbered DEC or DEFECT entry anywhere in `DECISIONS.md` or
+`docs/DEFECTS.md`.
+
+---
+
 ## ALREADY RESOLVED — included for completeness only
 
 ### DEC-1 — Corpus storage: external object store vs. Git-LFS
@@ -108,7 +266,13 @@ decision gates Step 6 and therefore Steps 7, 8, and 11."
 | DEC-1 | ☑ Resolved | — | nothing (already resolved) |
 | DEC-3 | ☑ Resolved | — | nothing (already resolved) |
 | DEC-15 (`moduleVersion`, `indicators`, `consistency`, `summary`) | 🚧 Open | 2026-08-26 | A complete Stage 1 envelope; does not by itself block Stage 2 (see DEC-15 amendment) |
+| DEC-12 (brand constructors) | 🚧 Open | ~2026-08-21 (Step 8) | Nothing today; relevant when the engine ingests corpus payloads or capture ingests external data |
+| DEC-13 (cross-environment payload access) | 🚧 Open | 2026-08-22 | Nothing today; relevant if CI/a teammate/disaster recovery ever needs real payload |
+| DEFECT-11 (456 orphaned index entries) | 🚧 Open | 2026-08-22 | `INDEX.jsonl`-trusting tooling (Step 13 `--report`, future metrics harness) |
+| DEFECT-19 (redirect domain fields) | 🚧 Open | 2026-08-26 | CRED-04 (dead), PM-01 (degraded to one arm) |
+| DEFECT-20 (permissionContext domain field) | 🚧 Open, low priority | 2026-08-26 | Nothing today — no live rule reads it |
+| Ruleset filename/version mismatch | 🚧 Open, reserved | 2026-08-25 | Nothing functionally today — hygiene/consistency only |
 
 This table is regenerated whenever an item resolves or a new one folds
-in — see `DECISIONS.md` for the authoritative, timestamped record behind
-every row.
+in — see `DECISIONS.md` and `docs/DEFECTS.md` for the authoritative,
+timestamped record behind every row.
