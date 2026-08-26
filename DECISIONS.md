@@ -813,3 +813,116 @@ already-real `evaluateModule`/`evaluateAllModules` output. This does not
 resolve DEC-15 — those four fields remain open, required for a complete
 `SecurityEvaluation<M>` envelope (relevant to Stage 3 and persistence),
 just not for Stage 2 itself.
+
+---
+
+### Addendum — 2026-08-26 — Stage 3 dependency check (Correlation Finding Generation)
+
+Re-derived independently from Stage 3's own spec section, not extended
+from the Stage 2 finding above — the two stages read different data, and
+the task that produced the Stage 2 addendum applies only to predicate
+matching (§4.2, §5).
+
+**Read in full before concluding:**
+`spec/SecureSphereX-RuleEngine-Spec-v0_8.md` §7 in full — §7.1 (Rule
+Table — Frozen Set, lines 409-430) and §7.2 (Rule Detail, lines 431-556,
+all eleven rules: CRED-01 through CRED-07, CRED-A1, DL-01, DL-02, PM-01).
+§8 (Rule Families, lines 557-586) checked directly — confirmed not
+referenced by §7 (grepped) and independently read in full anyway, per the
+"do not skim or sample" instruction; contains nothing relevant to any of
+the four fields (rule-family naming conventions and the privacy/scoring
+split, neither touching envelope metadata).
+
+§4.2's operational definition of Stage 3: "Every matched predicate
+produces one Correlation Finding, **referencing the Security Evaluations
+that satisfied it**, and carrying its base weight from the rule set."
+§7.2 fleshes this out per rule (predicate, weight, tier, explanation,
+false-positive risks, limitations) — none of the eleven rule entries
+mentions indicators, consistency, or a summary field; §2.4 (cited in
+`passresult.contract.v1.ts`'s own header) states explicitly that "a
+finding does NOT carry its own weight" and by the same separation carries
+none of Stage 1's envelope metadata either — a Correlation Finding is
+its own, narrower D0.4 record, not a repackaged D0.2 evaluation.
+
+**The structural proof, from the actual type, not inference:**
+`packages/contracts/passresult.contract.v1.ts`'s `CorrelationFinding`
+(lines 42-59) and `CorrelationContext` (lines 35-40) — the literal Stage 3
+output type:
+
+```
+CorrelationFinding: findingId, contractVersion, targetResourceId,
+  analysisSessionId, passOrdinal, ruleId, evaluationRefs (string[]),
+  correlationContext
+CorrelationContext: emergedInPass, constituentConjunction
+```
+
+Grepped exhaustively across `passresult.contract.v1.ts`: zero occurrences
+of `moduleVersion`, `indicators`, or `consistency` as a field or type
+reference anywhere in the file (the one "inconsistency" hit inside §7's
+raw text is DL-02's MIME-type prose, the same false-positive shape
+already dismissed in the original DEC-15 pass — not the
+`ConsistencyAssessment` type). Zero occurrences of `summary` either — the
+only "summary" in this codebase's D0.x-adjacent contracts is D0.9's
+`ExplanationItem.summary` (cited in
+`spec/Backend-Architecture-Specification-v1_3.md` line 690), a different,
+downstream, user-facing explanation contract not present in this corpus
+— not `SecurityEvaluation.summary`.
+
+**Classification, per field:**
+
+| Field | Classification | Citation |
+|---|---|---|
+| `moduleVersion` | **CONFIRMED-UNUSED-BY-STAGE-3** | Not in `CorrelationFinding` or `CorrelationContext`; §7.2's eleven rule entries never reference it |
+| `indicators` | **CONFIRMED-UNUSED-BY-STAGE-3** | Same. Also independently consistent with §4's "Rules predicate on FINDINGS, never on indicator strings" — indicators were never in the predicate-to-finding path to begin with |
+| `consistency` | **CONFIRMED-UNUSED-BY-STAGE-3** | Same structural absence; no rule's Explanation/false-positive/limitation text in §7.2 references coherence assessment |
+| `summary` | **CONFIRMED-UNUSED-BY-STAGE-3** | Same structural absence; the only "summary" concept near this pipeline is D0.9's `ExplanationItem`, a distinct, later, downstream contract |
+
+**What Stage 3 actually needs, precisely stated:** per `CorrelationFinding`
+— `targetResourceId`, `analysisSessionId`, `passOrdinal` (all three
+already mechanical, resolved since the original Stage 1 orchestrator
+work), `ruleId` (from the rule set, already available), the Stage 2 match
+result (already real, `packages/engine/stage2.ts`), and
+`evaluationRefs: readonly string[]` — "the evaluations this finding was
+derived from" (§8.4.5). Cross-checked against
+`spec/Logical-Database-Design-Specification-v1_1.md` line 2246:
+`finding_evaluation: (finding_id, evaluation_id) — Findings reference
+evaluations, never findings` — confirming `evaluationRefs` holds
+`evaluationId` values. `evaluationId` was resolved this session (DEC-15,
+2026-08-26) — Stage 3's one genuine data dependency on the Stage 1
+envelope is therefore already satisfied.
+
+**Two things found while reading §7, reported as discovery — neither
+folded into DEC-15, neither resolved here:**
+
+1. **`findingId` generation — new, not previously flagged.**
+   `CorrelationFinding.findingId: FindingId` needs a fresh value minted
+   per finding, the same shape of need `evaluationId` had before this
+   session resolved it — and by coincidence, the exact same evidence
+   applies: `spec/Logical-Database-Design-Specification-v1_1.md` line 785
+   — `finding_id | UUID | No | generated | PK` — is one of the same eight
+   sibling `generated`-default UUID primary keys DEC-15's evaluationId
+   resolution already cited. No existing code anywhere constructs a
+   `FindingId` (grepped `packages/`) — unsurprising, since Stage 3 has
+   never been built. Not resolved in this pass (no implementation of any
+   kind was in scope), but worth recording that the resolution path, when
+   Stage 3 is actually built, is already evidenced and is not expected to
+   need a fresh investigation.
+2. **DL-01's Stage 2 `blocked` status propagates, not a new blocker.**
+   `priorFindingActive`/Authentication History Store (found during the
+   Stage 2 pass, `packages/engine/stage2.ts`'s
+   `PriorFindingActiveUnavailableError`) means DL-01 already cannot
+   report a real match/no-match from Stage 2 whenever its earlier
+   conjuncts don't already short-circuit it — Stage 3 simply has nothing
+   to correlate for DL-01 in that case. This is a consequence of the
+   already-known Stage 2 blocker, not an independently-discovered Stage 3
+   dependency, and is recorded here only for completeness.
+
+**Conclusion:** DEC-15's four remaining open fields do **not** block
+Stage 3 (Correlation Finding Generation), for the same reason they don't
+block Stage 2 — `CorrelationFinding`'s actual type never references any
+of them. Stage 3's one real dependency on the Stage 1 envelope
+(`evaluationId`, via `evaluationRefs`) is already resolved. The one
+genuinely open input Stage 3 will need (`findingId` minting) is a new,
+separate, well-evidenced-but-unimplemented item — not a blocker requiring
+a ruling, since the evidence already points the same direction
+`evaluationId`'s did, just not yet acted on.
