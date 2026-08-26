@@ -1459,3 +1459,65 @@ ruled on first.
 
 **Decision:** _pending_
 **Signed by:** _pending_
+
+---
+
+### Addendum — 2026-08-26 — Stage 7 status check (Threshold Evaluation)
+
+Different in kind from every dependency check before it in this
+document: this one resolves to **already complete**, not "confirmed
+unblocked by DEC-15." Recorded in the same format anyway, per
+instruction, so the record stays consistent and searchable.
+
+**Re-read §4.1 and §4.2's exact text once more, specifically to nail
+down Stage 7's boundary — not assumed from §9.4 alone.** §4.1's frozen
+stage order: `7. THRESHOLD EVALUATION`, immediately followed by
+`8. CURRENT SECURITY STATE UPDATE`. §4.2's sentences for each, quoted in
+full: **"Stage 7 — Threshold Evaluation. The score is mapped to Low,
+Medium, or High."** — one sentence, no section citation, unlike Stage 2
+(→§5), Stage 4 (→§6), Stage 6 (→§9/§10). **"Stage 8 — Current Security
+State Update. The result is written as a new Analysis Pass Result,
+appended to Analysis History, and used to replace Current Security
+State subject to monotonic escalation (§11.3)."** — §11.3 is cited HERE,
+explicitly, as Stage 8's, not Stage 7's. This directly confirms, rather
+than merely repeats, `stage5-6.ts`'s header comment's earlier guess that
+`effectiveTier`/`monotonicFloorApplied`/`interventionLocked` belong to
+Stage 8.
+
+**Read §11 in full** (§11.1 Recomputation, §11.2 Analysis History, §11.3
+Monotonic Escalation, §11.4 Intervention Lock). All four subsections
+concern "Current Security State" — the persistent, cross-pass belief
+(§11.1: "the latest score, the latest tier... a reference to the
+Analysis Pass Result that produced them"), Analysis History (§11.2: an
+append-only log of PRIOR pass results), and comparisons against a
+Session's PRIOR interventions (§11.3, §11.4: "the tier SHALL NOT be
+lowered below any tier that has already produced a user-facing
+intervention" — inherently requires knowing what happened in earlier
+passes of the same Session). **Every subsection of §11 requires data
+from outside the current pass** — the same category of dependency
+`priorFindingActive` (Stage 2) already established needs the
+Authentication History Store, which doesn't exist yet. Zero mention of
+score-to-tier mapping (Stage 7's actual job) appears anywhere in §11.
+
+**Conclusion: Stage 7 (Threshold Evaluation) is fully implemented
+already**, in `packages/engine/stage5-6.ts`'s `AggregationResult.rawTier`
+— confirmed by re-reading, not merely asserted: `rawTier` is computed as
+"score is mapped to Low, Medium, or High" against `threshold_medium`/
+`threshold_high`, sourced from the rule set's own `parameters` (§9.4:
+"Threshold values are empirical (§13.2)... the structure — three tiers,
+Medium as the escalation band, High as the only blocking tier — is
+frozen" — exactly what `rawTier`'s boundary logic implements). The
+field's own name, `rawTier` — "Tier from score alone, BEFORE §11.3
+monotonic escalation" (`passresult.contract.v1.ts:184-185`) — already
+anticipated precisely this Stage 7 / Stage 8 boundary before this check
+confirmed it. No new code is needed for Stage 7 itself; nothing in §11
+is Stage 7's concern.
+
+**What remains — confirmed Stage 8's, not Stage 7's:** `effectiveTier`
+(tier after the monotonic floor), `monotonicFloorApplied` (§11.3),
+`interventionLocked` (§11.4) — all three require Current Security State
+/ Analysis History, a persistence concern this session has not built and
+was not asked to build here. Not a gap in Stage 7; a correctly-scoped
+boundary. No DEC-15 fields are implicated either way — this check never
+needed to reach that question, since Stage 7 turned out to already be
+done.
