@@ -885,3 +885,65 @@ corrupted.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** RESOLVED.
+
+---
+
+## DEFECT-21 — `RuleMatchResult` conflates an unevaluable required module with a genuine non-match (found 2026-08-26, while building Stage 3)
+
+Finding: `RuleDefinition.requiredModules`'s own doc comment (§15.2,
+`ruleset.format.v1.ts:176-183`) states the requirement directly: "if ANY
+required module is `unevaluable` for this pass, the rule outcome is
+`unevaluable` — NOT a non-match. A rule that could not be tested MUST NOT
+be recorded as a rule that found nothing." `RuleOutcome`
+(`passresult.contract.v1.ts:70-77`) is typed for exactly this: three
+variants, `matched` / `notMatched` / `unevaluable` (the last carrying a
+`reason` and `unevaluableModules`).
+
+`packages/engine/stage2.ts`'s `RuleMatchResult` does not make this
+distinction. It has three statuses too, but a different three:
+`'matched'` / `'unmatched'` / `'blocked'` (the last reserved for
+`priorFindingActive`, DL-01 only). A rule whose predicate could not be
+evaluated because a required module was genuinely `unevaluable`, and a
+rule whose predicate WAS fully evaluated and simply didn't match, both
+currently surface as `'unmatched'` — collapsing §15.2's required
+three-way distinction into two.
+
+Impact: does NOT corrupt `packages/engine/stage3.ts`'s
+`generateCorrelationFindings` output. `stage3.ts` only ever produces a
+`CorrelationFinding` for a `'matched'` `RuleMatchResult`, and `'matched'`
+can only occur when every conjunct the predicate actually needed was
+genuinely evaluated — §5.6 ("Where the evidence required by a predicate
+is absent, the predicate simply does not match") is implemented in
+`stage2.ts`'s `matchPredicate` so that any path resolving against an
+unevaluable module makes its containing check `false`, which can never
+produce a `true` result for a conjunct that depended on it. An
+unevaluable required module can therefore never cause a false
+`'matched'`; at worst it causes a `'matched'`-shaped rule to instead
+report `'unmatched'` when it should more precisely report
+`'unevaluable'` — a mislabeling of the REASON a rule produced no
+finding, never a fabricated finding.
+
+DOES affect: the full three-state `RuleOutcome` cannot yet be built
+correctly from `stage2.ts`'s output alone — `'unmatched'` is ambiguous
+between "genuinely evaluated, no match" and "a required module was
+unevaluable, never actually tested." `RuleOutcome` is part of the
+broader `AnalysisPassResult` (`passresult.contract.v1.ts:236`,
+`ruleOutcomes: readonly RuleOutcome[]`) — a later, wider concern than
+Stage 3's `CorrelationFinding`, not yet scaffolded.
+
+Not yet resolved — logged only. Fixing it means `stage2.ts`'s
+`matchAllRules` (or a layer above it) checking each rule's
+`requiredModules` against the evaluation set's per-module
+`result.status` BEFORE attempting to evaluate the predicate, and
+reporting `'unevaluable'` (with which modules, per §15.2's
+`unevaluableModules` field) when any required module is `unevaluable` —
+distinct from, and checked before, the existing `'unmatched'` outcome of
+a fully-evaluated predicate. Full cross-reference:
+`packages/engine/stage3.ts`'s header comment points here rather than
+repeating this analysis.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Blocks `RuleOutcome`/`AnalysisPassResult`
+  construction (not yet started); does not block Stage 3
+  (`CorrelationFinding`, already built and tested against this exact
+  gap).

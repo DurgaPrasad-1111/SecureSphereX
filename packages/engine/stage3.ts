@@ -55,25 +55,16 @@
  * `PriorFindingActiveUnavailableError`) produces no finding, exactly like
  * `unmatched`, never a guessed one.
  *
- * A GENUINE GAP FOUND WHILE RE-READING, REPORTED HERE, NOT FIXED —
- * `RuleDefinition.requiredModules`'s own doc comment (§15.2,
- * `ruleset.format.v1.ts:176-183`): "if ANY required module is
- * `unevaluable` for this pass, the rule outcome is `unevaluable` — NOT a
- * non-match. A rule that could not be tested MUST NOT be recorded as a
- * rule that found nothing." `stage2.ts`'s `RuleMatchResult` does not yet
- * make this distinction — an unevaluable required module and a genuinely
- * evaluated non-match both surface as `'unmatched'`. This does NOT affect
- * `CorrelationFinding` generation here: a `matched` result can only occur
- * when every conjunct the predicate actually needed was genuinely
- * evaluated (§5.6's absent-evidence-is-false rule means an unevaluable
- * module can never contribute to a `true` conjunct), so nothing here ever
- * fabricates a finding from missing data. It DOES mean the full
- * three-state `RuleOutcome` (`matched` / `notMatched` / `unevaluable`,
- * `passresult.contract.v1.ts:70-77`) — part of the broader
- * `AnalysisPassResult`, not `CorrelationFinding` — cannot yet be built
- * correctly from `stage2.ts`'s output alone. Out of scope for this pass
- * (Stage 3 was asked for, not `RuleOutcome`/`AnalysisPassResult`); noted
- * so it isn't rediscovered from scratch later.
+ * A GENUINE GAP FOUND WHILE RE-READING, NOT FIXED HERE — logged as
+ * DEFECT-21 (docs/DEFECTS.md), which is the authoritative record; not
+ * repeated in full here. Short version: `stage2.ts`'s `RuleMatchResult`
+ * doesn't yet distinguish "a required module was unevaluable" from "the
+ * predicate was fully evaluated and didn't match" (both surface as
+ * `'unmatched'`), when §15.2 requires them to be different `RuleOutcome`
+ * variants. Confirmed in DEFECT-21 that this does NOT affect
+ * `CorrelationFinding` generation below — a `matched` result can only
+ * occur when every conjunct was genuinely evaluated (§5.6) — it only
+ * affects the not-yet-built `RuleOutcome`/`AnalysisPassResult`.
  */
 
 import { mintFindingId } from './id.ts';
