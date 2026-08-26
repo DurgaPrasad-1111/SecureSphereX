@@ -1,0 +1,449 @@
+{
+  "pageUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https%3A%2F%2Fwww.office.com%2Flandingv2&response_type=code%20id_token&scope=openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All&response_mode=form_post&nonce=639228914402380153.YWI3YWFhYjEtNGRlNC00ZDQ1LTgwMTctYWM5YTAzM2ZmN2U1NWQwZGJmMjktMjVlNS00MWNlLWIwYTMtODViYTRmMjE1NTVh&ui_locales=en-GB&mkt=en-GB&client-request-id=63f1bc92-1a98-4505-8773-54fd00dbdf71&siwa=1&siwg=1&state=qhAO3HKr4Va-JHcfeRZdfmENwrEWWcfRbNXp7Bk8b8Hlj5ugHhxaohlqjMfDZE382M_W20SncuxhiuMc6Ag90Ww5B2aEeRQVj4gANhaT8Rei1OukZg2wEn7w7d2QS5YQn2g-w-ZEwRtw4fhGXQV0SCllEnn8-FNmk5J0vMkPhauqJh4tx3j-oM4FDX6Mk7awtHyzZiJw_-I7b1fB41L5oMONieblw9gmg-_m9znJWCnReWLEByMvKF5Nh-sJw_kFGeoqhNMOo07_dfIxFAfJOAArnlxHyrUEDC2djKKbLtVn197gWNUskYzX9SkI5Wcg3fODV5G_LRpBAT0nM4VO4eyrUy9uykBvf5T8MnP7FZWf-zJxqgwVeHAkNrQlnj4uvKDTAPLNAfmIOa7GhkAi81_9iSPC3XgN5Je_v4GVfPg8GXsx1jrwq_iQiw9GgZIy&x-client-SKU=ID_NET8_0&x-client-ver=8.16.0.0&sso_reload=true",
+  "capturedAt": "2026-08-21T06:44:20.286Z",
+  "evidence": {
+    "url": {
+      "fullUrl": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https%3A%2F%2Fwww.office.com%2Flandingv2&response_type=code%20id_token&scope=openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All&response_mode=form_post&nonce=639228914402380153.YWI3YWFhYjEtNGRlNC00ZDQ1LTgwMTctYWM5YTAzM2ZmN2U1NWQwZGJmMjktMjVlNS00MWNlLWIwYTMtODViYTRmMjE1NTVh&ui_locales=en-GB&mkt=en-GB&client-request-id=63f1bc92-1a98-4505-8773-54fd00dbdf71&siwa=1&siwg=1&state=qhAO3HKr4Va-JHcfeRZdfmENwrEWWcfRbNXp7Bk8b8Hlj5ugHhxaohlqjMfDZE382M_W20SncuxhiuMc6Ag90Ww5B2aEeRQVj4gANhaT8Rei1OukZg2wEn7w7d2QS5YQn2g-w-ZEwRtw4fhGXQV0SCllEnn8-FNmk5J0vMkPhauqJh4tx3j-oM4FDX6Mk7awtHyzZiJw_-I7b1fB41L5oMONieblw9gmg-_m9znJWCnReWLEByMvKF5Nh-sJw_kFGeoqhNMOo07_dfIxFAfJOAArnlxHyrUEDC2djKKbLtVn197gWNUskYzX9SkI5Wcg3fODV5G_LRpBAT0nM4VO4eyrUy9uykBvf5T8MnP7FZWf-zJxqgwVeHAkNrQlnj4uvKDTAPLNAfmIOa7GhkAi81_9iSPC3XgN5Je_v4GVfPg8GXsx1jrwq_iQiw9GgZIy&x-client-SKU=ID_NET8_0&x-client-ver=8.16.0.0&sso_reload=true",
+        "detail": null
+      },
+      "scheme": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https",
+        "detail": null
+      },
+      "host": {
+        "attempted": true,
+        "status": "observed",
+        "value": "login.microsoftonline.com",
+        "detail": null
+      },
+      "port": {
+        "attempted": true,
+        "status": "observed",
+        "value": 443,
+        "detail": null
+      },
+      "path": {
+        "attempted": true,
+        "status": "observed",
+        "value": "/common/oauth2/v2.0/authorize",
+        "detail": null
+      },
+      "queryPresent": {
+        "attempted": true,
+        "status": "observed",
+        "value": true,
+        "detail": null
+      },
+      "registrableDomain": {
+        "attempted": true,
+        "status": "observed",
+        "value": "microsoftonline.com",
+        "detail": null
+      },
+      "subdomainLabels": {
+        "attempted": true,
+        "status": "observed",
+        "value": [
+          "login"
+        ],
+        "detail": null
+      },
+      "isIpLiteral": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "totalLength": {
+        "attempted": true,
+        "status": "observed",
+        "value": 1027,
+        "detail": null
+      },
+      "percentEncodedSegmentCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 12,
+        "detail": null
+      }
+    },
+    "transport": {
+      "isHttps": {
+        "attempted": true,
+        "status": "observed",
+        "value": true,
+        "detail": null
+      },
+      "certificateSubject": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "subjectAlternativeNames": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "validFrom": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "validTo": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "issuer": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "chainComplete": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "chainTrusted": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      }
+    },
+    "dns": {
+      "resolves": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "aRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "aaaaRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "nameServers": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "cnameTarget": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "mxPresent": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "txtRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "dnssecDeployed": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      }
+    },
+    "redirect": {
+      "initialUrl": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https%3A%2F%2Fwww.office.com%2Flandingv2&response_type=code%20id_token&scope=openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All&response_mode=form_post&nonce=639228914402380153.YWI3YWFhYjEtNGRlNC00ZDQ1LTgwMTctYWM5YTAzM2ZmN2U1NWQwZGJmMjktMjVlNS00MWNlLWIwYTMtODViYTRmMjE1NTVh&ui_locales=en-GB&mkt=en-GB&client-request-id=63f1bc92-1a98-4505-8773-54fd00dbdf71&siwa=1&siwg=1&state=qhAO3HKr4Va-JHcfeRZdfmENwrEWWcfRbNXp7Bk8b8Hlj5ugHhxaohlqjMfDZE382M_W20SncuxhiuMc6Ag90Ww5B2aEeRQVj4gANhaT8Rei1OukZg2wEn7w7d2QS5YQn2g-w-ZEwRtw4fhGXQV0SCllEnn8-FNmk5J0vMkPhauqJh4tx3j-oM4FDX6Mk7awtHyzZiJw_-I7b1fB41L5oMONieblw9gmg-_m9znJWCnReWLEByMvKF5Nh-sJw_kFGeoqhNMOo07_dfIxFAfJOAArnlxHyrUEDC2djKKbLtVn197gWNUskYzX9SkI5Wcg3fODV5G_LRpBAT0nM4VO4eyrUy9uykBvf5T8MnP7FZWf-zJxqgwVeHAkNrQlnj4uvKDTAPLNAfmIOa7GhkAi81_9iSPC3XgN5Je_v4GVfPg8GXsx1jrwq_iQiw9GgZIy&x-client-SKU=ID_NET8_0&x-client-ver=8.16.0.0&sso_reload=true",
+        "detail": null
+      },
+      "finalUrl": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https%3A%2F%2Fwww.office.com%2Flandingv2&response_type=code%20id_token&scope=openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All&response_mode=form_post&nonce=639228914402380153.YWI3YWFhYjEtNGRlNC00ZDQ1LTgwMTctYWM5YTAzM2ZmN2U1NWQwZGJmMjktMjVlNS00MWNlLWIwYTMtODViYTRmMjE1NTVh&ui_locales=en-GB&mkt=en-GB&client-request-id=63f1bc92-1a98-4505-8773-54fd00dbdf71&siwa=1&siwg=1&state=qhAO3HKr4Va-JHcfeRZdfmENwrEWWcfRbNXp7Bk8b8Hlj5ugHhxaohlqjMfDZE382M_W20SncuxhiuMc6Ag90Ww5B2aEeRQVj4gANhaT8Rei1OukZg2wEn7w7d2QS5YQn2g-w-ZEwRtw4fhGXQV0SCllEnn8-FNmk5J0vMkPhauqJh4tx3j-oM4FDX6Mk7awtHyzZiJw_-I7b1fB41L5oMONieblw9gmg-_m9znJWCnReWLEByMvKF5Nh-sJw_kFGeoqhNMOo07_dfIxFAfJOAArnlxHyrUEDC2djKKbLtVn197gWNUskYzX9SkI5Wcg3fODV5G_LRpBAT0nM4VO4eyrUy9uykBvf5T8MnP7FZWf-zJxqgwVeHAkNrQlnj4uvKDTAPLNAfmIOa7GhkAi81_9iSPC3XgN5Je_v4GVfPg8GXsx1jrwq_iQiw9GgZIy&x-client-SKU=ID_NET8_0&x-client-ver=8.16.0.0&sso_reload=true",
+        "detail": null
+      },
+      "chain": {
+        "attempted": true,
+        "status": "observed",
+        "value": [],
+        "detail": null
+      },
+      "hopCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 0,
+        "detail": null
+      },
+      "crossedRegistrableDomain": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "requires reliable initialUrl; see redirect.initialUrl"
+      }
+    },
+    "loginInterface": {
+      "credentialFormPresent": {
+        "attempted": true,
+        "status": "observed",
+        "value": true,
+        "detail": null
+      },
+      "forms": {
+        "attempted": true,
+        "status": "observed",
+        "value": [
+          {
+            "fields": [
+              {
+                "kind": "email",
+                "hidden": false,
+                "autocompleteDisabled": false
+              },
+              {
+                "kind": "password",
+                "hidden": false,
+                "autocompleteDisabled": false
+              },
+              {
+                "kind": "username",
+                "hidden": true,
+                "autocompleteDisabled": false
+              }
+            ],
+            "method": "POST",
+            "actionUrl": "https://login.microsoftonline.com/common/login",
+            "actionRegistrableDomain": "microsoftonline.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https%3A%2F%2Fwww.office.com%2Flandingv2&response_type=code%20id_token&scope=openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All&response_mode=form_post&nonce=639228914402380153.YWI3YWFhYjEtNGRlNC00ZDQ1LTgwMTctYWM5YTAzM2ZmN2U1NWQwZGJmMjktMjVlNS00MWNlLWIwYTMtODViYTRmMjE1NTVh&ui_locales=en-GB&mkt=en-GB&client-request-id=63f1bc92-1a98-4505-8773-54fd00dbdf71&siwa=1&siwg=1&state=qhAO3HKr4Va-JHcfeRZdfmENwrEWWcfRbNXp7Bk8b8Hlj5ugHhxaohlqjMfDZE382M_W20SncuxhiuMc6Ag90Ww5B2aEeRQVj4gANhaT8Rei1OukZg2wEn7w7d2QS5YQn2g-w-ZEwRtw4fhGXQV0SCllEnn8-FNmk5J0vMkPhauqJh4tx3j-oM4FDX6Mk7awtHyzZiJw_-I7b1fB41L5oMONieblw9gmg-_m9znJWCnReWLEByMvKF5Nh-sJw_kFGeoqhNMOo07_dfIxFAfJOAArnlxHyrUEDC2djKKbLtVn197gWNUskYzX9SkI5Wcg3fODV5G_LRpBAT0nM4VO4eyrUy9uykBvf5T8MnP7FZWf-zJxqgwVeHAkNrQlnj4uvKDTAPLNAfmIOa7GhkAi81_9iSPC3XgN5Je_v4GVfPg8GXsx1jrwq_iQiw9GgZIy&x-client-SKU=ID_NET8_0&x-client-ver=8.16.0.0&sso_reload=true",
+            "actionRegistrableDomain": "microsoftonline.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          }
+        ],
+        "detail": null
+      },
+      "fingerprint": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "fingerprint hashing not implemented in this throwaway probe"
+      }
+    },
+    "scriptRuntime": {
+      "listenerOnCredentialField": {
+        "attempted": true,
+        "status": "observed",
+        "value": true,
+        "detail": "11 listener(s) on credential fields"
+      },
+      "clientSideTransmissionObserved": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": "0 transmission(s) matched a tracked credential value"
+      },
+      "transmissionEndpoints": {
+        "attempted": true,
+        "status": "observed",
+        "value": [],
+        "detail": null
+      },
+      "credentialInterfaceInjected": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "dynamicScriptLoadCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 5,
+        "detail": null
+      },
+      "dynamicScriptOrigins": {
+        "attempted": true,
+        "status": "observed",
+        "value": [
+          "https://aadcdn.msftauth.net"
+        ],
+        "detail": null
+      }
+    },
+    "domainRepresentation": {
+      "punycodeDomain": {
+        "attempted": true,
+        "status": "observed",
+        "value": "login.microsoftonline.com",
+        "detail": null
+      },
+      "unicodeDomain": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "no content-script API returns the decoded Unicode IDN form separately, either world"
+      },
+      "isIdn": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "containsNonAscii": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "scriptsUsed": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "per-character Unicode script table not shipped in this probe"
+      },
+      "isMixedScript": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "depends on scriptsUsed"
+      },
+      "confusableSkeleton": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "UTS #39 confusables table not shipped in this probe"
+      }
+    },
+    "downloadContext": {
+      "downloadUrl": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "downloadRegistrableDomain": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "referrerUrl": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "referrerRegistrableDomain": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredFilename": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredExtension": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredMimeType": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "hasCompoundExtension": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      }
+    },
+    "permissionContext": {
+      "requestedPermission": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "requestingOrigin": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "precededByUserGesture": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "pageAgeMs": {
+        "attempted": true,
+        "status": "observed",
+        "value": 19545,
+        "detail": null
+      }
+    }
+  },
+  "spikeDiagnostics": {
+    "mainWorldReady": true,
+    "patchErrors": []
+  }
+}

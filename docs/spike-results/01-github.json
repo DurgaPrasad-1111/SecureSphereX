@@ -1,0 +1,473 @@
+{
+  "pageUrl": "https://github.com/",
+  "capturedAt": "2026-08-21T06:34:43.150Z",
+  "evidence": {
+    "url": {
+      "fullUrl": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https://github.com/",
+        "detail": null
+      },
+      "scheme": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https",
+        "detail": null
+      },
+      "host": {
+        "attempted": true,
+        "status": "observed",
+        "value": "github.com",
+        "detail": null
+      },
+      "port": {
+        "attempted": true,
+        "status": "observed",
+        "value": 443,
+        "detail": null
+      },
+      "path": {
+        "attempted": true,
+        "status": "observed",
+        "value": "/",
+        "detail": null
+      },
+      "queryPresent": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "registrableDomain": {
+        "attempted": true,
+        "status": "observed",
+        "value": "github.com",
+        "detail": null
+      },
+      "subdomainLabels": {
+        "attempted": true,
+        "status": "observed",
+        "value": [],
+        "detail": null
+      },
+      "isIpLiteral": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "totalLength": {
+        "attempted": true,
+        "status": "observed",
+        "value": 19,
+        "detail": null
+      },
+      "percentEncodedSegmentCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 0,
+        "detail": null
+      }
+    },
+    "transport": {
+      "isHttps": {
+        "attempted": true,
+        "status": "observed",
+        "value": true,
+        "detail": null
+      },
+      "certificateSubject": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "subjectAlternativeNames": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "validFrom": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "validTo": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "issuer": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "chainComplete": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      },
+      "chainTrusted": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no extension API exposes certificate data to content-script JS, either world"
+      }
+    },
+    "dns": {
+      "resolves": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "aRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "aaaaRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "nameServers": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "cnameTarget": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "mxPresent": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "txtRecordCount": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      },
+      "dnssecDeployed": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "no browser/extension API exposes DNS records to content-script JS, either world"
+      }
+    },
+    "redirect": {
+      "initialUrl": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "redirectCount>0 but referrer empty"
+      },
+      "finalUrl": {
+        "attempted": true,
+        "status": "observed",
+        "value": "https://github.com/",
+        "detail": null
+      },
+      "chain": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "Navigation Timing exposes redirectCount only; per-hop list not exposed, either world"
+      },
+      "hopCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 1,
+        "detail": null
+      },
+      "crossedRegistrableDomain": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "requires reliable initialUrl; see redirect.initialUrl"
+      }
+    },
+    "loginInterface": {
+      "credentialFormPresent": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "forms": {
+        "attempted": true,
+        "status": "observed",
+        "value": [
+          {
+            "fields": [],
+            "method": "GET",
+            "actionUrl": "https://github.com/",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": "https://github.githubassets.com"
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/modular/modular/unstar",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/modular/modular/star",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/mattpocock/skills/unstar",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/mattpocock/skills/star",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/conduit/register_disinterest",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          },
+          {
+            "fields": [],
+            "method": "POST",
+            "actionUrl": "https://github.com/conduit/register_disinterest",
+            "actionRegistrableDomain": "github.com",
+            "injectedAfterLoad": true,
+            "injectingScriptOrigin": null
+          }
+        ],
+        "detail": null
+      },
+      "fingerprint": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "fingerprint hashing not implemented in this throwaway probe"
+      }
+    },
+    "scriptRuntime": {
+      "listenerOnCredentialField": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": "0 listener(s) on credential fields"
+      },
+      "clientSideTransmissionObserved": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": "0 transmission(s) matched a tracked credential value"
+      },
+      "transmissionEndpoints": {
+        "attempted": true,
+        "status": "observed",
+        "value": [],
+        "detail": null
+      },
+      "credentialInterfaceInjected": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "dynamicScriptLoadCount": {
+        "attempted": true,
+        "status": "observed",
+        "value": 50,
+        "detail": null
+      },
+      "dynamicScriptOrigins": {
+        "attempted": true,
+        "status": "observed",
+        "value": [
+          "https://github.githubassets.com"
+        ],
+        "detail": null
+      }
+    },
+    "domainRepresentation": {
+      "punycodeDomain": {
+        "attempted": true,
+        "status": "observed",
+        "value": "github.com",
+        "detail": null
+      },
+      "unicodeDomain": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "collector_error",
+        "detail": "no content-script API returns the decoded Unicode IDN form separately, either world"
+      },
+      "isIdn": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "containsNonAscii": {
+        "attempted": true,
+        "status": "observed",
+        "value": false,
+        "detail": null
+      },
+      "scriptsUsed": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "per-character Unicode script table not shipped in this probe"
+      },
+      "isMixedScript": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "depends on scriptsUsed"
+      },
+      "confusableSkeleton": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "api_unavailable",
+        "detail": "UTS #39 confusables table not shipped in this probe"
+      }
+    },
+    "downloadContext": {
+      "downloadUrl": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "downloadRegistrableDomain": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "referrerUrl": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "referrerRegistrableDomain": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredFilename": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredExtension": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "declaredMimeType": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      },
+      "hasCompoundExtension": {
+        "attempted": false,
+        "status": "not_attempted",
+        "value": null,
+        "reason": "chrome.downloads background-worker event; not a content-script capability and this page load is not a download"
+      }
+    },
+    "permissionContext": {
+      "requestedPermission": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "requestingOrigin": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "precededByUserGesture": {
+        "attempted": true,
+        "status": "unavailable",
+        "value": null,
+        "reason": "not_applicable",
+        "detail": "no sensitive-permission API call observed on this page"
+      },
+      "pageAgeMs": {
+        "attempted": true,
+        "status": "observed",
+        "value": 553337,
+        "detail": null
+      }
+    }
+  },
+  "spikeDiagnostics": {
+    "mainWorldReady": true,
+    "patchErrors": []
+  }
+}

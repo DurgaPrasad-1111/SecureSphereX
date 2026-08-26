@@ -1,0 +1,849 @@
+{
+  "formatVersion": "1.1.0",
+  "ruleSetVersion": "rules-v0.2.0",
+  "released": false,
+  "integrityDigest": "sha256:fc2131844a2b4e611ccd1c6eb049e4d3ec37fce61de3c0f698e462c28e491bec",
+  "pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
+  "parameters": [
+    {
+      "id": "tau_sim",
+      "value": 0.85,
+      "unit": "similarity_score_0_1",
+      "rationale": "CRED-02 fingerprint similarity threshold (§7.2, §13.2). Starting hypothesis, unvalidated at v0.1.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "redirect_hop_min",
+      "value": 2,
+      "unit": "hop_count",
+      "rationale": "CRED-04 minimum redirect-hop count (§7.2: \"redirect hops ≥ 2\"). Value taken directly from the frozen predicate text.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "page_age_max_ms",
+      "value": 2000,
+      "unit": "milliseconds",
+      "rationale": "PM-01 page-age threshold below which a permission request is considered unsolicited (§7.2, §13.2). Starting hypothesis.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "threshold_medium",
+      "value": 30,
+      "unit": "score_points",
+      "rationale": "§9.4 Medium-tier lower bound (Warn). Value taken directly from the frozen threshold table.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "threshold_high",
+      "value": 60,
+      "unit": "score_points",
+      "rationale": "§9.4 High-tier lower bound (Block). V-6 checks no primary rule's baseWeight reaches this value alone.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "tau_collision",
+      "value": 0.95,
+      "unit": "similarity_score_0_1",
+      "rationale": "G-03 store-write fingerprint collision guard (§13.2, §20.6). Independent from tau_sim by design (DEC-10) — must not be assumed equal.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "auth_count_n",
+      "value": 3,
+      "unit": "authentication_count",
+      "rationale": "§20.4 PROVISIONAL → ESTABLISHED establishment threshold N (authentication count).",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "auth_days_m",
+      "value": 2,
+      "unit": "distinct_days",
+      "rationale": "§20.4 PROVISIONAL → ESTABLISHED establishment threshold M (distinct days).",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "provisional_expiry_days",
+      "value": 14,
+      "unit": "days",
+      "rationale": "§20.4 provisional entry expiry window.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "trust_validity_days",
+      "value": 30,
+      "unit": "days",
+      "rationale": "A-01 user-trust validity period (§6.4, §13.2): trust SHALL expire.",
+      "confidence": "Unvalidated"
+    },
+    {
+      "id": "establishment_rate_max",
+      "value": 0.1,
+      "unit": "rate_0_1",
+      "rationale": "G-05 establishment-rate bound guard (§13.2, §20.6).",
+      "confidence": "Unvalidated"
+    }
+  ],
+  "refinementSets": [
+    {
+      "id": "executableTypes",
+      "members": [
+        "exe",
+        "msi",
+        "dmg",
+        "pkg",
+        "bat",
+        "cmd",
+        "sh",
+        "com",
+        "scr",
+        "ps1",
+        "vbs",
+        "js",
+        "jar",
+        "apk",
+        "lnk",
+        "zip",
+        "rar",
+        "7z",
+        "iso"
+      ],
+      "matchMode": "exact",
+      "rationale": "R-02 (§5.3) executable/archive membership list — native executables and installers, script and shortcut formats, and archive containers commonly used to wrap them. Draft starting list; exact membership is a versioned rule-set artifact per §5.3."
+    },
+    {
+      "id": "sensitivePermissions",
+      "members": [
+        "camera",
+        "microphone",
+        "geolocation",
+        "notifications",
+        "clipboard_read"
+      ],
+      "matchMode": "exact",
+      "rationale": "R-03 (§5.4) sensitive-permission membership list. Mirrors the closed SensitivePermission enum already frozen in evidence.contract.v1.ts — PermissionContextFindings.requestedPermission cannot report a value outside this set, so this list documents rather than independently gates that boundary."
+    },
+    {
+      "id": "identityProviders",
+      "members": [
+        "accounts.google.com",
+        "login.microsoftonline.com",
+        "appleid.apple.com",
+        "www.facebook.com",
+        "github.com",
+        "id.atlassian.com"
+      ],
+      "matchMode": "exact",
+      "rationale": "S-02 (§6.3) federated identity provider registry. §6.3: no authoritative machine-readable IdP registry exists; curated list, small in practice. Exact-string-equality only — never substring, suffix, or similarity (§6.3)."
+    }
+  ],
+  "rules": [
+    {
+      "id": "CRED-01",
+      "family": "CRED",
+      "name": "Off-origin credential post",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "is",
+            "path": "loginForm.credentialFormPresent"
+          },
+          {
+            "op": "exists",
+            "collection": "loginForm.forms",
+            "where": {
+              "op": "notSameSite",
+              "left": "$.actionRegistrableDomain",
+              "right": "url.registrableDomain"
+            }
+          }
+        ]
+      },
+      "requiredModules": [
+        "loginForm",
+        "url"
+      ],
+      "baseWeight": 45,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
+      "lifecycleState": "Active",
+      "rationale": "Detects credentials destined for a registrable domain other than the one the user believes they are visiting — the canonical structural signature of credential harvesting. Distinguished from CRED-05 (script-mediated exfiltration, invisible to this predicate) and CRED-04 (cross-site arrival without off-site submission).",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Federated authentication not covered by the S-02 registry",
+        "Embedded payment and identity iframes",
+        "Multi-brand corporate estates operating a shared authentication domain across regional TLDs"
+      ],
+      "knownLimitations": [
+        "Cannot observe submission destinations rewritten by script at submit time — that case belongs to CRED-05. A page may declare a benign action attribute and override it dynamically."
+      ],
+      "cweMappings": [
+        "CWE-346"
+      ],
+      "capecMappings": [
+        "CAPEC-98"
+      ]
+    },
+    {
+      "id": "CRED-02",
+      "family": "CRED",
+      "name": "Unfamiliar impersonation",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "is",
+            "path": "loginForm.credentialFormPresent"
+          },
+          {
+            "op": "eq",
+            "path": "authContext.originPresent",
+            "value": false
+          },
+          {
+            "op": "neq",
+            "path": "authContext.bestCrossOriginMatch",
+            "value": null
+          },
+          {
+            "op": "gte",
+            "path": "authContext.bestCrossOriginMatch.similarity",
+            "param": "tau_sim"
+          },
+          {
+            "op": "notSameSite",
+            "left": "authContext.bestCrossOriginMatch.registrableDomain",
+            "right": "url.registrableDomain"
+          }
+        ]
+      },
+      "requiredModules": [
+        "loginForm",
+        "authContext",
+        "url"
+      ],
+      "baseWeight": 50,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
+      "lifecycleState": "Active",
+      "rationale": "The page structurally and visually resembles a login page the user has genuinely authenticated to, on a domain where they never have — the platform's strongest zero-hour signal, derived from the individual user's own history rather than any external blocklist. No other rule reads the Authentication History Store.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "White-label and shared-template platforms where many legitimate tenants render near-identical login pages",
+        "A user's first visit to a legitimate regional or sibling property of a site they already use"
+      ],
+      "knownLimitations": [
+        "Cold start — no protection until the user has authenticated at least once. A stale fingerprint following a legitimate site redesign causes a false negative, not a false positive, mitigated by refreshing the stored fingerprint on every successful authentication and retaining the two to three most recent per origin."
+      ],
+      "cweMappings": [
+        "CWE-451"
+      ],
+      "capecMappings": [
+        "CAPEC-151"
+      ]
+    },
+    {
+      "id": "CRED-03",
+      "family": "CRED",
+      "name": "Deceptive identity with credential collection",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "or",
+            "operands": [
+              {
+                "op": "neq",
+                "path": "homograph.confusableSkeleton",
+                "value": null
+              },
+              {
+                "op": "is",
+                "path": "homograph.isMixedScript"
+              },
+              {
+                "op": "or",
+                "operands": [
+                  {
+                    "op": "is",
+                    "path": "homograph.isIdn"
+                  },
+                  {
+                    "op": "is",
+                    "path": "homograph.containsNonAscii"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "is",
+            "path": "loginForm.credentialFormPresent"
+          }
+        ]
+      },
+      "requiredModules": [
+        "homograph",
+        "loginForm"
+      ],
+      "baseWeight": 45,
+      "tier": 1,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Visual domain deception is only weakly meaningful alone; this rule is the only one that requires it to co-occur with active credential collection, distinguishing deceptive-but-benign IDN sites from deceptive sites actively harvesting credentials.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Legitimate internationalized domains in non-Latin scripts — material in non-English markets, SHALL be measured on a regionally representative negative set, not solely a Latin-script one."
+      ],
+      "knownLimitations": [
+        "Requires a confusables/skeleton mapping. Single-script non-Latin domains are legitimate and common; the rule SHOULD weight mixed-script representation more heavily than non-ASCII representation alone."
+      ],
+      "cweMappings": [
+        "CWE-1007"
+      ],
+      "capecMappings": [
+        "CAPEC-630"
+      ]
+    },
+    {
+      "id": "CRED-04",
+      "family": "CRED",
+      "name": "Laundered arrival",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "gte",
+            "path": "redirect.hopCount",
+            "param": "redirect_hop_min"
+          },
+          {
+            "op": "notSameSite",
+            "left": "redirect.finalRegistrableDomain",
+            "right": "redirect.initialRegistrableDomain"
+          },
+          {
+            "op": "is",
+            "path": "loginForm.credentialFormPresent"
+          }
+        ]
+      },
+      "requiredModules": [
+        "redirect",
+        "loginForm"
+      ],
+      "baseWeight": 30,
+      "tier": 1,
+      "interveningTier": 1,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Credential collection reached through a multi-hop cross-site redirect chain is characteristic of link-laundering through compromised or disposable intermediaries — the only rule keying on redirect-chain shape rather than the landing page's own properties.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Advertising networks, link shorteners, marketing campaign tracking",
+        "Legitimate SSO chains, which routinely produce multi-hop cross-site redirects"
+      ],
+      "knownLimitations": [
+        "Hop counting reflects only what the extension observes; server-side redirect chains may be collapsed before the extension sees them, understating the true count."
+      ],
+      "cweMappings": [
+        "CWE-601"
+      ],
+      "capecMappings": [
+        "CAPEC-163"
+      ]
+    },
+    {
+      "id": "CRED-05",
+      "family": "CRED",
+      "name": "Script-mediated credential exfiltration",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "is",
+            "path": "javascript.listenerOnCredentialField"
+          },
+          {
+            "op": "is",
+            "path": "javascript.clientSideTransmissionObserved"
+          },
+          {
+            "op": "exists",
+            "collection": "javascript.transmissionEndpointDomains",
+            "where": {
+              "op": "notSameSite",
+              "left": "$",
+              "right": "url.registrableDomain"
+            }
+          }
+        ]
+      },
+      "requiredModules": [
+        "javascript",
+        "url"
+      ],
+      "baseWeight": 45,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Captures credentials leaving the page by script rather than by form submission, to an off-site endpoint — the exfiltration path CRED-01 structurally cannot see, since CRED-01 only reads the form's declared action, not runtime script behavior.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Analytics instrumentation attached to form fields",
+        "Password strength meters",
+        "Single-page applications authenticating against an API on a different registrable domain"
+      ],
+      "knownLimitations": [
+        "Reliable observation requires instrumentation established before page scripts execute. Dynamically constructed or obfuscated endpoints may evade endpoint attribution."
+      ],
+      "cweMappings": [
+        "CWE-522"
+      ],
+      "capecMappings": [
+        "CAPEC-117"
+      ]
+    },
+    {
+      "id": "CRED-06",
+      "family": "CRED",
+      "name": "Cleartext credential collection",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "is",
+            "path": "loginForm.credentialFormPresent"
+          },
+          {
+            "op": "not",
+            "operand": {
+              "op": "is",
+              "path": "url.isSecureScheme"
+            }
+          }
+        ]
+      },
+      "requiredModules": [
+        "loginForm",
+        "url"
+      ],
+      "baseWeight": 40,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Credentials collected over an unencrypted transport are exposed regardless of the site's intent — the only rule keying purely on transport security, independent of destination or script behavior.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Local development environments",
+        "Legacy intranet applications",
+        "Captive portals"
+      ],
+      "knownLimitations": [
+        "Increasingly rare on the public web, and browsers already surface their own warning. Retained because it is unambiguous and cheap; its empirical contribution may prove small."
+      ],
+      "cweMappings": [
+        "CWE-319"
+      ],
+      "capecMappings": [
+        "CAPEC-117"
+      ]
+    },
+    {
+      "id": "CRED-07",
+      "family": "CRED",
+      "name": "Concealed credential collection",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "exists",
+        "collection": "loginForm.forms",
+        "where": {
+          "op": "and",
+          "operands": [
+            {
+              "op": "or",
+              "operands": [
+                {
+                  "op": "is",
+                  "path": "$.hasHiddenCredentialField"
+                },
+                {
+                  "op": "is",
+                  "path": "$.hasAutocompleteDisabledCredential"
+                }
+              ]
+            },
+            {
+              "op": "notSameSite",
+              "left": "$.actionRegistrableDomain",
+              "right": "url.registrableDomain"
+            }
+          ]
+        }
+      },
+      "requiredModules": [
+        "loginForm",
+        "url"
+      ],
+      "baseWeight": 20,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
+      "lifecycleState": "Active",
+      "rationale": "Concealment of credential collection combined with off-site submission — the only rule triggered by field-level concealment (hidden or autocomplete-disabled) rather than by transport, destination pattern, or visual deception alone. Carries the lowest primary weight and requires the off-site conjunct to fire at all.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Password manager integration fields",
+        "Financial institutions that disable autocomplete as a matter of policy"
+      ],
+      "knownLimitations": [
+        "Weak in isolation, which is why it carries the lowest primary weight and requires the off-site conjunct to fire at all."
+      ],
+      "cweMappings": [
+        "CWE-451"
+      ],
+      "capecMappings": [
+        "CAPEC-98"
+      ]
+    },
+    {
+      "id": "CRED-A1",
+      "family": "CRED",
+      "name": "Injected credential interface",
+      "type": "aggravator",
+      "parent": "CRED-01",
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "is",
+            "path": "javascript.credentialInterfaceInjected"
+          },
+          {
+            "op": "exists",
+            "collection": "loginForm.forms",
+            "where": {
+              "op": "is",
+              "path": "$.injectedAfterLoad"
+            }
+          },
+          {
+            "op": "notSameSite",
+            "left": "javascript.injectingScriptOriginDomain",
+            "right": "url.registrableDomain"
+          }
+        ]
+      },
+      "requiredModules": [
+        "javascript",
+        "loginForm",
+        "url"
+      ],
+      "baseWeight": 10,
+      "tier": 1,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
+      "lifecycleState": "Active",
+      "rationale": "INTERPRETIVE CHOICE, FLAGGED FOR REVIEW: §7.2 states this aggravator's parent requirement as \"CRED-01 or CRED-02\" (two possible parents), but RuleDefinition.parent is singular (RuleId | null) and §9.2/§9.3's aggregation model is likewise single-parent. CRED-01 was chosen as the sole parent — not derived from spec text, an explicit judgment call pending architect ruling. Consequence: this aggravator will NOT contribute when only CRED-02 (not CRED-01) is present, narrowing §7.2's literal 'or' behavior. Client-side injection of a credential interface from an off-site script is meaningful as corroboration and meaningless alone — this is why it carries no standalone weight.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Essentially the entire modern single-page-application web — component frameworks routinely inject login forms post-load from bundled or CDN-hosted scripts. This is precisely why the rule carries no standalone weight."
+      ],
+      "knownLimitations": [
+        "Attribution of the injecting script's origin is not always reliable where bundlers rewrite or inline sources."
+      ],
+      "cweMappings": [
+        "CWE-829"
+      ],
+      "capecMappings": [
+        "CAPEC-242"
+      ]
+    },
+    {
+      "id": "DL-01",
+      "family": "DL",
+      "name": "Suspicious executable delivery",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "inSet",
+            "path": "downloadContext.declaredExtension",
+            "set": "executableTypes"
+          },
+          {
+            "op": "is",
+            "path": "downloadContext.referrerPresent"
+          },
+          {
+            "op": "notSameSite",
+            "left": "downloadContext.downloadRegistrableDomain",
+            "right": "downloadContext.referrerRegistrableDomain"
+          },
+          {
+            "op": "priorFindingActive"
+          }
+        ]
+      },
+      "requiredModules": [
+        "downloadContext"
+      ],
+      "baseWeight": 35,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Executable content delivered cross-site from a page already carrying security findings — the only rule requiring a pre-existing finding on the referring session, which is what makes flagging routine cross-site CDN delivery tolerable at all. priorFindingActive reads committed prior-pass state only (§7.2 interpretation, v0.7), never the in-flight finding set, keeping aggregation pure (§9.1).",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Legitimate CDN- and release-host-delivered installers, which are cross-site by normal practice. The requirement for a pre-existing finding on the referring session is what makes this rule tolerable at all."
+      ],
+      "knownLimitations": [
+        "Requires referring session context; a download initiated by direct navigation has no referring page and cannot match. No file content inspection is performed or claimed — this is delivery-context analysis only. A download initiated before any Tier 0/1 finding exists cannot match — intended behaviour, not a defect."
+      ],
+      "cweMappings": [
+        "CWE-494"
+      ],
+      "capecMappings": [
+        "CAPEC-542"
+      ]
+    },
+    {
+      "id": "DL-02",
+      "family": "DL",
+      "name": "Deceptive file typing",
+      "type": "aggravator",
+      "parent": "DL-01",
+      "predicate": {
+        "op": "or",
+        "operands": [
+          {
+            "op": "not",
+            "operand": {
+              "op": "is",
+              "path": "downloadContext.extensionMimeConsistent"
+            }
+          },
+          {
+            "op": "is",
+            "path": "downloadContext.hasCompoundExtension"
+          }
+        ]
+      },
+      "requiredModules": [
+        "downloadContext"
+      ],
+      "baseWeight": 20,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "Type deception corroborates suspicious delivery — the only rule reading declared-extension/MIME consistency, distinguishing an intentionally mistyped file from an ordinarily-typed one at an otherwise-suspicious delivery.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Servers emitting generic octet-stream content types",
+        "Legitimate archives with compound extensions"
+      ],
+      "knownLimitations": [
+        "Declared content types are frequently generic, limiting how often the inconsistency test can conclude anything."
+      ],
+      "cweMappings": [
+        "CWE-646"
+      ],
+      "capecMappings": [
+        "CAPEC-184"
+      ]
+    },
+    {
+      "id": "PM-01",
+      "family": "PM",
+      "name": "Unsolicited sensitive permission",
+      "type": "primary",
+      "parent": null,
+      "predicate": {
+        "op": "and",
+        "operands": [
+          {
+            "op": "neq",
+            "path": "permissionContext.requestedPermission",
+            "value": null
+          },
+          {
+            "op": "not",
+            "operand": {
+              "op": "is",
+              "path": "permissionContext.precededByUserGesture"
+            }
+          },
+          {
+            "op": "or",
+            "operands": [
+              {
+                "op": "notSameSite",
+                "left": "redirect.finalRegistrableDomain",
+                "right": "redirect.initialRegistrableDomain"
+              },
+              {
+                "op": "lt",
+                "path": "permissionContext.pageAgeMs",
+                "param": "page_age_max_ms"
+              }
+            ]
+          }
+        ]
+      },
+      "requiredModules": [
+        "permissionContext",
+        "redirect"
+      ],
+      "baseWeight": 25,
+      "tier": 2,
+      "interveningTier": 2,
+      "owner": "Durga Prasad",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0",
+      "lifecycleState": "Active",
+      "rationale": "A sensitive capability requested without user initiation, on a page reached indirectly or only just loaded — the only rule evaluating permission-request context; no other rule reads PermissionContext at all.",
+      "empiricalConfidence": "Unvalidated",
+      "knownFalsePositiveRisks": [
+        "Conferencing and mapping applications that request capabilities immediately on load as a matter of design."
+      ],
+      "knownLimitations": [
+        "User gesture attribution is imprecise across frames and asynchronous handlers. The page-age threshold is empirical (§13.2)."
+      ],
+      "cweMappings": [
+        "CWE-862"
+      ],
+      "capecMappings": [
+        "CAPEC-180"
+      ]
+    }
+  ],
+  "suppressions": [
+    {
+      "id": "S-01",
+      "mechanism": "exemption",
+      "purpose": "Users legitimately re-authenticate to familiar sites constantly. Treating routine re-authentication as anomalous would make the product unusable.",
+      "guards": [
+        {
+          "op": "is",
+          "path": "authContext.originPresent"
+        },
+        {
+          "op": "eq",
+          "path": "authContext.lifecycleState",
+          "value": "ESTABLISHED"
+        }
+      ],
+      "blockedBy": [],
+      "targets": [
+        {
+          "ruleId": "CRED-02",
+          "reduction": 1.0
+        },
+        {
+          "ruleId": "CRED-01",
+          "reduction": 0.5
+        },
+        {
+          "ruleId": "CRED-04",
+          "reduction": 0.5
+        }
+      ],
+      "neverApplies": [
+        "CRED-03",
+        "CRED-05",
+        "CRED-06",
+        "CRED-07",
+        "DL-01",
+        "DL-02",
+        "PM-01"
+      ],
+      "rationale": "INTERPRETIVE NARROWING, FLAGGED FOR REVIEW: §6.2's guard is stated as three conditions — origin_present=true, lifecycleState=ESTABLISHED, AND fingerprint drift within tolerance. No ParameterId exists for a drift-tolerance threshold (checked against the full §13.2 tunable list; 'drift tolerance' has no corresponding entry), so the third condition cannot be expressed as a guard Predicate. This guard checks only origin_present and lifecycleState=ESTABLISHED, treating drift-within-tolerance as already folded into the module's own ESTABLISHED determination rather than independently re-checked at Stage 2. This is a real narrowing of §6.2's literal three-condition wording, not a full implementation of it.",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0"
+    },
+    {
+      "id": "S-02",
+      "mechanism": "allowlist",
+      "purpose": "Federated authentication involves credential submission in the context of a third-party identity provider. Registry-listed providers are exempted from off-origin post penalties.",
+      "guards": [
+        {
+          "op": "exists",
+          "collection": "loginForm.forms",
+          "where": {
+            "op": "inSet",
+            "path": "$.actionRegistrableDomain",
+            "set": "identityProviders"
+          }
+        }
+      ],
+      "blockedBy": [
+        "CRED-03"
+      ],
+      "targets": [
+        {
+          "ruleId": "CRED-01",
+          "reduction": 1.0
+        }
+      ],
+      "neverApplies": [],
+      "rationale": "Without the CRED-03 guard, an attacker registering a confusable lookalike of a registry entry would obtain automatic exemption from the strongest credential rule (§6.3). Registry match is by exact string equality only — never substring, suffix, or similarity.",
+      "introducedIn": "0.1.0",
+      "lastModifiedIn": "0.1.0"
+    }
+  ],
+  "subsumption": [],
+  "changeLog": [
+    {
+      "version": "0.1.0",
+      "kind": "MINOR",
+      "summary": "Initial rule set: eleven rules (nine primary, two aggravator), eleven parameters, three refinement sets, empty subsumption table (§10.4). TWO of THREE §6 suppressions included (S-01, S-02); A-01 (User-Trusted Origin) is OMITTED. Checked exhaustively across every module contract, not just the two most obviously relevant ones: no field anywhere represents a per-origin explicit user trust action. D0.8's lifecycleState is authentication-derived (repeated logins over time), architecturally distinct from A-01's \"explicit, recorded user trust action\" (a single deliberate click past a warning). Sharper framing of the gap: trust_validity_days IS a defined, frozen ParameterId (ruleset_format_v1.ts:70, tagged // A-01) — the spec froze A-01's tunable parameter without ever providing anywhere for its underlying guard data to live. §6.1 forbids an unguarded suppression (\"A suppression without guards is an exploitable bypass\"), and no V-check enforces non-empty guards, so shipping A-01 with guards: [] would be a silent, uncaught violation of a frozen architectural invariant. Needs either an evidence-contract amendment adding the missing evidence category, or confirmation that user-trust suppression is handled entirely outside the rule-set predicate mechanism."
+    },
+    {
+      "version": "0.2.0",
+      "kind": "MINOR",
+      "summary": "DEFECT-15 fix, authorized by Jayanth (Architecture Owner). CRED-01, CRED-02, CRED-07, and CRED-A1 each compared against loginForm.pageRegistrableDomain, which is permanently null — LoginInterfaceEvidence carries no page-domain field, so this module cannot report one (see loginForm.ts's header comment and DEFECT-15). All four notSameSite comparisons were permanently vacuous as a result. Swapped the right-hand operand to url.registrableDomain (a real, evidence-grounded field — DEFECT-16 names this as a recurring pattern, first hit by CRED-05/CRED-06 at v0.1.0 authoring) and added url to each rule's requiredModules, appended at the position matching that rule's existing first-appearance-order convention (verified per rule, not assumed). Predicate meaning changed for four rules — MINOR per §14.1, not PATCH. Each rule's lastModifiedIn bumped to 0.2.0 accordingly. Nothing else changed: same eleven rules, eleven parameters, three refinement sets, two suppressions, empty subsumption table. integrityDigest recomputed using the newly-committed tools/ci/compute-ruleset-digest.mjs (SHA-256 over canonical JSON, sorted keys, integrityDigest blanked before hashing — see that file's header for the exact algorithm); its --verify mode confirms this file's stored digest against a fresh recomputation."
+    }
+  ]
+}

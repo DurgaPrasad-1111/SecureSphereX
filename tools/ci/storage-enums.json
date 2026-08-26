@@ -1,0 +1,120 @@
+{
+  "enums": {
+    "skr.capability_subject": [
+      "module",
+      "rule"
+    ],
+    "skr.collector_kind": [
+      "backend",
+      "capture_harness",
+      "extension"
+    ],
+    "skr.consistency_kind": [
+      "consistent",
+      "inconsistent",
+      "indeterminate"
+    ],
+    "skr.domain_lifecycle": [
+      "active",
+      "created"
+    ],
+    "skr.evaluability": [
+      "evaluated",
+      "unevaluable"
+    ],
+    "skr.evidence_category": [
+      "dns",
+      "domain_representation",
+      "download_context",
+      "login_interface",
+      "permission_context",
+      "redirect",
+      "script_runtime",
+      "transport",
+      "url"
+    ],
+    "skr.module_id": [
+      "auth_context",
+      "dns",
+      "download_context",
+      "homograph",
+      "javascript",
+      "login_form",
+      "permission_context",
+      "redirect",
+      "ssl",
+      "url"
+    ],
+    "skr.not_collected_reason": [
+      "api_unavailable",
+      "collector_error",
+      "cross_origin_blocked",
+      "network_unreachable",
+      "not_applicable",
+      "permission_denied",
+      "policy_suppressed",
+      "tier_not_reached",
+      "timeout"
+    ],
+    "skr.pass_trigger": [
+      "advisory_reevaluation",
+      "dom_ready",
+      "gate_credential_submit",
+      "gate_download_initiate",
+      "gate_permission_request",
+      "navigation_commit"
+    ],
+    "skr.redirect_mechanism": [
+      "http_3xx",
+      "javascript",
+      "meta_refresh",
+      "unknown"
+    ],
+    "skr.report_kind": [
+      "technical",
+      "user_facing"
+    ],
+    "skr.resource_lifecycle": [
+      "active",
+      "created",
+      "superseded"
+    ],
+    "skr.risk_tier": [
+      "high",
+      "low",
+      "medium"
+    ],
+    "skr.rule_outcome_kind": [
+      "matched",
+      "not_matched",
+      "unevaluable"
+    ],
+    "skr.rule_type": [
+      "aggravator",
+      "primary"
+    ],
+    "skr.session_state": [
+      "abandoned",
+      "completed",
+      "executing",
+      "finalized",
+      "materialized"
+    ],
+    "skr.unevaluable_reason": [
+      "backend_unreachable",
+      "evidence_contract_mismatch",
+      "fingerprint_version_mismatch",
+      "module_error",
+      "required_evidence_not_collected",
+      "store_unavailable"
+    ],
+    "tir.intelligence_lifecycle": [
+      "created",
+      "published",
+      "retired",
+      "validated"
+    ]
+  },
+  "lddDigestSha256": "838bfac7fefa6c98d7c1fa07e02af0ada1397424bbbfe38889e7659ec5ed1405",
+  "lddFile": "Logical-Database-Design-Specification-v1_1.md"
+}

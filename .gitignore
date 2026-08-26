@@ -1,0 +1,33 @@
+node_modules/
+dist/
+build/
+.env
+.claude/settings.local.json
+spike/
+*.tsbuildinfo
+# DEC-1 (DECISIONS (1).md, "Corpus storage ??? BLOCKING, day 1"): "The captured
+# corpus never enters git ??? not the repository, not Git-LFS. Payload lives on
+# disk outside version control. A committed index records what was captured."
+# INDEX.jsonl is that committed index and is explicitly un-ignored below.
+#
+# Order matters: `corpus/*` (not bare `corpus/`) excludes the directory's
+# contents without excluding the directory itself ??? a bare `corpus/` rule
+# would exclude the directory, and no `!` exception inside an excluded
+# directory can ever match.
+corpus/*
+!corpus/INDEX.jsonl
+# Downloaded input for tools/capture/ (Tranco top-10k list, 186,894 bytes).
+# Regenerable, not a copy of anything in spec/, does not belong in git.
+tools/capture/tranco_top10k.csv
+# Python bytecode cache and capture-run logs. Neither is source or record ???
+# INDEX.jsonl is the record.
+tools/capture/__pycache__/
+tools/capture/*.log
+# macOS
+.DS_Store
+**/.DS_Store
+check_defect7.py
+check_reconcile.py
+top-1m.csv
+tranco-top1m.zip
+tranco_top10k.csv

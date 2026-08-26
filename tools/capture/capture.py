@@ -1,0 +1,673 @@
+#!/usr/bin/env python3
+"""
+SecureSphere X — Corpus Capture Pipeline (day one)
+
+Conforms to: D0.5 Snapshot Format v1, Specification v0.7 §13.3
+Owner:       Role C
+
+PURPOSE
+    Capture RAW MATERIAL ONLY. Evidence extraction is deliberately NOT done
+    here: the Evidence Contract will change, and when it does the corpus must
+    be re-extractable without re-crawling. Re-crawling is impossible, because
+    phishing URLs decay within hours. Raw material captured today stays usable
+    against evidence contract v2 and beyond.
+
+WHY THIS RUNS BEFORE EVERYTHING ELSE
+    This is the only Stage 0 item with a clock on it. A day not captured is
+    positives that cannot be recovered.
+
+USAGE
+    pip install playwright httpx && playwright install chromium
+    python capture.py --feed phishtank --once
+    python capture.py --feed phishtank --poll 30      # every 30 minutes
+    python capture.py --tranco tranco_top10k.csv      # negatives
+    python capture.py --report                        # outcome distribution
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import hashlib
+import io
+import json
+import os
+import random
+import sys
+import time
+
+import httpx
+from dataclasses import dataclass, asdict
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import Any
+
+SNAPSHOT_FORMAT_VERSION = "1.1.0"
+SPLIT_FUNCTION_VERSION = "split-v2"
+SPLIT_PROPORTIONS = {"train": 0.60, "validation": 0.20, "test": 0.20}
+
+CORPUS_DIR = Path("corpus")
+FETCH_TIMEOUT_MS = 15_000
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+)
+
+
+# ── Split assignment (D0.5 §3, invariants S-2, S-2a, S-2b) ──────────────
+#
+# Assigned AT CAPTURE TIME, keyed on the REGISTRABLE DOMAIN, immutable after.
+#
+# Keying on the snapshot id (split-v1) embedded the capture date, so the same
+# URL captured on two days landed in two splits. Under 30-minute polling a live
+# URL yields roughly a dozen snapshots — meaning essentially every URL straddled
+# splits, and the held-out set measured memorisation.
+#
+# Domain keying does NOT address kit reuse across domains. That residual is
+# reported as a metric (§13.3), not engineered away: fixing it would require
+# clustering before assignment, surrendering the capture-time immutability that
+# makes a re-split impossible rather than merely discouraged.
+
+def _psl_extractor():
+    """
+    Offline, deterministic PSL extractor.
+
+    `suffix_list_urls=()` forbids network fetch: the bundled snapshot is used,
+    so the derivation is reproducible and cannot silently change between runs.
+
+    `include_psl_private_domains=True` is REQUIRED. Without it every
+    `*.github.io`, `*.web.app`, `*.pages.dev` and `*.blogspot.com` host
+    collapses to the platform domain — placing every phishing page hosted on
+    that platform, and every legitimate one, into a single split. Phishing
+    leans heavily on these platforms, so the ICANN-only view produces a
+    badly-grouped corpus.
+    """
+    import tldextract
+
+    return tldextract.TLDExtract(
+        suffix_list_urls=(),
+        fallback_to_snapshot=True,
+        include_psl_private_domains=True,
+    )
+
+
+_EXTRACT = None
+
+
+def _self_test() -> None:
+    """
+    Abort if the PSL did not load correctly.
+
+    Execution testing found that a failed PSL fetch degrades SILENTLY: every
+    host resolved to the same key, the entire corpus collapsed into one split,
+    and the tooling reported success. That is precisely the failure mode
+    Specification §15.1 forbids — degraded capability must be loud, never
+    silent. This check makes it loud.
+    """
+    cases = {
+        "https://www.example.co.uk/a": "example.co.uk",
+        "https://a.b.example.com/x": "example.com",
+        "https://evil1.github.io/login": "evil1.github.io",
+        "https://192.0.2.44/login": "192.0.2.44",
+    }
+    for url, expected in cases.items():
+        got = registrable_domain(url)
+        if got != expected:
+            raise SystemExit(
+                f"PSL SELF-TEST FAILED: {url} -> {got!r}, expected {expected!r}.\n"
+                "The Public Suffix List did not load correctly. Refusing to run: "
+                "a degraded PSL collapses the corpus into a single split and "
+                "silently destroys the benchmark."
+            )
+
+
+def registrable_domain(url: str) -> str:
+    """
+    eTLD+1 via the Public Suffix List, or the host itself for IP literals.
+
+    The result is STORED as `splitKey` and never re-derived, so a later PSL
+    update cannot retroactively move a snapshot between splits (D0.5 S-2b).
+
+    Raises on a host whose TLD is unknown to the PSL. Degrading to a partial
+    key there is what collapsed the corpus during testing.
+    """
+    global _EXTRACT
+    if _EXTRACT is None:
+        _EXTRACT = _psl_extractor()
+
+    ext = _EXTRACT(url)
+
+    # IP literals have no registrable domain; the host IS the unit.
+    if ext.ipv4 or (ext.domain.startswith("[") and ext.domain.endswith("]")):
+        return ext.domain.lower()
+
+    if not ext.suffix:
+        raise ValueError(
+            f"Unknown public suffix for {url!r} (domain={ext.domain!r}). "
+            "Either the bundled PSL snapshot is stale relative to this TLD, or "
+            "the host is a reserved/special-use name. Resolve deliberately — "
+            "do not fall back to a partial key."
+        )
+
+    return f"{ext.domain}.{ext.suffix}".lower()
+
+
+def assign_split(split_key: str) -> str:
+    digest = hashlib.sha256(split_key.encode()).hexdigest()
+    bucket = int(digest[:8], 16) / 0xFFFFFFFF
+    if bucket < SPLIT_PROPORTIONS["train"]:
+        return "train"
+    if bucket < SPLIT_PROPORTIONS["train"] + SPLIT_PROPORTIONS["validation"]:
+        return "validation"
+    return "test"
+
+
+def snapshot_id_for(captured_at: str, url: str) -> str:
+    # captured_at is a full-precision UTC ISO timestamp, unique per capture.
+    # DEFECT-7: keying on the day + attempt=1 caused same-day re-captures to
+    # collide and overwrite (violates S-1). Timestamp identity makes each
+    # capture distinct. NOT keyed on attempt — attemptOrdinal is reserved for
+    # real fetch retries (snapshot_format_v1.ts:57). NOT keyed on the day —
+    # the retired split-v1 model.
+    return hashlib.sha256(f"{captured_at}|{url}".encode()).hexdigest()[:32]
+
+
+# ── Fetch outcome taxonomy (D0.5 §1) ─────────────────────────────────────
+#
+# Recorded separately from evidence and never conflated with it. Phishing
+# infrastructure cloaks against datacenter IPs far more aggressively than
+# legitimate infrastructure. A silent fetch failure is indistinguishable from
+# a rule that did not fire, so outcome distribution must be reported alongside
+# every confusion matrix.
+
+@dataclass
+class FetchRecord:
+    outcome: str
+    httpStatus: int | None
+    durationMs: int
+    finalUrl: str | None
+    attemptOrdinal: int
+
+
+def classify_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "timeout" in text:
+        return "timeout"
+    if "err_name_not_resolved" in text or "dns" in text:
+        return "dns_resolution_failed"
+    if "ssl" in text or "cert" in text or "tls" in text:
+        return "tls_handshake_failed"
+    if "too many redirects" in text or "redirect" in text:
+        return "redirect_loop"
+    return "navigation_error"
+
+
+# ── Capture ──────────────────────────────────────────────────────────────
+
+def capture_one(
+    url: str,
+    label: str,
+    feed: str,
+    *,
+    impersonated_brand: str | None = None,
+    feed_verified: bool | None = None,
+    reported_on: str | None = None,
+    feed_record_id: str | None = None,
+    attempt: int = 1,
+) -> dict[str, Any]:
+    from playwright.sync_api import sync_playwright
+
+    captured_at = datetime.now(timezone.utc).isoformat()   # identity + collision safety
+    captured_on = date.today().isoformat()                 # §20.3: body stays day-granular
+    sid = snapshot_id_for(captured_at, url)
+    split_key = registrable_domain(url)             # split-v2 (D0.5 §3)
+
+    redirect_chain: list[dict[str, Any]] = []
+    response_headers: dict[str, str] | None = None
+    tls_chain: list[str] | None = None
+    rendered_dom: str | None = None
+    final_url: str | None = None
+    http_status: int | None = None
+    outcome = "success"
+
+    started = time.time()
+    browser = None
+    ctx = None
+    with sync_playwright() as pw:
+        # Widened to cover launch()/new_context()/new_page(), not just
+        # page.goto(). A Chromium launch timeout previously propagated
+        # straight out of this function, out of main()'s poll loop, and
+        # killed an unattended poller outright — observed directly during
+        # this session's first two launch attempts, unrelated to any
+        # feed-specific issue. Same principle as load_feed_urls's 429
+        # handling: a transient failure here must degrade to a recorded
+        # outcome, not take the whole process down.
+        try:
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(user_agent=USER_AGENT, ignore_https_errors=True)
+            page = ctx.new_page()
+
+            def on_response(resp):
+                nonlocal response_headers, http_status
+                if resp.request.is_navigation_request():
+                    if 300 <= resp.status < 400:
+                        redirect_chain.append({
+                            "fromUrl": resp.url,
+                            "toUrl": resp.headers.get("location", ""),
+                            "statusCode": resp.status,
+                            "mechanism": "http_3xx",
+                        })
+                    elif response_headers is None:
+                        response_headers = dict(resp.headers)
+                        http_status = resp.status
+
+            page.on("response", on_response)
+
+            page.goto(url, timeout=FETCH_TIMEOUT_MS, wait_until="load")
+            page.wait_for_timeout(2000)             # allow scripts to settle
+            rendered_dom = page.content()
+            final_url = page.url
+            if http_status and http_status >= 400:
+                outcome = "http_error"
+            elif not rendered_dom or len(rendered_dom) < 200:
+                outcome = "empty_document"
+        except Exception as exc:                     # noqa: BLE001
+            outcome = classify_error(exc)
+        finally:
+            if ctx is not None:
+                ctx.close()
+            if browser is not None:
+                browser.close()
+
+    duration_ms = int((time.time() - started) * 1000)
+
+    # NOTE: `blocked_or_cloaked` is deliberately NOT auto-classified here.
+    # Distinguishing a bot wall from a genuine page needs review, and guessing
+    # would silently bias the positive set. Flag for manual triage instead.
+
+    snapshot = {
+        "snapshotId": sid,
+        "formatVersion": SNAPSHOT_FORMAT_VERSION,
+        "capturedOn": captured_on,
+        "provenance": {
+            "label": label,
+            "feed": feed,
+            "feedVerified": feed_verified,
+            "reportedOn": reported_on,
+            "feedRecordId": feed_record_id,
+            # Required for CRED-02 validation: the synthetic seeding protocol
+            # pairs a phishing snapshot with the benign login snapshot of the
+            # brand it targets. Without this at ingest, CRED-02 cannot be
+            # validated offline at all.
+            "impersonatedBrand": impersonated_brand,
+        },
+        "split": {
+            "split": assign_split(split_key),
+            "assignmentFunctionVersion": SPLIT_FUNCTION_VERSION,
+            "splitKey": split_key,
+            "proportions": SPLIT_PROPORTIONS,
+            "assignedOn": captured_on,
+        },
+        "fetch": asdict(FetchRecord(
+            outcome=outcome,
+            httpStatus=http_status,
+            durationMs=duration_ms,
+            finalUrl=final_url,
+            attemptOrdinal=attempt,
+        )),
+        "raw": {
+            "requestedUrl": url,
+            "finalUrl": final_url,
+            "renderedDom": rendered_dom,
+            "domContentHash": (
+                hashlib.sha256(rendered_dom.encode()).hexdigest()
+                if rendered_dom else None
+            ),
+            "responseHeaders": response_headers,
+            "redirectChain": redirect_chain,
+            "tlsCertificateChain": tls_chain,
+            "dnsRecords": None,
+            "screenshotRef": None,
+        },
+        # Extraction is deliberately deferred (D0.5 §5). Raw material outlives
+        # the Evidence Contract.
+        "extraction": None,
+        "presentsCredentialInterface": None,
+    }
+    return snapshot
+
+
+def index_entry_for(snapshot: dict[str, Any], path: Path) -> dict[str, Any]:
+    """
+    The DEC-1 Implementation §1 field set, derived from a snapshot and the
+    path it was (or will be) written to. Shared by append_index() and
+    reconcile_index() so the two can't drift out of sync with each other.
+    """
+    return {
+        "snapshotId": snapshot["snapshotId"],
+        "capturedOn": snapshot["capturedOn"],
+        "label": snapshot["provenance"]["label"],
+        "feed": snapshot["provenance"]["feed"],
+        "feedRecordId": snapshot["provenance"]["feedRecordId"],
+        "impersonatedBrand": snapshot["provenance"]["impersonatedBrand"],
+        "split": snapshot["split"]["split"],
+        "splitKey": snapshot["split"]["splitKey"],
+        "assignmentFunctionVersion": snapshot["split"]["assignmentFunctionVersion"],
+        "fetchOutcome": snapshot["fetch"]["outcome"],
+        "httpStatus": snapshot["fetch"]["httpStatus"],
+        "domContentHash": snapshot["raw"]["domContentHash"],
+        "bytes": path.stat().st_size,
+        "relativePath": str(path.relative_to(CORPUS_DIR)),
+    }
+
+
+def append_index(snapshot: dict[str, Any], path: Path) -> None:
+    """
+    DEC-1 Implementation §1. One line per snapshot, append-only. This is the
+    record that survives if payload is lost — S-2b, S-3, and S-4/S-5 all
+    depend on it. `INDEX.jsonl` is committed; payload under corpus/ is not.
+    """
+    entry = index_entry_for(snapshot, path)
+    index_path = CORPUS_DIR / "INDEX.jsonl"
+    with index_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def persist(snapshot: dict[str, Any]) -> Path:
+    day = snapshot["capturedOn"]
+    label = snapshot["provenance"]["label"]
+    out_dir = CORPUS_DIR / label / day
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{snapshot['snapshotId']}.json.gz"
+    if path.exists():
+        # DEFECT-7 guard: with timestamp-keyed identity a collision should be
+        # impossible. Raising rather than overwriting turns a silent S-1
+        # violation into a loud one if this assumption is ever wrong again
+        # (§15.1 — degraded capability must be loud, not silent).
+        raise RuntimeError(
+            f"snapshot id collision: {path} already exists. Timestamp-keyed "
+            "identity should make this impossible; refusing to overwrite "
+            "raw material (D0.5 S-1)."
+        )
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write(json.dumps(snapshot, ensure_ascii=False))
+    append_index(snapshot, path)
+    return path
+
+
+# ── Index reconciliation (DEFECT-7 §4) ───────────────────────────────────
+#
+# The pre-fix identity scheme (day + attempt=1) let a same-day re-capture of
+# the same URL collide and silently overwrite the on-disk file, while
+# append_index() still appended a new line — leaving old INDEX.jsonl holding
+# multiple lines that cite the same path with different bytes/hash, only the
+# LAST one of which matches what is actually on disk now. This cannot
+# recover the overwritten raw material; it makes the index stop lying about
+# what survived.
+
+def reconcile_index() -> None:
+    index_path = CORPUS_DIR / "INDEX.jsonl"
+
+    old_lines: list[dict[str, Any]] = []
+    if index_path.exists():
+        for line in index_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                old_lines.append(json.loads(line))
+    old_count = len(old_lines)
+
+    # Collision count: distinct relativePaths that had more than one line
+    # pointing at them in the OLD index — files that were silently
+    # overwritten one or more times under the pre-fix identity scheme.
+    lines_per_path: dict[str, int] = {}
+    for entry in old_lines:
+        rp = entry.get("relativePath")
+        if rp is not None:
+            lines_per_path[rp] = lines_per_path.get(rp, 0) + 1
+    collided_paths = sum(1 for n in lines_per_path.values() if n > 1)
+
+    if index_path.exists():
+        backup_path = index_path.with_name("INDEX.jsonl.pre-reconcile")
+        backup_path.write_text(index_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    new_lines: list[str] = []
+    for path in sorted(CORPUS_DIR.rglob("*.json.gz")):
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            snap = json.loads(f.read())
+        new_lines.append(json.dumps(index_entry_for(snap, path), ensure_ascii=False))
+
+    index_path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""), encoding="utf-8")
+    new_count = len(new_lines)
+
+    print("INDEX.jsonl RECONCILE")
+    print("=" * 60)
+    print(f"  old line count      {old_count}")
+    print(f"  new line count      {new_count}")
+    print(f"  lines dropped       {old_count - new_count}")
+    print(f"  collided paths      {collided_paths}  "
+          f"(distinct files that had >1 index line pointing at them — "
+          f"the damage this reconcile is correcting)")
+    print(f"\nBackup of the pre-reconcile index: {index_path.with_name('INDEX.jsonl.pre-reconcile')}")
+
+
+# ── Reporting (D0.5 invariants S-4, S-5) ─────────────────────────────────
+#
+# Failed fetches STAY in the corpus. Excluding them biases the positive set
+# toward non-cloaking — that is, less sophisticated — phishing, and flatters
+# recall. Outcome distribution by label is a finding, not noise.
+
+def report() -> None:
+    from collections import Counter, defaultdict
+
+    by_label: dict[str, Counter] = defaultdict(Counter)
+    splits: dict[str, Counter] = defaultdict(Counter)
+
+    for path in CORPUS_DIR.rglob("*.json.gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            snap = json.loads(f.read())
+        label = snap["provenance"]["label"]
+        by_label[label][snap["fetch"]["outcome"]] += 1
+        splits[label][snap["split"]["split"]] += 1
+
+    if not by_label:
+        print("Corpus is empty.")
+        return
+
+    print("\nFETCH OUTCOME DISTRIBUTION BY LABEL")
+    print("=" * 60)
+    for label, counts in sorted(by_label.items()):
+        total = sum(counts.values())
+        ok = counts.get("success", 0)
+        print(f"\n{label}  (n={total}, success={ok / total:.1%})")
+        for outcome, n in counts.most_common():
+            print(f"    {outcome:<26} {n:>6}  {n / total:>6.1%}")
+
+    if "phishing" in by_label and "benign" in by_label:
+        p = by_label["phishing"]
+        b = by_label["benign"]
+        ps = p.get("success", 0) / max(sum(p.values()), 1)
+        bs = b.get("success", 0) / max(sum(b.values()), 1)
+        print("\n" + "-" * 60)
+        print(f"Success-rate asymmetry: benign {bs:.1%} vs phishing {ps:.1%} "
+              f"(gap {bs - ps:+.1%})")
+        print("A large gap indicates cloaking against the capture environment.")
+        print("Report this alongside every confusion matrix (D0.5 S-5).")
+
+    print("\nSPLIT DISTRIBUTION")
+    print("=" * 60)
+    for label, counts in sorted(splits.items()):
+        total = sum(counts.values())
+        parts = "  ".join(f"{k}={v} ({v / total:.0%})" for k, v in sorted(counts.items()))
+        print(f"{label:<10} {parts}")
+
+
+# ── Feed ingestion ───────────────────────────────────────────────────────
+
+def load_feed_urls(feed: str) -> list[dict[str, Any]]:
+    """
+    Both PhishTank and OpenPhish publish downloadable lists; PhishTank
+    additionally supplies a verification flag and frequently a target brand
+    (often "Other" — not every entry names one) — captured where supplied.
+
+    PhishTank's anonymous quota is shared and tight (observed: 75 requests
+    per 259200s / 3 days) — this can 429 without any key at all, independent
+    of registration. PHISHTANK_APP_KEY is read from the environment and
+    applied if set, but is not required to succeed.
+    """
+    if feed == "openphish":
+        # Free community feed: bare URL list, no metadata whatsoever.
+        resp = httpx.get("https://openphish.com/feed.txt", timeout=15, follow_redirects=True)
+        resp.raise_for_status()
+        return [
+            {"url": line.strip(), "id": None, "verified": None, "reportedOn": None, "target": None}
+            for line in resp.text.splitlines()
+            if line.strip()
+        ]
+
+    if feed == "phishtank":
+        # PhishTank's own headers state the anonymous quota exactly:
+        # x-request-limit 75 per x-request-limit-interval 259200s — one
+        # request per 57.6 minutes. An unhandled exception here must never
+        # kill a 48-hour unattended process (that is what happened on the
+        # first launch attempt: a bare 429 propagated out of this function,
+        # out of load_feed_urls, out of main()'s while-loop, and took the
+        # whole poller down). On 429: exponential backoff with jitter,
+        # capped, up to a fixed attempt budget. On ANY final failure —
+        # exhausted retries, a non-429 HTTP error, a network error, a
+        # malformed response — return an empty list. An empty list just
+        # means this poll cycle captures nothing from this feed; that is
+        # recoverable. A raised exception is not.
+        params = {}
+        key = os.environ.get("PHISHTANK_APP_KEY")
+        if key:
+            params["app_key"] = key
+
+        max_attempts = 5
+        base_delay_s = 2.0
+        max_delay_s = 60.0
+        resp = None
+
+        try:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    resp = httpx.get(
+                        "https://data.phishtank.com/data/online-valid.csv",
+                        params=params,
+                        timeout=30,
+                        follow_redirects=True,
+                    )
+                    resp.raise_for_status()
+                    break
+                except httpx.HTTPStatusError as exc:
+                    is_429 = exc.response.status_code == 429
+                    if not is_429 or attempt == max_attempts:
+                        print(
+                            f"load_feed_urls(phishtank): giving up after {attempt} "
+                            f"attempt(s): {exc}. Returning empty for this poll cycle.",
+                            file=sys.stderr,
+                        )
+                        return []
+                    delay = min(base_delay_s * (2 ** (attempt - 1)), max_delay_s)
+                    delay += random.uniform(0, delay * 0.25)  # jitter
+                    print(
+                        f"load_feed_urls(phishtank): 429, backing off {delay:.1f}s "
+                        f"(attempt {attempt}/{max_attempts})",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
+
+            if resp is None:
+                return []
+
+            reader = csv.DictReader(io.StringIO(resp.text))
+            entries = []
+            for row in reader:
+                target = (row.get("target") or "").strip()
+                entries.append({
+                    "url": row["url"],
+                    "id": row.get("phish_id"),
+                    "verified": (row.get("verified", "").strip().lower() == "yes"),
+                    "reportedOn": (row.get("submission_time") or "")[:10] or None,
+                    # "Other" is PhishTank's own value for "no specific brand
+                    # identified" — treated as null, not as a brand name.
+                    "target": target if target and target.lower() != "other" else None,
+                })
+            return entries
+        except Exception as exc:  # noqa: BLE001 — feed loaders must not crash the poller
+            print(f"load_feed_urls(phishtank): unexpected error, returning empty: {exc}", file=sys.stderr)
+            return []
+
+    if feed == "tranco":
+        # Same URL construction the --tranco branch already uses: last CSV
+        # column is the domain, prefixed https://. Resolved relative to this
+        # script's own location, not cwd — CORPUS_DIR's cwd-relative path
+        # already caused one wrong-location bug this session; not repeating
+        # that pattern here.
+        csv_path = Path(__file__).parent / "tranco_top10k.csv"
+        rows = [r.strip().split(",") for r in csv_path.read_text().splitlines() if r.strip()]
+        return [
+            {"url": f"https://{r[-1]}", "id": None, "verified": None, "reportedOn": None, "target": None}
+            for r in rows
+        ]
+
+    raise ValueError(f"unknown feed: {feed}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="SecureSphere X corpus capture")
+    ap.add_argument("--feed", choices=["phishtank", "openphish", "tranco"])
+    ap.add_argument("--tranco", type=Path, help="CSV of negatives")
+    ap.add_argument("--poll", type=int, metavar="MINUTES")
+    ap.add_argument("--once", action="store_true")
+    ap.add_argument("--report", action="store_true")
+    ap.add_argument("--reconcile-index", action="store_true",
+                     help="DEFECT-7: rebuild INDEX.jsonl from on-disk *.json.gz truth")
+    ap.add_argument("--limit", type=int, default=200)
+    args = ap.parse_args()
+
+    _self_test()
+
+    if args.reconcile_index:
+        reconcile_index()
+        return 0
+
+    if args.report:
+        report()
+        return 0
+
+    if args.tranco:
+        rows = [r.strip().split(",") for r in args.tranco.read_text().splitlines() if r.strip()]
+        urls = [f"https://{r[-1]}" for r in rows[: args.limit]]
+        for u in urls:
+            snap = capture_one(u, "benign", "tranco")
+            persist(snap)
+            print(f"{snap['fetch']['outcome']:<24} {u}")
+        return 0
+
+    if not args.feed:
+        ap.print_help()
+        return 2
+
+    while True:
+        # Label convention (unchanged, extended): "tranco" is the negatives
+        # source, hardcoded to "benign" here exactly as the --tranco branch
+        # above hardcodes it; every other feed is "phishing".
+        label = "benign" if args.feed == "tranco" else "phishing"
+        for entry in load_feed_urls(args.feed)[: args.limit]:
+            snap = capture_one(
+                entry["url"], label, args.feed,
+                impersonated_brand=entry.get("target"),
+                feed_verified=entry.get("verified"),
+                reported_on=entry.get("reportedOn"),
+                feed_record_id=entry.get("id"),
+            )
+            persist(snap)
+            print(f"{snap['fetch']['outcome']:<24} {entry['url']}")
+        if args.once or not args.poll:
+            return 0
+        time.sleep(args.poll * 60)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

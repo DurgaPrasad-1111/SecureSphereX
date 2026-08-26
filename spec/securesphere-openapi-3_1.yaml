@@ -1,0 +1,3838 @@
+openapi: 3.1.0
+info:
+  title: SecureSphere X API
+  version: 1.2.0
+  summary: Projection of the frozen SecureSphere X architecture into HTTP.
+  description: 'Generated from Backend Architecture v1.3, Canonical Boundary Contracts D0.10 v1.1.0, and
+    API Contract v1.2.
+
+
+    This document is a projection, not a source of architectural truth. Canonical-backed schemas are generated
+    from the D0.x TypeScript contracts and referenced by `$ref`; none is hand-written (API Contract §18.1).
+
+
+    Two behaviours depart from HTTP convention and are architectural: evaluation unavailability returns
+    200 with a possibly-null body rather than 503, and an over-long k-anonymity prefix is rejected rather
+    than truncated.'
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+- url: https://{host}/
+  variables:
+    host:
+      default: api.securesphere.example
+tags:
+- name: Analysis
+  description: Backend v1.3 §5.1 — Analysis Controller
+- name: Intervention
+  description: Backend v1.3 §5.2 — Intervention Controller
+- name: Intelligence
+  description: Backend v1.3 §5.3 — Threat Intelligence Controller
+- name: RuleSet
+  description: Backend v1.3 §5.4 — Rule Distribution Controller
+- name: Dashboard
+  description: Backend v1.3 §5.5 — Dashboard Controller
+- name: Identity
+  description: Backend v1.3 §5.6 — Identity Controller
+- name: Health
+  description: Backend v1.3 §5.7 — Health and Readiness Controller
+paths:
+  /v1/analysis/sessions/{sessionId}/gates:
+    post:
+      operationId: submitGate
+      summary: Submit accumulated evidence at a Tier 2 gate
+      description: Materialises the Analysis Session under the client-generated identifier — there is
+        no session creation endpoint (AC-4). Evidence for Tier 0, 1 and 2 is submitted together; the backend
+        reconstructs the pass sequence. Idempotent on (sessionId, gateOrdinal).
+      tags:
+      - Analysis
+      security: &id001
+      - extensionCredential: []
+      parameters:
+      - &id002
+        name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Client-generated at navigation (Backend v1.3 §4.3). Authoritative over any body value.
+      - &id009
+        name: X-Contract-Version
+        in: header
+        required: true
+        schema:
+          type: string
+        description: API Contract v1.2 §9.2. Mismatch yields 409.
+      - &id003
+        name: X-Correlation-Id
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Optional; generated when absent and echoed on every response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GateSubmission'
+      responses:
+        '200':
+          description: Evaluated, or evaluation unavailable. Where the evaluation path is unavailable
+            the response is 200 with a degraded view, or a literal null body when no prior state exists
+            (API Contract §11.4). 503 is NOT used for evaluation unavailability.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/SecurityStateView'
+                - type: 'null'
+        '409':
+          description: Contract version mismatch, session finalised, gate ordinal not dense, or submission
+            in flight.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Payload exceeds bounds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: Content type not application/json.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': &id004
+          $ref: '#/components/responses/Unauthenticated'
+        '403': &id005
+          $ref: '#/components/responses/Forbidden'
+        '422': &id006
+          $ref: '#/components/responses/ValidationFailed'
+        '429': &id007
+          $ref: '#/components/responses/RateLimited'
+        '503': &id008
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/analysis/sessions/{sessionId}/state:
+    get:
+      operationId: getCurrentState
+      summary: Retrieve current security state
+      description: Returns the platform's present belief for the session. Read-your-writes after a gate
+        response.
+      tags:
+      - Analysis
+      security: *id001
+      parameters:
+      - *id002
+      - *id003
+      responses:
+        '200':
+          description: Current state, or null where none has been committed.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/SecurityStateView'
+                - type: 'null'
+        '404':
+          description: Session not materialised — no gate has been submitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/analysis/sessions/{sessionId}/finalization:
+    post:
+      operationId: finalizeSession
+      summary: Finalise an Analysis Session
+      description: Finalises the session. Report metadata is created as a side effect within the same
+        unit of work (AC-5); there is no report creation endpoint. Idempotent.
+      tags:
+      - Analysis
+      security: *id001
+      parameters:
+      - *id002
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizationRequest'
+      responses:
+        '204':
+          description: Finalised, or already finalised.
+        '404':
+          description: Session not materialised.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/analysis/sessions/{sessionId}/interventions:
+    post:
+      operationId: reportIntervention
+      summary: Report that an intervention was presented
+      description: Sets the intervention lock on the corresponding pass. Accepts no tier, score or finding
+        (Backend v1.3 §5.2, BI-32) — the backend already holds the tier it computed. Idempotent on (sessionId,
+        interventionOrdinal).
+      tags:
+      - Intervention
+      security: *id001
+      parameters:
+      - *id002
+      - *id009
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterventionReport'
+      responses:
+        '204':
+          description: Recorded.
+        '404':
+          description: Session not materialised.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: No committed pass corresponds to this intervention.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/analysis/sessions/{sessionId}/interventions/{interventionOrdinal}/disposition:
+    put:
+      operationId: reportDisposition
+      summary: Report the user disposition for an intervention
+      description: Recorded as an audit event; not persisted as domain data (Backend v1.3 §5.2, §10.10).
+        Guard G-02 is enforced client-side and does not depend on this report.
+      tags:
+      - Intervention
+      security: *id001
+      parameters:
+      - *id002
+      - name: interventionOrdinal
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - *id009
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispositionReport'
+      responses:
+        '204':
+          description: Recorded as an audit event.
+        '404':
+          description: Session or intervention not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/intelligence/lookups:
+    post:
+      operationId: lookupIntelligence
+      summary: k-anonymity prefix lookup
+      description: POST is used so the prefix does not appear in access, proxy or browser-history logs.
+        The operation has no side effect and may be retried freely. The prefix length must equal the configured
+        value exactly; a longer prefix is rejected, never truncated (API Contract §15.4).
+      tags:
+      - Intelligence
+      security: *id001
+      parameters:
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntelligenceLookupRequest'
+      responses:
+        '200':
+          description: 'Every entry in the prefix bucket. Final matching occurs client-side.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/rulesets/current:
+    get:
+      operationId: getCurrentRuleSet
+      summary: Current recommended rule-set version
+      description: Rule sets are not public; authentication is required.
+      tags:
+      - RuleSet
+      security: *id001
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: Current recommended version and digest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSetPointer'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/rulesets/{ruleSetVersion}:
+    get:
+      operationId: getRuleSet
+      summary: Fetch a released rule-set artifact
+      description: A released version is immutable and may be cached indefinitely. An unreleased version
+        is never served.
+      tags:
+      - RuleSet
+      security: *id001
+      parameters:
+      - name: ruleSetVersion
+        in: path
+        required: true
+        schema:
+          type: string
+      - *id003
+      responses:
+        '200':
+          description: The rule-set artifact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSet'
+        '404':
+          description: Unknown version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Version exists but is not released.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Integrity verification failed; an alert is raised.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/rulesets/{ruleSetVersion}/digest:
+    get:
+      operationId: getRuleSetDigest
+      summary: Fetch a rule-set integrity digest
+      description: Immutable.
+      tags:
+      - RuleSet
+      security: *id001
+      parameters:
+      - name: ruleSetVersion
+        in: path
+        required: true
+        schema:
+          type: string
+      - *id003
+      responses:
+        '200':
+          description: Integrity digest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSetDigest'
+        '404':
+          description: Unknown version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/dashboard/history:
+    get:
+      operationId: getHistory
+      summary: Saved analysis history
+      description: Returns the sessions the user has explicitly saved. No user-session association exists
+        in the model, so this is the whole of what a user owns (API Contract §6.1). Cursor-paginated.
+      tags:
+      - Dashboard
+      security: &id010
+      - userToken: []
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - name: tier
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RiskTier'
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - *id003
+      responses:
+        '200':
+          description: A page of saved history entries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPage'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/dashboard/sessions/{sessionId}:
+    get:
+      operationId: getSessionDetail
+      summary: Session detail, explanation level
+      description: Returns matched rule identifiers and their summaries. Weights, suppressions, guard
+        evaluations, subsumption and raw evidence are not exposed (AD-5); they are reachable only through
+        the offline replay tool.
+      tags:
+      - Dashboard
+      security: *id010
+      parameters:
+      - *id002
+      - *id003
+      responses:
+        '200':
+          description: Explanation-level session detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/dashboard/reports/{reportId}:
+    get:
+      operationId: getReport
+      summary: Retrieve report metadata
+      description: Analytical detail resolves through the referenced session, subject to the same depth
+        limits.
+      tags:
+      - Dashboard
+      security: *id010
+      parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - *id003
+      responses:
+        '200':
+          description: 'Report metadata.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/dashboard/resources/{resourceIdentity}:
+    get:
+      operationId: getResourceSummary
+      summary: Resource summary
+      description: No Domain Security State and no Knowledge Metadata — both are internal with no API
+        representation (AC-8).
+      tags:
+      - Dashboard
+      security: *id010
+      parameters:
+      - name: resourceIdentity
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - *id003
+      responses:
+        '200':
+          description: Resource summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceSummary'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/registrations:
+    post:
+      operationId: register
+      summary: Create an account
+      description: 'Account creation.
+
+
+        Blocked by ACR-1.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: &id011 []
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/sessions:
+    post:
+      operationId: login
+      summary: Authenticate
+      description: 'Returns access and rotating refresh tokens.
+
+
+        Blocked by ACR-2.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id011
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/sessions/refresh:
+    post:
+      operationId: refreshSession
+      summary: Rotate tokens
+      description: 'Rotation with reuse detection.
+
+
+        Blocked by ACR-3.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id011
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/sessions/current:
+    delete:
+      operationId: logout
+      summary: Log out
+      description: Revokes the refresh token. AC-7 prohibits deletion of the analytical record; an authentication
+        session is not analytical data.
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '204':
+          description: Logged out.
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/mfa/factors:
+    post:
+      operationId: enrollMfaFactor
+      summary: Enrol an MFA factor
+      description: 'Enrolment.
+
+
+        Blocked by ACR-4.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+    get:
+      operationId: listMfaFactors
+      summary: List MFA factors
+      description: 'Listing.
+
+
+        Blocked by ACR-4.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/mfa/challenges:
+    post:
+      operationId: verifyMfaChallenge
+      summary: Verify an MFA challenge
+      description: 'Verification.
+
+
+        Blocked by ACR-5.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id011
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/preferences:
+    get:
+      operationId: getPreferences
+      summary: Read preferences
+      description: 'Preferences.
+
+
+        Blocked by ACR-6.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+    put:
+      operationId: setPreferences
+      summary: Replace preferences
+      description: 'Preferences.
+
+
+        Blocked by ACR-6.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /v1/identity/disclosure:
+    get:
+      operationId: getDisclosure
+      summary: Authentication History disclosure text
+      description: 'The user-facing statement required by Rule Engine §20.9.7.
+
+
+        Blocked by ACR-7.
+
+
+        BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change Request;
+        nothing is invented here. See Translation Issues Log.'
+      tags:
+      - Identity
+      security: *id010
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: 'Success.
+
+
+            BODY NOT SPECIFIED — no frozen document enumerates it. Recorded as an Architecture Change
+            Request; nothing is invented here. See Translation Issues Log.'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Liveness
+      description: 'Process responsive. Unversioned: reports the deployment, not an API version.'
+      tags:
+      - Health
+      security: *id011
+      responses:
+        '200':
+          description: Alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness
+      description: Ready requires the database reachable, the Evaluation Port healthy, and a valid rule
+        set loaded. A backend with no valid rule set is not ready.
+      tags:
+      - Health
+      security: *id011
+      responses:
+        '200':
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+  /health/version:
+    get:
+      operationId: getVersion
+      summary: Version report
+      description: API, contract, rule-set and schema versions.
+      tags:
+      - Health
+      security: *id001
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: Versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionReport'
+        '401': *id004
+        '403': *id005
+        '422': *id006
+        '429': *id007
+        '503': *id008
+components:
+  securitySchemes:
+    extensionCredential:
+      type: http
+      scheme: bearer
+      description: Build-embedded extension credential, presented on each request (Backend v1.3 §10.1.1).
+        There is no token exchange and no enrolment endpoint. The credential identifies the build, not
+        the installation, is assumed public, and is therefore not a rate-limiting key — limits are keyed
+        on source address (CR-1).
+    userToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Asymmetrically signed JWT (EdDSA or RS256) with a rotating refresh token and reuse
+        detection (Backend v1.3 §10.7).
+  responses:
+    Unauthenticated:
+      description: Authentication absent, expired or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Authenticated but not permitted — wrong principal type, or resource not owned. An unowned
+        resource yields 403, never 404 (API Contract §6.2).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationFailed:
+      description: Schema or semantic validation failure. Unknown fields are rejected, never ignored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Rate limit exceeded. Keyed on source address for extension surfaces.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: Database or dependency unavailable. Never used for evaluation unavailability.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    CollectionContext:
+      type: object
+      description: Canonical `CollectionContext` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        collector:
+          $ref: '#/components/schemas/CollectorKind'
+        collectorVersion:
+          type: string
+        tier:
+          type: integer
+          enum:
+          - 0
+          - 1
+          - 2
+        passOrdinal:
+          type: number
+        collectedOn:
+          type: string
+        evidenceContractVersion:
+          type: string
+          const: 1.1.0
+      required:
+      - collector
+      - collectorVersion
+      - tier
+      - passOrdinal
+      - collectedOn
+      - evidenceContractVersion
+      additionalProperties: false
+    CollectorKind:
+      type: string
+      enum:
+      - extension
+      - capture_harness
+      - backend
+      description: Canonical enum `CollectorKind` (D0.x). Canonical form only; storage form never on the
+        wire (NM-1).
+    CredentialField:
+      type: object
+      description: Canonical `CredentialField` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        kind:
+          $ref: '#/components/schemas/CredentialFieldKind'
+        hidden:
+          type: boolean
+        autocompleteDisabled:
+          type: boolean
+      required:
+      - kind
+      - hidden
+      - autocompleteDisabled
+      additionalProperties: false
+    CredentialFieldKind:
+      type: string
+      enum:
+      - password
+      - otp
+      - pin
+      - username
+      - email
+      description: Canonical enum `CredentialFieldKind` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    CurrentSecurityState:
+      type: object
+      description: Canonical `CurrentSecurityState` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        analysisSessionId:
+          type: string
+        targetResourceId:
+          type: string
+        score:
+          type: number
+        tier:
+          $ref: '#/components/schemas/RiskTier'
+        ruleSetVersion:
+          type: string
+        degraded:
+          type: boolean
+        sourcePassResultId:
+          type: string
+        passOrdinal:
+          type: number
+      required:
+      - analysisSessionId
+      - targetResourceId
+      - score
+      - tier
+      - ruleSetVersion
+      - degraded
+      - sourcePassResultId
+      - passOrdinal
+      additionalProperties: false
+    DispositionReport:
+      type: object
+      description: API Contract v1.2 §8.2.2.
+      required:
+      - disposition
+      properties:
+        disposition:
+          $ref: '#/components/schemas/UserDisposition'
+      additionalProperties: false
+    DnsEvidence:
+      type: object
+      description: Canonical `DnsEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        resolves:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        aRecordCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        aaaaRecordCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        nameServers:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        cnameTarget:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        mxPresent:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        txtRecordCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        dnssecDeployed:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - resolves
+      - aRecordCount
+      - aaaaRecordCount
+      - nameServers
+      - cnameTarget
+      - mxPresent
+      - txtRecordCount
+      - dnssecDeployed
+      additionalProperties: false
+    DomainRepresentationEvidence:
+      type: object
+      description: Canonical `DomainRepresentationEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        unicodeDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        punycodeDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        isIdn:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        containsNonAscii:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        scriptsUsed:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        isMixedScript:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        confusableSkeleton:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - unicodeDomain
+      - punycodeDomain
+      - isIdn
+      - containsNonAscii
+      - scriptsUsed
+      - isMixedScript
+      - confusableSkeleton
+      additionalProperties: false
+    DownloadContextEvidence:
+      type: object
+      description: Canonical `DownloadContextEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        downloadUrl:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        downloadRegistrableDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        referrerUrl:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        referrerRegistrableDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        declaredFilename:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        declaredExtension:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        declaredMimeType:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        hasCompoundExtension:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - downloadUrl
+      - downloadRegistrableDomain
+      - referrerUrl
+      - referrerRegistrableDomain
+      - declaredFilename
+      - declaredExtension
+      - declaredMimeType
+      - hasCompoundExtension
+      additionalProperties: false
+    EmpiricalConfidence:
+      type: string
+      enum:
+      - Unvalidated
+      - Provisional
+      - Validated
+      description: Canonical enum `EmpiricalConfidence` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    Error:
+      type: object
+      description: API Contract v1.2 §11.1. `code` is the contract; `message` is not.
+      required:
+      - code
+      - message
+      - correlationId
+      - fieldErrors
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        correlationId:
+          type: string
+        fieldErrors:
+          oneOf:
+          - type: array
+            items:
+              type: object
+              required:
+              - path
+              - code
+              properties:
+                path:
+                  type: string
+                code:
+                  type: string
+              additionalProperties: false
+          - type: 'null'
+      additionalProperties: false
+    EvidenceByCategory:
+      type: object
+      description: Canonical `EvidenceByCategory` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        url:
+          $ref: '#/components/schemas/UrlEvidence'
+        transport:
+          $ref: '#/components/schemas/TransportEvidence'
+        dns:
+          $ref: '#/components/schemas/DnsEvidence'
+        redirect:
+          $ref: '#/components/schemas/RedirectEvidence'
+        loginInterface:
+          $ref: '#/components/schemas/LoginInterfaceEvidence'
+        scriptRuntime:
+          $ref: '#/components/schemas/ScriptRuntimeEvidence'
+        domainRepresentation:
+          $ref: '#/components/schemas/DomainRepresentationEvidence'
+        downloadContext:
+          $ref: '#/components/schemas/DownloadContextEvidence'
+        permissionContext:
+          $ref: '#/components/schemas/PermissionContextEvidence'
+      required:
+      - url
+      - transport
+      - dns
+      - redirect
+      - loginInterface
+      - scriptRuntime
+      - domainRepresentation
+      - downloadContext
+      - permissionContext
+      additionalProperties: false
+    ExplanationItem:
+      type: object
+      description: Canonical `ExplanationItem` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        ruleId:
+          $ref: '#/components/schemas/RuleId'
+        summary:
+          type: string
+        namedOrigin:
+          oneOf:
+          - $ref: '#/components/schemas/Origin'
+          - type: 'null'
+        aiGenerated:
+          type: boolean
+      required:
+      - ruleId
+      - summary
+      - namedOrigin
+      - aiGenerated
+      additionalProperties: false
+    FinalizationRequest:
+      type: object
+      description: API Contract v1.2 §8.1.3.
+      required:
+      - finalizedOn
+      properties:
+        finalizedOn:
+          type: string
+          format: date
+      additionalProperties: false
+    FormMethod:
+      type: string
+      enum:
+      - GET
+      - POST
+      - OTHER
+      description: Canonical enum `FormMethod` (D0.x). Canonical form only; storage form never on the
+        wire (NM-1).
+    GateSubmission:
+      type: object
+      description: API Contract v1.2 §8.1.1, §9.1. Evidence is D0.1; the envelope is the HTTP projection
+        of D0.10 InvocationContext with `tier` excluded by Backend v1.3 §5.1 (BI-32). No field is defined
+        by OpenAPI.
+      required:
+      - invocation
+      - evidence
+      properties:
+        invocation:
+          $ref: '#/components/schemas/InvocationContext'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityEvidence'
+      additionalProperties: false
+    HealthStatus:
+      type: object
+      description: API Contract v1.2 §8.7.
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - degraded
+          - unavailable
+      additionalProperties: false
+    HistoryEntry:
+      type: object
+      description: API Contract v1.2 §8.5.1. Returns no pass internals.
+      required:
+      - sessionId
+      - resourceIdentity
+      - effectiveTier
+      - finalizedOn
+      - degraded
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        resourceIdentity:
+          type: string
+          format: uuid
+        effectiveTier:
+          $ref: '#/components/schemas/RiskTier'
+        finalizedOn:
+          type: string
+          format: date
+        degraded:
+          type: boolean
+      additionalProperties: false
+    HistoryPage:
+      type: object
+      description: API Contract v1.2 §7.3. Cursor is opaque.
+      required:
+      - entries
+      - nextCursor
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEntry'
+        nextCursor:
+          oneOf:
+          - type: string
+          - type: 'null'
+      additionalProperties: false
+    IntelligenceLookupRequest:
+      type: object
+      description: API Contract v1.2 §8.3.1, §15.4. Prefix length must equal the configured value exactly;
+        a longer prefix is rejected, never truncated.
+      required:
+      - hashPrefix
+      properties:
+        hashPrefix:
+          type: string
+      additionalProperties: false
+    InterventionReport:
+      type: object
+      description: API Contract v1.2 §8.2.1. No tier, score or finding is accepted (Backend v1.3 §5.2,
+        BI-32).
+      required:
+      - interventionOrdinal
+      - response
+      properties:
+        interventionOrdinal:
+          type: integer
+          minimum: 1
+        response:
+          $ref: '#/components/schemas/RecommendedResponse'
+      additionalProperties: false
+    InvocationContext:
+      type: object
+      description: Canonical `InvocationContext` (D0.x), generated. Never hand-written (§18.1). HTTP projection
+        excludes ['tier'] by Backend v1.3 §5.1 (BI-32) — an architectural exclusion, not a generator choice.
+      properties:
+        analysisSessionId:
+          type: string
+        targetResourceId:
+          type: string
+        trigger:
+          $ref: '#/components/schemas/PassTrigger'
+        isPrivateContext:
+          type: boolean
+        gateOrdinal:
+          type:
+          - number
+          - 'null'
+      required:
+      - analysisSessionId
+      - targetResourceId
+      - trigger
+      - isPrivateContext
+      - gateOrdinal
+      additionalProperties: false
+    LifecycleState:
+      type: string
+      enum:
+      - Proposed
+      - Active
+      - Deprecated
+      - Retired
+      description: Canonical enum `LifecycleState` (D0.x). Canonical form only; storage form never on
+        the wire (NM-1).
+    LoginFingerprint:
+      type: object
+      description: Canonical `LoginFingerprint` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        fingerprintAlgorithmVersion:
+          type: string
+        fieldComposition:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialFieldKind'
+        titleTokens:
+          type: array
+          items:
+            type: string
+        faviconHash:
+          type:
+          - string
+          - 'null'
+        heroImagePerceptualHash:
+          type:
+          - string
+          - 'null'
+        dominantColors:
+          type: array
+          items:
+            type: string
+      required:
+      - fingerprintAlgorithmVersion
+      - fieldComposition
+      - titleTokens
+      - faviconHash
+      - heroImagePerceptualHash
+      - dominantColors
+      additionalProperties: false
+    LoginFormObservation:
+      type: object
+      description: Canonical `LoginFormObservation` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialField'
+        method:
+          $ref: '#/components/schemas/FormMethod'
+        actionUrl:
+          type:
+          - string
+          - 'null'
+        actionRegistrableDomain:
+          type:
+          - string
+          - 'null'
+        injectedAfterLoad:
+          type: boolean
+        injectingScriptOrigin:
+          type:
+          - string
+          - 'null'
+      required:
+      - fields
+      - method
+      - actionUrl
+      - actionRegistrableDomain
+      - injectedAfterLoad
+      - injectingScriptOrigin
+      additionalProperties: false
+    LoginInterfaceEvidence:
+      type: object
+      description: Canonical `LoginInterfaceEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        credentialFormPresent:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        forms:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LoginFormObservation'
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        fingerprint:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                $ref: '#/components/schemas/LoginFingerprint'
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - credentialFormPresent
+      - forms
+      - fingerprint
+      additionalProperties: false
+    ModuleId:
+      type: string
+      enum:
+      - url
+      - ssl
+      - dns
+      - redirect
+      - loginForm
+      - javascript
+      - homograph
+      - authContext
+      - downloadContext
+      - permissionContext
+      description: Canonical enum `ModuleId` (D0.x). Canonical form only; storage form never on the wire
+        (NM-1).
+    NotCollectedReason:
+      type: string
+      enum:
+      - api_unavailable
+      - permission_denied
+      - tier_not_reached
+      - network_unreachable
+      - timeout
+      - cross_origin_blocked
+      - collector_error
+      - policy_suppressed
+      - not_applicable
+      description: Canonical enum `NotCollectedReason` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    Origin:
+      type: string
+      description: Branded primitive; construction is constrained by the canonical contract, not by this
+        schema.
+    ParameterDefinition:
+      type: object
+      description: Canonical `ParameterDefinition` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        id:
+          $ref: '#/components/schemas/ParameterId'
+        value:
+          type: number
+        unit:
+          type: string
+        rationale:
+          type: string
+        confidence:
+          $ref: '#/components/schemas/EmpiricalConfidence'
+      required:
+      - id
+      - value
+      - unit
+      - rationale
+      - confidence
+      additionalProperties: false
+    ParameterId:
+      type: string
+      enum:
+      - tau_sim
+      - redirect_hop_min
+      - page_age_max_ms
+      - threshold_medium
+      - threshold_high
+      - tau_collision
+      - auth_count_n
+      - auth_days_m
+      - provisional_expiry_days
+      - trust_validity_days
+      - establishment_rate_max
+      description: Canonical enum `ParameterId` (D0.x). Canonical form only; storage form never on the
+        wire (NM-1).
+    PassTrigger:
+      type: string
+      enum:
+      - navigation_commit
+      - dom_ready
+      - gate_credential_submit
+      - gate_download_initiate
+      - gate_permission_request
+      - advisory_reevaluation
+      description: Canonical enum `PassTrigger` (D0.x). Canonical form only; storage form never on the
+        wire (NM-1).
+    PermissionContextEvidence:
+      type: object
+      description: Canonical `PermissionContextEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        requestedPermission:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                $ref: '#/components/schemas/SensitivePermission'
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        requestingOrigin:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        precededByUserGesture:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        pageAgeMs:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - requestedPermission
+      - requestingOrigin
+      - precededByUserGesture
+      - pageAgeMs
+      additionalProperties: false
+    Predicate:
+      type: string
+      enum:
+      - is
+    RecommendedResponse:
+      type: string
+      enum:
+      - Allow
+      - Warn
+      - Block
+      description: Canonical enum `RecommendedResponse` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    RedirectEvidence:
+      type: object
+      description: Canonical `RedirectEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        initialUrl:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        finalUrl:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        chain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RedirectHop'
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        hopCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        crossedRegistrableDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - initialUrl
+      - finalUrl
+      - chain
+      - hopCount
+      - crossedRegistrableDomain
+      additionalProperties: false
+    RedirectHop:
+      type: object
+      description: Canonical `RedirectHop` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        fromUrl:
+          type: string
+        toUrl:
+          type: string
+        mechanism:
+          $ref: '#/components/schemas/RedirectMechanism'
+        statusCode:
+          type:
+          - number
+          - 'null'
+      required:
+      - fromUrl
+      - toUrl
+      - mechanism
+      - statusCode
+      additionalProperties: false
+    RedirectMechanism:
+      type: string
+      enum:
+      - http_3xx
+      - javascript
+      - meta_refresh
+      - unknown
+      description: Canonical enum `RedirectMechanism` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    RefinementSet:
+      type: object
+      description: Canonical `RefinementSet` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        id:
+          $ref: '#/components/schemas/RefinementSetId'
+        members:
+          type: array
+          items:
+            type: string
+        matchMode:
+          type: string
+          const: exact
+        rationale:
+          type: string
+      required:
+      - id
+      - members
+      - matchMode
+      - rationale
+      additionalProperties: false
+    RefinementSetId:
+      type: string
+      enum:
+      - executableTypes
+      - sensitivePermissions
+      - identityProviders
+      description: Canonical enum `RefinementSetId` (D0.x). Canonical form only; storage form never on
+        the wire (NM-1).
+    ResourceSummary:
+      type: object
+      description: API Contract v1.2 §8.5.4. No Domain Security State, no Knowledge Metadata, no Intelligence
+        Object internals (AC-8).
+      required:
+      - resourceIdentity
+      - score
+      - tier
+      - degraded
+      - analysisCount
+      properties:
+        resourceIdentity:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 0
+        tier:
+          $ref: '#/components/schemas/RiskTier'
+        degraded:
+          type: boolean
+        analysisCount:
+          type: integer
+          minimum: 0
+      additionalProperties: false
+    RiskTier:
+      type: string
+      enum:
+      - Low
+      - Medium
+      - High
+      description: Canonical enum `RiskTier` (D0.x). Canonical form only; storage form never on the wire
+        (NM-1).
+    RuleDefinition:
+      type: object
+      description: Canonical `RuleDefinition` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        id:
+          $ref: '#/components/schemas/RuleId'
+        family:
+          $ref: '#/components/schemas/RuleFamily'
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/RuleType'
+        parent:
+          oneOf:
+          - $ref: '#/components/schemas/RuleId'
+          - type: 'null'
+        predicate:
+          $ref: '#/components/schemas/Predicate'
+        requiredModules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleId'
+        baseWeight:
+          type: number
+        tier:
+          $ref: '#/components/schemas/Tier'
+        interveningTier:
+          $ref: '#/components/schemas/Tier'
+        owner:
+          type: string
+        introducedIn:
+          type: string
+        lastModifiedIn:
+          type: string
+        lifecycleState:
+          $ref: '#/components/schemas/LifecycleState'
+        rationale:
+          type: string
+        empiricalConfidence:
+          $ref: '#/components/schemas/EmpiricalConfidence'
+        knownFalsePositiveRisks:
+          type: array
+          items:
+            type: string
+        knownLimitations:
+          type: array
+          items:
+            type: string
+        cweMappings:
+          type: array
+          items:
+            type: string
+        capecMappings:
+          type: array
+          items:
+            type: string
+      required:
+      - id
+      - family
+      - name
+      - type
+      - parent
+      - predicate
+      - requiredModules
+      - baseWeight
+      - tier
+      - interveningTier
+      - owner
+      - introducedIn
+      - lastModifiedIn
+      - lifecycleState
+      - rationale
+      - empiricalConfidence
+      - knownFalsePositiveRisks
+      - knownLimitations
+      - cweMappings
+      - capecMappings
+      additionalProperties: false
+    RuleFamily:
+      type: string
+      enum:
+      - CRED
+      - DL
+      - PM
+      - JS
+      description: Canonical enum `RuleFamily` (D0.x). Canonical form only; storage form never on the
+        wire (NM-1).
+    RuleId:
+      type: string
+    RuleSet:
+      type: object
+      description: Canonical `RuleSet` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        formatVersion:
+          type: string
+          const: 1.1.0
+        ruleSetVersion:
+          type: string
+        released:
+          type: boolean
+        integrityDigest:
+          type: string
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDefinition'
+        refinementSets:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefinementSet'
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleDefinition'
+        suppressions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuppressionDefinition'
+        subsumption:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubsumptionEntry'
+        version:
+          type: string
+        kind:
+          type: string
+          enum:
+          - MAJOR
+          - MINOR
+          - PATCH
+        summary:
+          type: string
+      required:
+      - formatVersion
+      - ruleSetVersion
+      - released
+      - integrityDigest
+      - parameters
+      - refinementSets
+      - rules
+      - suppressions
+      - subsumption
+      - version
+      - kind
+      - summary
+      additionalProperties: false
+    RuleSetDigest:
+      type: object
+      description: API Contract v1.2 §8.4.
+      required:
+      - digest
+      properties:
+        digest:
+          type: string
+      additionalProperties: false
+    RuleSetPointer:
+      type: object
+      description: API Contract v1.2 §8.4.
+      required:
+      - ruleSetVersion
+      - digest
+      properties:
+        ruleSetVersion:
+          type: string
+        digest:
+          type: string
+      additionalProperties: false
+    RuleType:
+      type: string
+      enum:
+      - primary
+      - aggravator
+      description: Canonical enum `RuleType` (D0.x). Canonical form only; storage form never on the wire
+        (NM-1).
+    ScriptRuntimeEvidence:
+      type: object
+      description: Canonical `ScriptRuntimeEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        listenerOnCredentialField:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        clientSideTransmissionObserved:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        transmissionEndpoints:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        dynamicScriptLoadCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        dynamicScriptOrigins:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        credentialInterfaceInjected:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - listenerOnCredentialField
+      - clientSideTransmissionObserved
+      - transmissionEndpoints
+      - dynamicScriptLoadCount
+      - dynamicScriptOrigins
+      - credentialInterfaceInjected
+      additionalProperties: false
+    SecurityEvidence:
+      type: object
+      description: Canonical `SecurityEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        targetResourceId:
+          type: string
+        analysisSessionId:
+          type: string
+        evidenceId:
+          type: string
+        collectionContext:
+          $ref: '#/components/schemas/CollectionContext'
+        evidence:
+          $ref: '#/components/schemas/EvidenceByCategory'
+      required:
+      - targetResourceId
+      - analysisSessionId
+      - evidenceId
+      - collectionContext
+      - evidence
+      additionalProperties: false
+    SecurityStateView:
+      type: object
+      description: Canonical `SecurityStateView` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        state:
+          $ref: '#/components/schemas/CurrentSecurityState'
+        recommendedResponse:
+          $ref: '#/components/schemas/RecommendedResponse'
+        explanations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExplanationItem'
+        degraded:
+          type: boolean
+        degradedExplanation:
+          type:
+          - string
+          - 'null'
+        interventionLocked:
+          type: boolean
+        sourcePassResultId:
+          type: string
+      required:
+      - state
+      - recommendedResponse
+      - explanations
+      - degraded
+      - degradedExplanation
+      - interventionLocked
+      - sourcePassResultId
+      additionalProperties: false
+    SensitivePermission:
+      type: string
+      enum:
+      - camera
+      - microphone
+      - geolocation
+      - notifications
+      - clipboard_read
+      description: Canonical enum `SensitivePermission` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    SessionDetail:
+      type: object
+      description: API Contract v1.2 §8.5.2 — explanation level only. No weights, suppressions, guard
+        evaluations, subsumption or raw evidence (AD-5).
+      required:
+      - sessionId
+      - resourceIdentity
+      - effectiveTier
+      - degraded
+      - degradedReason
+      - ruleSetVersion
+      - finalizedOn
+      - explanations
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        resourceIdentity:
+          type: string
+          format: uuid
+        effectiveTier:
+          $ref: '#/components/schemas/RiskTier'
+        degraded:
+          type: boolean
+        degradedReason:
+          oneOf:
+          - type: string
+          - type: 'null'
+        ruleSetVersion:
+          type: string
+        finalizedOn:
+          type: string
+          format: date
+        explanations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExplanationItem'
+      additionalProperties: false
+    SubsumptionEntry:
+      type: object
+      description: Canonical `SubsumptionEntry` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        composite:
+          $ref: '#/components/schemas/RuleId'
+        subsumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleId'
+      required:
+      - composite
+      - subsumes
+      additionalProperties: false
+    SuppressionDefinition:
+      type: object
+      description: Canonical `SuppressionDefinition` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        id:
+          $ref: '#/components/schemas/SuppressionId'
+        mechanism:
+          $ref: '#/components/schemas/SuppressionMechanism'
+        purpose:
+          type: string
+        guards:
+          type: array
+          items:
+            $ref: '#/components/schemas/Predicate'
+        blockedBy:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleId'
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuppressionTarget'
+        neverApplies:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleId'
+        rationale:
+          type: string
+        introducedIn:
+          type: string
+        lastModifiedIn:
+          type: string
+      required:
+      - id
+      - mechanism
+      - purpose
+      - guards
+      - blockedBy
+      - targets
+      - neverApplies
+      - rationale
+      - introducedIn
+      - lastModifiedIn
+      additionalProperties: false
+    SuppressionId:
+      type: string
+    SuppressionMechanism:
+      type: string
+      enum:
+      - exemption
+      - allowlist
+      description: Canonical enum `SuppressionMechanism` (D0.x). Canonical form only; storage form never
+        on the wire (NM-1).
+    SuppressionTarget:
+      type: object
+      description: Canonical `SuppressionTarget` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        ruleId:
+          $ref: '#/components/schemas/RuleId'
+        reduction:
+          type: number
+      required:
+      - ruleId
+      - reduction
+      additionalProperties: false
+    Tier:
+      type: integer
+      enum:
+      - 0
+      - 1
+      - 2
+    TransportEvidence:
+      type: object
+      description: Canonical `TransportEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        isHttps:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        certificateSubject:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        subjectAlternativeNames:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        validFrom:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        validTo:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        issuer:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        chainComplete:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        chainTrusted:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - isHttps
+      - certificateSubject
+      - subjectAlternativeNames
+      - validFrom
+      - validTo
+      - issuer
+      - chainComplete
+      - chainTrusted
+      additionalProperties: false
+    UrlEvidence:
+      type: object
+      description: Canonical `UrlEvidence` (D0.x), generated. Never hand-written (§18.1).
+      properties:
+        fullUrl:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        scheme:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        host:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        port:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        path:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        queryPresent:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        registrableDomain:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        subdomainLabels:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: array
+                items:
+                  type: string
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        isIpLiteral:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: boolean
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        totalLength:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+        percentEncodedSegmentCount:
+          description: D0.1 tri-state observation. `null` never substitutes for any of the three states.
+          oneOf:
+          - type: object
+            required:
+            - state
+            - value
+            properties:
+              state:
+                const: present
+              value:
+                type: number
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            properties:
+              state:
+                const: absent
+            additionalProperties: false
+          - type: object
+            required:
+            - state
+            - reason
+            properties:
+              state:
+                const: notCollected
+              reason:
+                $ref: '#/components/schemas/NotCollectedReason'
+            additionalProperties: false
+      required:
+      - fullUrl
+      - scheme
+      - host
+      - port
+      - path
+      - queryPresent
+      - registrableDomain
+      - subdomainLabels
+      - isIpLiteral
+      - totalLength
+      - percentEncodedSegmentCount
+      additionalProperties: false
+    UserDisposition:
+      type: string
+      enum:
+      - heeded
+      - overridden
+      - dismissed
+      description: Canonical enum `UserDisposition` (D0.x). Canonical form only; storage form never on
+        the wire (NM-1).
+    VersionReport:
+      type: object
+      description: API Contract v1.2 §8.7 — API, contract, rule-set and schema versions.
+      required:
+      - apiVersion
+      - contractVersions
+      - ruleSetVersion
+      - schemaVersion
+      properties:
+        apiVersion:
+          type: string
+        contractVersions:
+          type: object
+          additionalProperties:
+            type: string
+        ruleSetVersion:
+          type: string
+        schemaVersion:
+          type: string
+      additionalProperties: false
