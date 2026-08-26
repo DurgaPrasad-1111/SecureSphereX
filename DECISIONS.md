@@ -971,3 +971,97 @@ analytical consequence, no Architecture Owner ruling required (same
 reasoning as `evaluationId`), recorded here for traceability.
 **Signed by:** _not required — mechanical resolution, per the
 MECHANICAL/SEMANTIC framework DEC-15 established_
+
+---
+
+### Addendum — 2026-08-26 — Stage 4 dependency check (Contextual Suppression)
+
+Re-derived independently from Stage 4's own spec section — not inherited
+from the Stage 3 finding. The two stages read structurally similar data
+(both evaluate a `Predicate` against Findings) but that similarity is
+confirmed here directly against Stage 4's own types, not assumed from
+Stage 3's conclusion.
+
+**Read in full before concluding:** `spec/SecureSphereX-RuleEngine-Spec-v0_8.md`
+§6 in full — §6.1 (Suppression Semantics — Frozen, lines 354-368), §6.2
+(S-01 Prior Authentication, lines 370-378), §6.3 (S-02 Federated Identity
+Provider, lines 380-392), §6.4 (A-01 User-Trusted Origin, lines 394-403).
+
+**The structural proof, from Stage 4's own type, not inference:**
+`packages/contracts/ruleset.format.v1.ts`'s `SuppressionDefinition`
+(lines 217-238) — the type that encodes §6's guard conditions:
+`guards: readonly Predicate[]` — **the exact same `Predicate` AST type
+rules use for their own conditions**, confirmed by reading the field
+directly, not assumed from the name. This means Stage 4's guard
+evaluation is structurally bound by the identical proof already
+established for Stage 2/3: `FindingPath` "MUST resolve against D0.2's
+FindingsByModule... A static check validates every path at release (§8,
+V-2)" (`ruleset.format.v1.ts:20-28`) — re-verified here against Stage 4's
+own `guards` field, not carried over. `blockedBy: readonly RuleId[]` and
+`targets: readonly SuppressionTarget[]` (`{ ruleId, reduction }`) carry
+no envelope-field references either — confirmed by reading both fields
+directly.
+
+Stage 4's OUTPUT type, `SuppressionApplication` / `GuardEvaluation`
+(`packages/contracts/passresult.contract.v1.ts:88-104`): grepped
+exhaustively, zero occurrences of `moduleVersion`, `indicators`,
+`consistency`, or `summary` anywhere in the file. Grepped
+`ruleset.format.v1.ts` too: one `summary` hit, at line 275 —
+`RuleSet.changeLog[].summary`, a change-log entry's own summary text, the
+same unrelated field already dismissed twice before (Stage 2 and Stage 3
+checks each independently hit and correctly dismissed the identical
+false positive). Grepped §6's raw text directly: zero occurrences of any
+of the four terms.
+
+**Classification, per field:**
+
+| Field | Classification | Citation |
+|---|---|---|
+| `moduleVersion` | **CONFIRMED-UNUSED-BY-STAGE-4** | Not in `SuppressionDefinition`, `SuppressionApplication`, or `GuardEvaluation`; §6.1-6.4 never reference it |
+| `indicators` | **CONFIRMED-UNUSED-BY-STAGE-4** | Same structural absence; §6's guards read `AuthContextFindings`/`LoginFormFindings` fields only (§6.2, §6.3), never indicator strings |
+| `consistency` | **CONFIRMED-UNUSED-BY-STAGE-4** | Same structural absence; no guard condition in §6.2-§6.4 references coherence assessment |
+| `summary` | **CONFIRMED-UNUSED-BY-STAGE-4** | Same structural absence; the one "summary" hit in the suppression-adjacent contract is `RuleSet.changeLog[].summary`, unrelated |
+
+**Two genuine Stage 4 blockers found while reading §6, reported as
+discovery — neither folded into DEC-15, neither resolved here, neither
+previously tracked as a DEC or DEFECT entry anywhere (checked directly:
+`DECISIONS.md` and `docs/DEFECTS.md` grepped for "A-01" and "drift
+tolerance" — zero hits before this addendum):**
+
+1. **A-01 (§6.4, User-Trusted Origin) does not exist in the live rule
+   set.** Confirmed directly against `rulesets/rules-v0.1.0.json`:
+   `suppressions` contains exactly two entries, S-01 and S-02 — A-01 is
+   entirely absent. The rule set's own `changeLog` entry documents why,
+   in its `summary` field (the unrelated field cited above, read for its
+   content here, not its structural relevance): no evidence category
+   anywhere represents "an explicit, recorded user trust action, scoped
+   to a single origin" (§6.4's own guard condition); `trust_validity_days`
+   is a defined, frozen `ParameterId` (§13.2) with nowhere for its
+   underlying guard data to live. Needs either an evidence-contract
+   amendment adding the missing category, or a ruling that user-trust
+   suppression is handled entirely outside the rule-set predicate
+   mechanism. Not a DEC-15 matter — a rule-set content gap, not an
+   envelope-field gap.
+2. **S-01's live guard is a self-documented narrowing of §6.2.** §6.2
+   specifies three guard conditions: `origin_present = true`,
+   `lifecycleState = ESTABLISHED`, **and** fingerprint drift within
+   tolerance. `rulesets/rules-v0.1.0.json`'s S-01 entry encodes only the
+   first two as its actual `guards` `Predicate[]` — its own `rationale`
+   field states why, verbatim: "No ParameterId exists for a
+   drift-tolerance threshold... This guard checks only origin_present and
+   lifecycleState=ESTABLISHED, treating drift-within-tolerance as already
+   folded into the module's own ESTABLISHED determination... This is a
+   real narrowing of §6.2's literal three-condition wording, not a full
+   implementation of it." Already flagged for review inside the rule set
+   itself; not previously elevated to a DEC or DEFECT entry. Also not a
+   DEC-15 matter.
+
+**Conclusion:** DEC-15's four remaining open fields do **not** block
+Stage 4 (Contextual Suppression) — same structural reason as Stages 2
+and 3: `SuppressionDefinition`'s `guards` field is bound by the identical
+`FindingPath`/V-2 proof, independently re-confirmed here rather than
+assumed. Stage 4 scaffolding is not blocked by DEC-15. It IS bounded by
+the two rule-set content gaps above — A-01 cannot be scaffolded at all
+today (no guard data exists to build it from), and S-01 can only be
+scaffolded to its already-narrowed, self-documented two-condition form,
+not §6.2's literal three-condition text.
