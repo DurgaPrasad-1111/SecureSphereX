@@ -730,3 +730,86 @@ OPEN. Options and recommendations above are input for the ruling, not a
 substitute for it.
 **Signed by:** _pending (Architecture Owner ruling required for the
 remaining four fields)_
+
+---
+
+### Addendum — 2026-08-26 — Stage 2 dependency check (does predicate matching need the 4 open fields?)
+
+New information, not a re-litigation of the four fields above: does
+`moduleVersion`/`indicators`/`consistency`/`summary` remaining open
+actually block Stage 2 (predicate matching)? Answered from Stage 2's own
+spec and contract, not from the earlier "no current rule names them" grep
+alone, per explicit instruction that the two checks are not equivalent.
+
+**Read in full before concluding:**
+`spec/SecureSphereX-RuleEngine-Spec-v0_8.md` §4.2 (Stage Responsibilities)
+and §5 (Predicate Refinements, all of §5.1-§5.6) — the operational
+definition of what Stage 2 does and reads. §4.2: "Stage 2 — Predicate
+Matching. Each rule's predicate is evaluated against the complete set of
+Security Evaluations. **Predicate refinements (§5) are applied here and
+only here** — they define what the rule's terms mean." §5.2-§5.5 (R-01
+through R-04) each define a term strictly over Findings-level data
+(registrable-domain equality, executable-type membership, sensitive-
+permission membership, credential-field classification) — none reference
+envelope metadata.
+
+**The structural proof, from the contract itself, not inference:**
+`packages/contracts/ruleset.format.v1.ts` lines 20-28 —
+`FindingPath = \`${ModuleId}.${string}\`` with its own doc comment: "A
+predicate reads typed fields from the EvaluationSet. Paths are
+`<moduleId>.<field>` and **MUST resolve against D0.2's FindingsByModule**.
+A static check validates every path at release (§8, **V-2**)." Every
+`Predicate` AST operator (`is`, `not`, `and`, `or`, `gte`/`lte`/`gt`/`lt`,
+`eq`/`neq`, `sameSite`/`notSameSite`, `inSet`, `exists`) resolves its
+operands exclusively through `ValuePath` (`FindingPath | ItemPath`) —
+confirmed by reading the full `Predicate` type (lines 113-151) operator by
+operator. None of the four open fields — nor `evaluationId`,
+`evidenceRefs`, `moduleId`, `passOrdinal`, `contractVersion`,
+`targetResourceId`, `analysisSessionId`, or `collectionContext` — are
+readable by ANY predicate operator, because `FindingsByModule[M]` does
+not contain them. Confirmed by direct scan of all ten `*Findings`
+interfaces in `evaluation.contract.v1.ts`: zero contain a field named
+`moduleVersion`, `indicators`, `consistency`, `summary`, or
+`evaluationId`. V-2 is a real, currently-enforced check (verified live
+every `npm run validate:ruleset` run this session, "V-2 OK") — it is not
+merely that no *current* rule references these fields, it is that the
+validator would **reject** any future rule that tried to, because no such
+`FindingPath` could ever resolve.
+
+**Classification, per field:**
+
+| Field | Classification | Citation |
+|---|---|---|
+| `moduleVersion` | **CONFIRMED-UNUSED-BY-STAGE-2** | Not in any `FindingsByModule[M]`; not a valid `FindingPath` target; V-2 would reject any predicate naming it |
+| `indicators` | **CONFIRMED-UNUSED-BY-STAGE-2** | Same as above. Also independently confirmed by §4 (Security Indicators vs Findings): "Rules predicate on FINDINGS, never on indicator strings" |
+| `consistency` | **CONFIRMED-UNUSED-BY-STAGE-2** | Same structural proof; `ConsistencyAssessment` values never appear as an `eq`/`neq` literal target anywhere the type system permits |
+| `summary` | **CONFIRMED-UNUSED-BY-STAGE-2** | Same structural proof; `string` field, not inside `FindingsByModule[M]` for any module |
+
+**What Stage 2 actually needs, precisely stated:** for each `ModuleId`,
+its `Evaluability<FindingsByModule[M]>` — i.e. exactly what
+`evaluateModule`/`evaluateAllModules` (`packages/engine/orchestrator.ts`)
+already produce today, fully real, no blocking. Stage 2 predicate matching
+does **not** structurally require the full `SecurityEvaluation<M>`
+envelope `assembleSecurityEvaluation` currently cannot complete — it
+requires only the `moduleId` + `result` pair each dispatch result already
+carries.
+
+**One separate, genuine blocker found during this check, unrelated to
+DEC-15:** the `priorFindingActive` predicate operator (used by DL-01
+only) — "True when at least one primary finding with non-zero effective
+weight exists in a PRIOR COMMITTED PASS of the current Analysis Session"
+(`ruleset.format.v1.ts` lines 140-151) — reads Analysis History / prior
+committed pass state, which requires the Authentication History Store.
+The store does not exist until week 4
+(`docs/How-To-Start-Coding.md`). This is not a DEC-15 matter and not
+ambiguous — it is a confirmed, different, already-known dependency (the
+same one `authContext.ts`'s store-reader injection already documents).
+Scaffolded as an explicit, typed error rather than a fabricated
+true/false default — see `packages/engine/stage2.ts`.
+
+**Conclusion:** DEC-15's four remaining open fields do **not** block
+Stage 2 predicate matching. Stage 2 scaffolding proceeds using only the
+already-real `evaluateModule`/`evaluateAllModules` output. This does not
+resolve DEC-15 — those four fields remain open, required for a complete
+`SecurityEvaluation<M>` envelope (relevant to Stage 3 and persistence),
+just not for Stage 2 itself.
