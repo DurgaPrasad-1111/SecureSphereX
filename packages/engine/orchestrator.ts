@@ -8,7 +8,10 @@
  * constructed for real: `contractVersion`, `targetResourceId`,
  * `analysisSessionId`, `passOrdinal`, `moduleId`, `evidenceRefs`,
  * `collectionContext` (mechanical from the start) plus `evaluationId`
- * (resolved 2026-08-26 — a random UUIDv4, generated fresh per envelope;
+ * (resolved 2026-08-26 — a random UUIDv4, minted once per module dispatch
+ * in `evaluateModule` (see id.ts's `mintEvaluationId()`), not inside this
+ * function — Stage 3 needs a real one per module and can't wait for a
+ * complete envelope;
  * see DEC-15's amendment for the LDD evidence this is based on) — and
  * `result`, which is exactly what each module's own compute*Findings
  * function already returns. FOUR REMAIN BLOCKED: `moduleVersion`,
@@ -48,7 +51,7 @@
 // the contracts — but a genuine runtime import like these must resolve for
 // real). Type-only imports below stay extensionless, matching every module
 // file's established convention exactly.
-import { randomUUID } from 'node:crypto';
+import { mintEvaluationId } from './id.ts';
 import { toOrigin } from '../contracts/evidence.contract.v1.ts';
 import type { SecurityEvidence } from '../contracts/evidence.contract.v1';
 import { EVALUATION_CONTRACT_VERSION } from '../contracts/evaluation.contract.v1.ts';
@@ -98,7 +101,16 @@ const EVIDENCE_CATEGORY_BY_MODULE = {
  * convention already established across all ten module files).
  */
 export type ModuleDispatchResult = {
-  [M in ModuleId]: { readonly moduleId: M; readonly result: Evaluability<FindingsByModule[M]> };
+  [M in ModuleId]: {
+    readonly moduleId: M;
+    /** Minted here, once per dispatch call — see id.ts's header comment
+     * for why evaluationId lives at this layer rather than only inside
+     * assembleSecurityEvaluation. Stage 2 never reads this (confirmed:
+     * FindingPath resolves only into FindingsByModule); Stage 3 does,
+     * to build CorrelationFinding.evaluationRefs. */
+    readonly evaluationId: string;
+    readonly result: Evaluability<FindingsByModule[M]>;
+  };
 }[ModuleId];
 
 /**
@@ -127,34 +139,38 @@ export async function evaluateModule(
   storeReader: AuthStoreReader,
 ): Promise<ModuleDispatchResult> {
   const byCategory = evidence.evidence;
+  const evaluationId = mintEvaluationId();
 
   switch (moduleId) {
     case 'url':
-      return { moduleId, result: computeUrlFindings(byCategory.url) };
+      return { moduleId, evaluationId, result: computeUrlFindings(byCategory.url) };
     case 'ssl':
-      return { moduleId, result: computeSslFindings(byCategory.transport) };
+      return { moduleId, evaluationId, result: computeSslFindings(byCategory.transport) };
     case 'dns':
-      return { moduleId, result: computeDnsFindings(byCategory.dns) };
+      return { moduleId, evaluationId, result: computeDnsFindings(byCategory.dns) };
     case 'redirect':
-      return { moduleId, result: computeRedirectFindings(byCategory.redirect) };
+      return { moduleId, evaluationId, result: computeRedirectFindings(byCategory.redirect) };
     case 'loginForm':
-      return { moduleId, result: computeLoginFormFindings(byCategory.loginInterface) };
+      return { moduleId, evaluationId, result: computeLoginFormFindings(byCategory.loginInterface) };
     case 'javascript':
-      return { moduleId, result: computeJavaScriptFindings(byCategory.scriptRuntime) };
+      return { moduleId, evaluationId, result: computeJavaScriptFindings(byCategory.scriptRuntime) };
     case 'homograph':
-      return { moduleId, result: computeHomographFindings(byCategory.domainRepresentation) };
+      return { moduleId, evaluationId, result: computeHomographFindings(byCategory.domainRepresentation) };
     case 'downloadContext':
-      return { moduleId, result: computeDownloadContextFindings(byCategory.downloadContext) };
+      return { moduleId, evaluationId, result: computeDownloadContextFindings(byCategory.downloadContext) };
     case 'permissionContext':
-      return { moduleId, result: computePermissionContextFindings(byCategory.permissionContext) };
+      return { moduleId, evaluationId, result: computePermissionContextFindings(byCategory.permissionContext) };
     case 'authContext': {
       const fullUrl = byCategory.url.fullUrl;
       const origin = fullUrl.state === 'present' ? toOrigin(fullUrl.value) : null;
       if (origin === null) {
-        return { moduleId, result: { status: 'unevaluable', reason: 'required_evidence_not_collected' } };
+        return {
+          moduleId, evaluationId,
+          result: { status: 'unevaluable', reason: 'required_evidence_not_collected' },
+        };
       }
       const result = await computeAuthContextFindings(origin, byCategory.loginInterface, storeReader);
-      return { moduleId, result };
+      return { moduleId, evaluationId, result };
     }
   }
 }
@@ -251,7 +267,12 @@ export async function assembleSecurityEvaluation(
 
   const mechanicalFields: MechanicalEnvelopeFields<ModuleId> = {
     contractVersion: EVALUATION_CONTRACT_VERSION,
-    evaluationId: randomUUID(),
+    // The SAME evaluationId evaluateModule already minted for this
+    // dispatch — not a second, independent one. Two different IDs for
+    // the same module's evaluation in the same pass would make
+    // evaluationRefs (Stage 3) and this envelope disagree about what
+    // they're both supposedly referencing.
+    evaluationId: moduleResult.evaluationId,
     targetResourceId: evidence.targetResourceId,
     analysisSessionId: evidence.analysisSessionId,
     passOrdinal: evidence.collectionContext.passOrdinal,

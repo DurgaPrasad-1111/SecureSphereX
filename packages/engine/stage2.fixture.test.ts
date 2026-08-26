@@ -63,7 +63,16 @@ const ALL_MODULE_IDS: readonly ModuleId[] = [
 function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
   const entries = ALL_MODULE_IDS.map((moduleId) => [
     moduleId,
-    { moduleId, result: { status: 'unevaluable', reason: 'required_evidence_not_collected' } },
+    {
+      moduleId,
+      // A real (if fixed) value, not omitted — the previous version of
+      // this helper had a latent gap: the `as` cast below let a
+      // structurally-incomplete object (missing evaluationId entirely)
+      // through at compile time, undetectable until something actually
+      // read .evaluationId at runtime and got undefined.
+      evaluationId: `test-evaluation-id-${moduleId}`,
+      result: { status: 'unevaluable', reason: 'required_evidence_not_collected' },
+    },
   ]);
   return Object.fromEntries(entries) as Record<ModuleId, ModuleDispatchResult>;
 }
@@ -75,6 +84,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     loginForm: {
       moduleId: 'loginForm' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: { credentialFormPresent: true, forms: [], pageRegistrableDomain: null },
@@ -99,6 +109,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     url: {
       moduleId: 'url' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {
@@ -142,6 +153,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     redirect: {
       moduleId: 'redirect' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {
@@ -171,6 +183,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     permissionContext: {
       moduleId: 'permissionContext' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {
@@ -198,6 +211,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     redirect: {
       moduleId: 'redirect' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {
@@ -231,6 +245,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     redirect: {
       moduleId: 'redirect' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: { hopCount: 1, initialRegistrableDomain: null, finalRegistrableDomain: null, mechanisms: [], chainLength: 1 },
@@ -254,6 +269,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     downloadContext: {
       moduleId: 'downloadContext' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {
@@ -287,6 +303,7 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
     ...baseEvaluations(),
     loginForm: {
       moduleId: 'loginForm' as const,
+      evaluationId: 'test-evaluation-id',
       result: {
         status: 'evaluated' as const,
         findings: {

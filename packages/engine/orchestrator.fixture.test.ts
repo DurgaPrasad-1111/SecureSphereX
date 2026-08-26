@@ -177,9 +177,21 @@ for (const moduleId of ALL_MODULE_IDS) {
   assert.equal(blocked.mechanicalFields.evidenceRefs[0]?.evidenceId, cleanLogin.evidenceId);
   assert.deepEqual(blocked.mechanicalFields.collectionContext, cleanLogin.collectionContext);
 
-  // The real module result is genuinely attached, matching direct dispatch.
+  // The real module result is genuinely attached, matching direct dispatch
+  // in everything EXCEPT evaluationId — each call to evaluateModule mints
+  // its own fresh one (this is a separate dispatch invocation, correctly
+  // getting its own identity, not the same one assembleSecurityEvaluation
+  // used internally).
   const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
-  assert.deepEqual(blocked.moduleResult, directDispatch);
+  assert.equal(blocked.moduleResult.moduleId, directDispatch.moduleId);
+  assert.deepEqual(blocked.moduleResult.result, directDispatch.result);
+  assert.notEqual(
+    blocked.moduleResult.evaluationId, directDispatch.evaluationId,
+    'two separate evaluateModule calls must not share an evaluationId',
+  );
+  // blocked.mechanicalFields.evaluationId IS the same as blocked.moduleResult's
+  // — the same dispatch call's ID flowed through, not a second independent one.
+  assert.equal(blocked.mechanicalFields.evaluationId, blocked.moduleResult.evaluationId);
 }
 
 // --- Part 3b: evaluationId is freshly generated per call, not cached/fixed
