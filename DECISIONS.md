@@ -457,3 +457,88 @@ Defer the fix (evidence-contract amendment adding pre-extracted
 domain fields, mirroring url.registrableDomain's precedent) to a
 future decision, logged but not started.
 **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-25
+
+---
+
+## DEC-15 (CANDIDATE — unsigned, open) — Stage 1 orchestration envelope: five fields with no documented derivation
+
+**[R]** `evaluation.contract.v1.ts`'s `SecurityEvaluation<M>` (§7, "Evaluation
+Envelope") attributes its fields to two sources: "Common Representation
+Elements (Domain Model §7.3)" and "Domain Representation Elements
+(§8.3.5)". All ten module files (`packages/engine/modules/*.ts`) cite the
+same two groupings when explicitly scoping envelope assembly OUT of their
+own responsibility: "Assembling the surrounding SecurityEvaluation<'X'>
+envelope (evaluationId, evidenceRefs, indicators, consistency, summary,
+moduleVersion, collectionContext) is Stage 1 orchestration, not this
+module's concern."
+
+**[R]** The "Domain Model" is not among the 46 files in `spec/`. It is
+cited as an authority throughout the corpus (§5.2, §5.3, §7.3, §7.5.4,
+§8.3, §8.3.5, §8.3.7, §8.4.3, §11.3 — confirmed by direct grep across
+`spec/SecureSphereX-RuleEngine-Spec-v0_8.md` and the contracts) but never
+itself present. This is the same shape of gap DEC-11 already ruled on for
+the absent "ECE Internal Module Specifications" document — an external
+authority cited by name but not delivered with the corpus — except DEC-11
+covered module-level behavioral detail; this decision covers the
+orchestration layer above the modules, which no prior decision addresses.
+
+**[I]** Of `SecurityEvaluation<M>`'s twelve fields, seven are fully
+mechanical given only the already-frozen contracts — no invention
+required: `contractVersion` (the `EVALUATION_CONTRACT_VERSION` constant),
+`targetResourceId`/`analysisSessionId` (direct from the source
+`SecurityEvidence`), `passOrdinal` (from its `collectionContext`),
+`moduleId` (the category being dispatched), `evidenceRefs` (mechanical:
+`{ evidenceId: evidence.evidenceId, category }`), `result` (the exact
+`Evaluability<F>` each module's `compute*Findings` function already
+returns), and `collectionContext` (direct passthrough). **Five are not:**
+
+- **`evaluationId`** — no ID-generation scheme is documented anywhere for
+  this field or its siblings. `evidenceId` (evidence.contract.v1.ts:316)
+  is an undocumented bare `string`. `analysisSessionId`'s only producer,
+  `createSession()` (boundary.interfaces.v1.ts:220), is an unimplemented
+  interface method on the Authentication History Store, which does not
+  exist until week 4 (How-To-Start-Coding.md). There is no established
+  convention anywhere in this corpus to extend to `evaluationId`.
+- **`moduleVersion`** — no module defines a version constant; nothing
+  specifies what this string should even represent (a per-module semver,
+  the engine package version, a build/commit identifier).
+- **`indicators: readonly SecurityIndicator[]`** — no per-module registry
+  of indicator IDs exists. The one example given inline
+  (`"loginForm.offOriginAction"`) is illustrative, not canonical. Deriving
+  these for real would mean inventing, per module, a mapping from Findings
+  fields to named indicators — genuine analytical design, not bookkeeping.
+- **`consistency: ConsistencyAssessment`** — defined only abstractly
+  ("assesses coherence of findings WITHIN the module's own domain ONLY...
+  NOT confidence, NOT probability, NOT a risk judgement"). No algorithm or
+  heuristic is given for what "coherent" vs. "conflicting" findings means
+  for any specific module's Findings shape.
+- **`summary: string`** — no template or generation rule specified for the
+  human-readable Evaluation Summary text.
+
+**Why this blocks Stage 1 orchestration, not just a detail within it:**
+`indicators` and `consistency` are not incidental metadata — they are
+named as the module layer's actual analytical contribution beyond raw
+Findings (§4, "Security Indicators vs Findings": "Rules predicate on
+FINDINGS, never on indicator strings" — implying indicators serve a real,
+separate downstream consumer, e.g. human-readable explanations, not yet
+specified where). Guessing a scheme for either would be inventing
+behavior the Domain Model was supposed to define, not implementing
+something already decided.
+
+**Question for architect ruling.** For each of the five fields above: what
+is the actual generation/derivation rule? In particular — is there a
+recovered or reconstructable copy of the Domain Model (§7.3, §8.3.5)
+anywhere outside this corpus that should be added to `spec/`, the way the
+46-file corpus was assembled in the first place? Or, absent that, should
+each of these five be decided fresh here (mirroring how DEC-11 substituted
+`evaluation.contract.v1.ts` + the §2.6 register for the absent ECE
+document)?
+
+**Status.** Open. **Blocks the Stage 1 orchestrator implementation** — the
+task that surfaced this decision. The seven mechanically-derivable fields
+could be assembled today; `indicators` and `consistency` cannot be without
+guessing. Not resolved here, per explicit instruction — flagged, not
+decided, mirroring DEC-12/DEC-13.
+
+**Decision:** _pending_
+**Signed by:** _pending_
