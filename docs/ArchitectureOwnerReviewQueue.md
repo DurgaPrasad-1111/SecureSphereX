@@ -181,6 +181,44 @@ different domain than the one S-02 is evaluating.
 
 ---
 
+### DEC-19 — CRED-A1's single-parent interpretive choice
+
+**How long open:** found while implementing Stage 5/6
+(`packages/engine/stage5-6.ts`, 2026-08-26) — already self-documented in
+the live rule set's own `rationale` field at rule-set authoring time
+(not discovered today), formalized here the same day it was surfaced
+during implementation.
+
+**What's being decided:** §7.2 states CRED-A1's parent requirement as
+"CRED-01 **or** CRED-02" (two possible parents). `RuleDefinition.parent`
+is typed singular (`RuleId | null`), and §9.2/§9.3's aggregation model is
+built around a single parent throughout. The live rule set's own
+`rationale` field states, verbatim: "CRED-01 was chosen as the sole
+parent — not derived from spec text, an explicit judgment call pending
+architect ruling. Consequence: this aggravator will NOT contribute when
+only CRED-02 (not CRED-01) is present."
+
+**Current recommendation:** None — the rule set's own rationale frames
+this as an open judgment call, not a lean. Two shapes present themselves
+(widen `RuleDefinition.parent` to support multiple alternative parents,
+or accept the single-parent model as permanent), neither decided here.
+Widening would be a contract change to `ruleset.format.v1.ts` (frozen)
+and to the aggregation formula (§9.2, also frozen) — not a rule-set-data-
+only fix.
+
+**What resolving it unblocks:** Nothing today — confirmed directly
+against `packages/engine/stage5-6.ts`'s implementation: CRED-A1 has
+never been observed to match against any of the 4 real fixtures at all,
+because DEFECT-18 (`javascript.injectingScriptOriginDomain` permanently
+`null`) already makes CRED-A1's own predicate permanently unsatisfiable
+for an unrelated reason. The narrowing is real and shipped but currently
+inert. Becomes relevant only if DEFECT-18 is resolved first and CRED-A1
+becomes reachable.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-19`.
+
+---
+
 ### DEC-12 — Sanctioned constructors for the five brands
 
 **How long open:** no explicit open-date recorded in `DECISIONS.md`.
@@ -378,6 +416,7 @@ decision gates Step 6 and therefore Steps 7, 8, and 11."
 | DEC-16 (A-01 evidence gap, zero guards) | 🚧 Open | ~Step 11 authoring | A-01 addable to a future rule-set version; 5 target rules get zero user-trust reduction today |
 | DEC-17 (S-01 guard narrowing, live+shipped) | 🚧 Open | ~Step 11 authoring | Nothing functionally — spec-vs-implementation gap in a rule already live and relied upon |
 | DEC-18 (`blockedBy` no domain-scoping, S-02 live) | 🚧 Open | 2026-08-26 (found during Stage 4 build) | Nothing observably today; a future domain-divergent CRED-03/S-02 case |
+| DEC-19 (CRED-A1 single-parent choice) | 🚧 Open, inert | 2026-08-26 (found during Stage 5/6 build) | Nothing today — DEFECT-18 already blocks CRED-A1 from firing at all |
 | DEC-12 (brand constructors) | 🚧 Open | ~2026-08-21 (Step 8) | Nothing today; relevant when the engine ingests corpus payloads or capture ingests external data |
 | DEC-13 (cross-environment payload access) | 🚧 Open | 2026-08-22 | Nothing today; relevant if CI/a teammate/disaster recovery ever needs real payload |
 | DEFECT-11 (456 orphaned index entries) | 🚧 Open | 2026-08-22 | `INDEX.jsonl`-trusting tooling (Step 13 `--report`, future metrics harness) |

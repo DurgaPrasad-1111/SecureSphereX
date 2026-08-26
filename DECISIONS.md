@@ -334,6 +334,7 @@ are registered separately.
 | DEC-16 | A-01 evidence gap (zero guards in the live rule set) | Stage 4 (any rule-set version adding A-01) | When convenient |
 | DEC-17 | S-01 guard narrowing (2 of 3 §6.2 conditions live) | Stage 4 (S-01 itself unaffected; a future rule-set revision if closed) | When convenient |
 | DEC-18 | `blockedBy` has no domain-scoping mechanism (S-02 live case) | Stage 4 (S-02 itself unaffected today; a future domain-divergent case) | When convenient |
+| DEC-19 | CRED-A1 single-parent choice (CRED-01 only, not "or CRED-02") | Stage 5/6 (inert today — DEFECT-18 blocks CRED-A1 from firing at all) | When convenient |
 
 **To unblock the critical path today, sign DEC-1, DEC-2, DEC-3, DEC-8.** The rest gate
 later steps and can be signed in any order.
@@ -1382,6 +1383,79 @@ domain than the one S-02 evaluates would be handled by the coarser,
 possibly-incorrect check. Does not block Stage 4 scaffolding itself,
 already built against the coarser check with this narrowing documented
 inline.
+
+**Decision:** _pending_
+**Signed by:** _pending_
+
+---
+
+## DEC-19 (CANDIDATE — unsigned, open) — CRED-A1's single-parent interpretive choice
+
+**[R]** `rulesets/rules-v0.1.0.json`'s CRED-A1 entry carries this
+`rationale` field, quoted in full, verbatim — **this is the live,
+shipped, currently-active rule, not a draft or a hypothetical**:
+
+> "INTERPRETIVE CHOICE, FLAGGED FOR REVIEW: §7.2 states this
+> aggravator's parent requirement as 'CRED-01 or CRED-02' (two possible
+> parents), but RuleDefinition.parent is singular (RuleId | null) and
+> §9.2/§9.3's aggregation model is likewise single-parent. CRED-01 was
+> chosen as the sole parent — not derived from spec text, an explicit
+> judgment call pending architect ruling. Consequence: this aggravator
+> will NOT contribute when only CRED-02 (not CRED-01) is present,
+> narrowing §7.2's literal 'or' behavior. Client-side injection of a
+> credential interface from an off-site script is meaningful as
+> corroboration and meaningless alone — this is why it carries no
+> standalone weight."
+
+**[R]** §7.2's CRED-A1 entry states the parent requirement exactly as
+the rationale describes: "**Parent requirement:** Contributes only when
+CRED-01 or CRED-02 is present and unsuppressed." `RuleDefinition.parent`
+(`ruleset.format.v1.ts:172`) is typed `RuleId | null` — singular, no
+provision for a set of alternative parents. §9.2's scoring formula and
+§9.3's aggravator semantics are both written in terms of a single
+`parent(a)`, confirming the singular-parent model is not an accident of
+this one field's type but consistent across the whole aggregation
+design.
+
+**[I]** Confirmed directly, not assumed from the rationale's own claim:
+`rulesets/rules-v0.1.0.json`'s live CRED-A1 entry has `"parent":
+"CRED-01"` — a bare string, not an array, not `null`. Grepped the entire
+rule set file for every occurrence of `"CRED-A1"`: exactly two hits —
+the rule's own `id` field, and one unrelated `changeLog` entry (the
+DEFECT-15 fix, which named CRED-A1 alongside CRED-01/CRED-02/CRED-07
+only because all four were separately affected by that fix, not because
+of anything related to this parent choice). **No other mechanism
+anywhere in the rule set lets CRED-02 alone qualify CRED-A1** — the
+stated consequence is confirmed true and complete, not merely asserted:
+`packages/engine/stage5-6.ts`'s `parentQualified` computation reads
+`rule.parent` directly (the single value), so a pass where CRED-02 fires
+without CRED-01 will compute `parentQualified: false` for CRED-A1, and
+CRED-A1 will not contribute to the score, exactly as the rationale
+predicts.
+
+**Question for architect ruling — no recommendation invented, the
+rationale itself frames this as an open judgment call, not a lean:**
+Should `RuleDefinition.parent` (and the aggregation model built on it,
+§9.2/§9.3) be widened to support multiple alternative parents, matching
+§7.2's literal "CRED-01 or CRED-02"? Or is the single-parent model
+(CRED-01 chosen) the intended, permanent simplification — treating
+CRED-02-without-CRED-01 as a scenario CRED-A1 is not meant to corroborate
+at all? Widening the model would be a contract change to
+`ruleset.format.v1.ts` (frozen) and to the aggregation formula (§9.2,
+also frozen per §13.1) — not a rule-set-data-only change the way most
+other open items in this queue are.
+
+**Status.** Open. Blocks: nothing today — CRED-A1 has never been
+observed to match against any of the 4 real fixtures at all (a separate,
+already-tracked structural gap: DEFECT-18 established
+`javascript.injectingScriptOriginDomain` is permanently `null`, making
+CRED-A1's third predicate conjunct permanently unsatisfiable regardless
+of this parent question). The narrowing is real and shipped, but not
+currently observable in practice because CRED-A1 cannot fire for an
+unrelated reason first. Becomes relevant if DEFECT-18 is ever resolved
+and CRED-A1 becomes reachable — at that point, a CRED-02-only pass will
+silently under-score relative to §7.2's literal text unless this is
+ruled on first.
 
 **Decision:** _pending_
 **Signed by:** _pending_
