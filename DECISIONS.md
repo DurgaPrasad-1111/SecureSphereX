@@ -1219,3 +1219,90 @@ authoring time") as an established, past fact by that point.
 
 **Decision:** _pending_
 **Signed by:** _pending_
+
+---
+
+### Addendum — 2026-08-26 — Stage 5 dependency check (Effective Weight Calculation)
+
+Re-derived independently — not inherited from Stages 2/3/4's identical
+conclusion.
+
+**Confirmed Stage 5's exact name and defining section from §4.2 directly,
+not assumed.** §4.2: "**Stage 5 — Effective Weight Calculation.** For
+each finding, the effective weight is computed from its base weight and
+the maximum applicable reduction. Suppressed findings retain an
+effective weight of zero and remain recorded." **Unlike every other
+stage's sentence in §4.2, this one cites no `(§X)` section reference** —
+Stage 2 cites §5, Stage 4 cites §6, Stage 6 cites §9/§10. Stage 5 is the
+one stage in the frozen order with no section of its own.
+
+Grepped the entire document for "effective weight" / "effective_weight"
+to confirm this is not an oversight rather than assume it: six hits
+total. §2.4 (line 143, philosophical framing: effective weight is a
+rule-set-evaluation property, not the finding's own). §4.1 (line 272,
+just the stage's name in the frozen order list). §4.2 (line 290, the
+one sentence above). **§6.1 (lines 362-368) — the actual formula:**
+`effective_weight(f) = base_weight(f) × (1 − max_reduction(f))`,
+`max_reduction(f) = max{ reduction(s) : s applicable to f, guards
+satisfied } = 0 where no suppression applies` — the SAME §6.1 text
+already read in full for the Stage 4 pass (`stage4.ts`'s
+`maxAppliedReduction` already implements the `max_reduction(f)` term
+directly from this). §9 (lines 599, 607, Stage 6's Scoring Function) —
+references `effective_weight(f)` as an INPUT to aggregation, does not
+define it. §9.5 (line 630, Recorded Outputs) — states effective weight
+must be recorded, does not define how it's computed. **Conclusion: Stage
+5's complete defining text is §4.2's one sentence plus §6.1's formula —
+nothing else exists anywhere in the document.** Not a hidden section
+missed the way the original DEC-15 pass missed the LDD — confirmed by
+exhaustive search that there is genuinely nothing more to find.
+
+**The structural proof, from the likely output type, independently
+re-verified:** `packages/contracts/passresult.contract.v1.ts`'s
+`ScoringEntry` (lines 116-136) — re-read directly, not assumed from the
+Stage 3/4 checks' prior conclusions about this file. Grepped the whole
+file again: zero occurrences of `moduleVersion`, `indicators`, or
+`consistency`; zero occurrences of `summary` either (the file has never
+had one, across all three checks this session).
+
+**Genuine finding, not a DEC-15 matter — `ScoringEntry` straddles Stage
+5 AND Stage 6, confirmed by its own field comments, not inferred:** of
+its eleven fields, eight are Stage 5's own concern — `findingId`,
+`ruleId`, `ruleType`, `parentRuleId` (all passthrough from the
+`CorrelationFinding`/`RuleDefinition` it scores), `baseWeight` (from
+`RuleDefinition`), `suppressionsApplied` and `maxReduction` (from Stage
+4's `SuppressionApplication[]` — `maxReduction` is exactly
+`stage4.ts`'s already-built `maxAppliedReduction()`), and
+`effectiveWeight` (the formula above, all its inputs already available).
+**Three fields are explicitly Stage 6's, per their own doc comments, not
+Stage 5's**: `subsumed` ("§10.3: subsumed findings remain recorded but
+are excluded from the sum"), `parentQualified` ("§9.3: an aggravator
+contributes only where its parent is present, unsubsumed, and has
+non-zero effective weight"), and `countedInScore` — all three require
+knowing the COMPLETE finding set (for subsumption and aggravator
+qualification), not one finding in isolation, which is exactly what
+distinguishes Stage 6 ("Aggregation... over the complete finding set")
+from Stage 5 ("for each finding" — singular, independent). A future
+Stage 5 scaffold cannot produce a complete, type-correct `ScoringEntry`
+alone — either a narrower Stage-5-only intermediate type is needed, with
+Stage 6 completing the object, or Stage 5 and 6 need to be scaffolded
+together. Not resolved here; noted so it isn't rediscovered from scratch
+when Stage 5 is actually built.
+
+**Classification, per field:**
+
+| Field | Classification | Citation |
+|---|---|---|
+| `moduleVersion` | **CONFIRMED-UNUSED-BY-STAGE-5** | Not in `ScoringEntry`; not in §4.2's Stage 5 sentence or §6.1's formula — Stage 5 doesn't even read `SecurityEvaluation`/Findings data at all, only Stage 3/4's own output records plus `RuleDefinition.baseWeight` |
+| `indicators` | **CONFIRMED-UNUSED-BY-STAGE-5** | Same — Stage 5 is a pure function over `(CorrelationFinding, RuleDefinition, SuppressionApplication[])`, never touches indicators |
+| `consistency` | **CONFIRMED-UNUSED-BY-STAGE-5** | Same structural absence |
+| `summary` | **CONFIRMED-UNUSED-BY-STAGE-5** | Same structural absence; confirmed zero occurrences in `passresult.contract.v1.ts` across all three checks this session (Stage 3, 4, 5) |
+
+**Conclusion:** DEC-15's four remaining open fields do **not** block
+Stage 5 — the same conclusion as Stages 2, 3, and 4, independently
+re-derived each time. Stage 5 is, if anything, the MOST clearly
+unblocked stage checked so far: it never reads `SecurityEvaluation` or
+Findings data directly at all, only the already-built outputs of Stages
+3 and 4 plus static rule-set data. The one real open item is the
+`ScoringEntry` Stage 5/6 boundary noted above — an architectural
+question for whoever scaffolds Stage 5, not an DEC-15 or Architecture
+Owner ruling.
