@@ -926,3 +926,48 @@ genuinely open input Stage 3 will need (`findingId` minting) is a new,
 separate, well-evidenced-but-unimplemented item — not a blocker requiring
 a ruling, since the evidence already points the same direction
 `evaluationId`'s did, just not yet acted on.
+
+---
+
+#### Resolution — 2026-08-26 — `findingId` minting
+
+Not a DEC-15 field (it was never one of the five in scope there) and not
+folded into DEC-15 — recorded here, where it was found, as its own
+standalone mechanical resolution, same discipline `evaluationId` was held
+to. Re-verified directly, not taken on the strength of the addendum
+above alone:
+
+`spec/Logical-Database-Design-Specification-v1_1.md` §5.17
+`skr.correlation_finding`: `finding_id | UUID | No | generated | PK` —
+re-read directly at lines 780-791. Same general rule applies (LDD lines
+80-81, re-read directly): "Assigned identifiers (UUIDv4) elsewhere...
+no deterministic derivation in the architecture." Confirmed by grep:
+`finding_id` is never listed as a client-generated exception anywhere in
+the document (the only such exception, every time, is
+`analysis_session_id`/`sessionId`). Identical evidentiary shape to
+`evaluationId`'s resolution above — same document, same column pattern,
+same absence of a determinism requirement, same absence of any predicate
+or Stage 2/3 logic that reads a specific `findingId` value (confirmed:
+`FindingId` never appears in `rulesets/rules-v0.1.0.json` or the
+`Predicate` AST's operand types).
+
+**Resolution:** Random UUIDv4 (`crypto.randomUUID()`), generated fresh
+per `CorrelationFinding`, cast to the branded `FindingId` type
+(`evidence.contract.v1.ts:71` — `string & { readonly [FindingIdBrand]:
+true }`) via `as FindingId` at the point of minting. This uses the
+`as`-cast convention already in universal practice across this codebase
+for all five DEC-3-branded types (DEC-12's own text: "fixtures do this
+today") — it does **not** resolve DEC-12 (whether these five brands get
+parse-validated constructors), it merely applies the pattern DEC-12
+itself documents as already the working convention, unchanged, to mint
+one more value the same way every existing one already is.
+
+**Decision:** ☑ RESOLVED. Random UUIDv4, generated at finding creation.
+Implemented in `packages/engine/id.ts` (`mintFindingId()`), as a
+standalone utility — deliberately its own file/commit, separate from
+Stage 3's `CorrelationFinding`-producing code, same traceability
+discipline as every prior mechanical resolution. Mechanical resolution — no
+analytical consequence, no Architecture Owner ruling required (same
+reasoning as `evaluationId`), recorded here for traceability.
+**Signed by:** _not required — mechanical resolution, per the
+MECHANICAL/SEMANTIC framework DEC-15 established_
