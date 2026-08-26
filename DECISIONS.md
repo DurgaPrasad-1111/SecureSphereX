@@ -540,5 +540,193 @@ could be assembled today; `indicators` and `consistency` cannot be without
 guessing. Not resolved here, per explicit instruction — flagged, not
 decided, mirroring DEC-12/DEC-13.
 
-**Decision:** _pending_
+**Decision (original scope):** _pending_
 **Signed by:** _pending_
+
+---
+
+### Amendment — 2026-08-26 — exhaustive re-check, partial resolution
+
+The original entry above searched `evaluation.contract.v1.ts`,
+`docs/pipeline-design-note.md`, `DECISIONS.md`, `docs/DEFECTS.md`, and the
+rule engine spec's §4.1/4.2. This amendment re-searches the FULL corpus —
+every `spec/*.md`, the OpenAPI sources, and the Logical Database Design
+Specification, which the original pass never opened — specifically hunting
+for indirect signals (a sibling field's documented format, a storage
+schema's default value, a cross-layer naming match) for each of the five
+blocked fields. Per-field record of what was found and what was not:
+
+**`evaluationId` — FOUND, substantial indirect evidence.**
+`spec/Logical-Database-Design-Specification-v1_1.md` §5.13 defines
+`skr.security_evaluation`, the storage table for exactly this contract:
+`evaluation_id | UUID | No | generated | PK`. This is not an isolated
+value — the identical `UUID / generated / PK` shape appears for eight
+other primary keys in the same document (`entry_id`, `relationship_id`,
+`evidence_id`, `pass_result_id`, `finding_id`, `application_id`,
+`advisory_finding_id`, `report_id` — LDD lines 540, 569, 657, 725, 785,
+832, 871, 886), and the document states the general rule explicitly
+(line 81): **"Assigned identifiers (UUIDv4) elsewhere. Analysis Sessions,
+Reports, Intelligence Objects and Users have no deterministic derivation
+in the architecture."** The ONE documented exception to server-generated
+UUIDv4 anywhere in this schema is `analysis_session_id`
+(`sessionId`/`analysisSessionId`), explicitly called out every time as
+**client-generated** (LDD lines 72, 81, 210, 633, 1435, 2168;
+`spec/API-Contract-Specification-v1_2.md` §7.2's identifier table, which
+separately confirms `sessionId: UUIDv4, client-generated` vs.
+`resourceIdentity: UUIDv5, deterministic over policy version` as the
+project's only two patterns in actual use). `evaluation_id` is never
+listed as an exception anywhere.
+
+NOT found: no document states this at the D0.2 contract layer directly —
+the evidence is from the persistence layer (LDD), one layer downstream of
+`evaluation.contract.v1.ts`, related by column-name match and the
+project's stated principle that "persistence mechanisms conform to
+contracts rather than constraining them" (§7.5.4, cited in
+`spec/SecureSphereX-RuleEngine-Spec-v0_8.md` line 1380) — i.e. the DB
+column is documented as storing whatever the contract already produces,
+not prescribing it. No document says "SecurityEvaluation.evaluationId is
+a UUIDv4" in so many words. `evaluationId` does not appear anywhere in
+`spec/openapi.yaml`, `spec/securesphere-openapi-3_1.yaml`, or
+`spec/assemble-openapi.py` (confirmed by direct grep) — it is not part of
+the public API surface at all, which is consistent with, but does not by
+itself prove, an internal server-generated identifier.
+
+**`moduleVersion` — FOUND, format only; source still absent.**
+LDD: `module_version | VERSION_STRING | No | —` (no default — must be
+application-supplied, unlike `evaluation_id`). `VERSION_STRING` is the
+same domain used for `contract_version`, `rule_set_version`,
+`policy_version`, and `collector_version` elsewhere in the identical
+schema — all of which map to real, already-sourced values elsewhere in
+this codebase (`EVALUATION_CONTRACT_VERSION`, `RuleSet.ruleSetVersion`,
+etc.) EXCEPT `module_version`, which has no equivalent source anywhere.
+No `CREATE DOMAIN VERSION_STRING` constraint/regex was found (grepped
+directly; none exists in the LDD). No module file
+(`packages/engine/modules/*.ts`) defines a version constant. No document
+states whether module versioning is meant to be independent per module
+(which the per-row, not per-table-global, column placement suggests was
+intended) or a single shared value (e.g. the engine package's own
+`0.1.0`).
+
+**`indicators` — FOUND, a real sanctioned empty state; no registry.**
+LDD: `indicators | JSONB | No | '[]'` — the storage layer's own default
+is an empty array, not absence-of-a-value. This is a genuine, documented
+"safe" state for the case where no indicators are emitted, distinct from
+guessing what indicators to report. NOT found: no per-module list of
+indicator IDs, no derivation rule from Findings fields to indicators,
+anywhere in 46+ files. The one inline example
+(`"loginForm.offOriginAction"`) remains illustrative only.
+
+**`consistency` — FOUND, enum + storage shape; NO algorithm, no default.**
+LDD: `CREATE TYPE skr.consistency_kind AS ENUM ('consistent',
+'inconsistent', 'indeterminate')`; `consistency | CONSISTENCY | No | —`
+— unlike `indicators`, there is **no default** here. The database always
+requires an explicit value. NOT found: no heuristic, no per-module
+coherence-check description, anywhere searched (`spec/*.md`,
+`docs/*.md`, `DECISIONS.md`, `docs/DEFECTS.md`, the contracts).
+
+**`summary` — FOUND, type only; nothing else.**
+LDD: `summary | TEXT | No | —` — plain text, mandatory, no format or
+length constraint documented. NOT found: no template, no generation rule,
+no example beyond the field's own one-line label ("Evaluation Summary")
+in the contract comment.
+
+---
+
+#### Classification
+
+**MECHANICAL — resolved this pass:**
+
+- **`evaluationId`.** Any internally-consistent unique-identifier scheme
+  satisfies the type, and nothing downstream reads `evaluationId` as a
+  predicate operand or otherwise depends on its specific value or on
+  determinism (confirmed: zero references to `evaluationId` anywhere in
+  `rulesets/rules-v0.1.0.json` or the rule engine spec's predicate
+  language) — so the choice carries no analytical risk. **Recommendation:
+  a randomly-generated UUIDv4 (`crypto.randomUUID()`), minted fresh each
+  time `assembleSecurityEvaluation` constructs an envelope.** Justification:
+  matches the LDD's own `evaluation_id: generated` column definition and
+  the general "assigned UUIDv4, no deterministic derivation" rule that
+  governs every identifier in this schema without a stated determinism
+  requirement — the same pattern already used for the other eight
+  `generated`-default UUID primary keys in the identical document.
+  **Confidence: high.**
+
+**BORDERLINE, treated as SEMANTIC — not resolved this pass:**
+
+- **`moduleVersion`.** Leans mechanical in the sense that "some semver-like
+  string" satisfies the type, but the schema's per-row (not per-table)
+  placement of `module_version` is a real signal that independent
+  per-module versioning was the intended design — and no module currently
+  has any version-tracking convention to source a per-module value from.
+  Defaulting silently to the shared engine package version (`0.1.0` for
+  all ten modules alike) would foreclose that design without a ruling on
+  whether it's wanted. **Not implemented.** Two live options for the
+  Architecture Owner: (a) a single shared value (the engine package
+  version, simplest, already exists) or (b) a genuine per-module version
+  constant, introduced now, with a stated bump convention (tied to module
+  source changes — manually, or via a build-time hash). Recommend (a) as
+  the lower-risk starting point if forced to choose, but this is a
+  judgment call, not a mechanical inference — **confidence: low**, hence
+  not implemented.
+
+**SEMANTIC — do not resolve, real design logic required:**
+
+- **`indicators`.** The empty-array case (`[]`) is schema-sanctioned and
+  safe to use **as an explicitly-marked placeholder** wherever no
+  indicator-derivation logic exists — this is different from inventing a
+  value, since the storage layer's own documented default already
+  authorizes it as a legitimate "nothing to report yet" state. What
+  remains genuinely undecided is the actual derivation: which Findings
+  fields, on which modules, become which named indicators. **Upstream
+  question:** who owns authoring the per-module indicator registry, and
+  is it derived automatically from Findings shapes or hand-curated per
+  rule the way `rulesets/rules-v0.1.0.json`'s rule metadata is?
+- **`consistency`.** No schema-sanctioned safe default exists — unlike
+  `indicators`, the database provides none, and `indeterminate` is a
+  substantive interpretive claim ("insufficient evidence"), not a neutral
+  placeholder, if applied uniformly regardless of what a module actually
+  found. **Upstream question:** does "coherence within a module's own
+  domain" mean anything concrete for any of the ten Findings shapes today
+  (e.g. `LoginFormFindings.forms` containing contradictory field kinds),
+  or is `indeterminate`-always the intended state until per-module
+  coherence rules are designed — and if the latter, is that itself the
+  ruling, or does it need to be stated explicitly rather than inferred?
+- **`summary`.** No template, no schema-sanctioned safe default (empty
+  text would misrepresent a real evaluation as having nothing to say).
+  **Upstream question:** what is this string for and who reads it — is it
+  operator-facing (a log/debug aid) or eventually end-user-facing (closer
+  to D0.9's `ExplanationItem`, a related but distinct contract not present
+  in this corpus)? The answer changes what "correct" even means here.
+
+---
+
+#### What blocks Stage 2 vs. what can ship marked
+
+`evaluationId` and `moduleVersion` are pure provenance/bookkeeping — no
+rule predicate in `rulesets/rules-v0.1.0.json` reads either (confirmed by
+grep), so neither blocks Stage 2 (predicate evaluation) once populated.
+`indicators` similarly does not block Stage 2 predicate matching directly
+(§4, "Rules predicate on FINDINGS, never on indicator strings") and MAY
+ship as `[]` — clearly documented as an unfilled placeholder, per the
+schema's own sanctioned default, not silently. `consistency` and
+`summary` are not read by any Stage 2 predicate either, but persisting a
+fabricated `consistency` value (as opposed to an honestly-empty
+`indicators` list) would misrepresent an analytical judgment that was
+never actually made — the asymmetry is that `[]` truthfully says "no
+indicators were derived," where `'consistent'` asserted without any
+coherence check would be a false claim, not an honest absence. Recommend:
+`consistency` and `summary` remain unimplemented (the orchestrator throws
+for any module still needing them), not defaulted, even for Stage 2 work
+that does not read them.
+
+**Decision (this amendment):**
+☑ **`evaluationId`** — RESOLVED. Random UUIDv4, generated at envelope
+assembly. Implemented in `packages/engine/orchestrator.ts`. Mechanical
+resolution per the MECHANICAL/SEMANTIC framework above — no analytical
+consequence, no Architecture Owner ruling required, recorded here for
+traceability.
+☐ **`moduleVersion`, `indicators`, `consistency`, `summary`** — STILL
+OPEN. Options and recommendations above are input for the ruling, not a
+substitute for it.
+**Signed by:** _pending (Architecture Owner ruling required for the
+remaining four fields)_
