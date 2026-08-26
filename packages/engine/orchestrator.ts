@@ -3,18 +3,22 @@
  * SecurityEvidence object to each of the 10 modules' compute*Findings
  * functions and assembles their SecurityEvaluation<M> envelopes.
  *
- * PARTIAL BY DESIGN — see DECISIONS.md DEC-15 (CANDIDATE, open). Of
- * SecurityEvaluation<M>'s twelve fields, seven are mechanically derivable
- * from the already-frozen contracts alone: `contractVersion`,
- * `targetResourceId`, `analysisSessionId`, `passOrdinal`, `moduleId`,
- * `evidenceRefs`, `collectionContext` — plus `result`, which is exactly
- * what each module's own compute*Findings function already returns. FIVE
- * ARE NOT: `evaluationId`, `moduleVersion`, `indicators`, `consistency`,
- * `summary`. Their stated source — "Domain Model §7.3 / §8.3.5" — is a
- * document that is not among the 46 files in spec/. DEC-15 records this in
- * full; it is not re-derived here.
+ * PARTIAL BY DESIGN — see DECISIONS.md DEC-15 (CANDIDATE, open; amended
+ * 2026-08-26). Of SecurityEvaluation<M>'s twelve fields, EIGHT are now
+ * constructed for real: `contractVersion`, `targetResourceId`,
+ * `analysisSessionId`, `passOrdinal`, `moduleId`, `evidenceRefs`,
+ * `collectionContext` (mechanical from the start) plus `evaluationId`
+ * (resolved 2026-08-26 — a random UUIDv4, generated fresh per envelope;
+ * see DEC-15's amendment for the LDD evidence this is based on) — and
+ * `result`, which is exactly what each module's own compute*Findings
+ * function already returns. FOUR REMAIN BLOCKED: `moduleVersion`,
+ * `indicators`, `consistency`, `summary`. Their stated source — "Domain
+ * Model §7.3 / §8.3.5" — is a document that is not among the 46 files in
+ * spec/, and no amount of re-checking the corpus turned up a derivation
+ * scheme for these four (DEC-15's amendment records the exhaustive
+ * re-check in full; it is not re-derived here).
  *
- * Rather than guess a convention for those five (exactly what DEC-15 says
+ * Rather than guess a convention for those four (exactly what DEC-15 says
  * not to do), this file is split into two honest pieces:
  *
  *   `evaluateModule` / `evaluateAllModules` — the dispatch layer. Fully
@@ -25,11 +29,11 @@
  *   Evaluation") — module evaluation, not yet the D0.2 envelope around it.
  *
  *   `assembleSecurityEvaluation` — attempts the full SecurityEvaluation<M>
- *   envelope. Builds the seven mechanical fields for real, then throws
- *   Stage1EnvelopeBlockedError before fabricating the other five — the
- *   error carries the genuinely-computed module result and mechanical
- *   fields as its payload, so a caller (or a future resumption once DEC-15
- *   is resolved) can see exactly how far assembly got.
+ *   envelope. Builds the eight resolved fields for real, then throws
+ *   Stage1EnvelopeBlockedError before fabricating the remaining four — the
+ *   error carries the genuinely-computed module result and resolved
+ *   fields as its payload, so a caller (or a future resumption once the
+ *   rest of DEC-15 is resolved) can see exactly how far assembly got.
  *
  * Not itself one of the ten modules (§2.6) — it is the layer above them,
  * so unlike a module it is allowed to read across evidence categories
@@ -44,6 +48,7 @@
 // the contracts — but a genuine runtime import like these must resolve for
 // real). Type-only imports below stay extensionless, matching every module
 // file's established convention exactly.
+import { randomUUID } from 'node:crypto';
 import { toOrigin } from '../contracts/evidence.contract.v1.ts';
 import type { SecurityEvidence } from '../contracts/evidence.contract.v1';
 import { EVALUATION_CONTRACT_VERSION } from '../contracts/evaluation.contract.v1.ts';
@@ -170,9 +175,22 @@ export async function evaluateAllModules(
   return Object.fromEntries(entries) as Readonly<Record<ModuleId, ModuleDispatchResult>>;
 }
 
-/** The seven SecurityEvaluation<M> fields this file can construct for real. */
+/**
+ * The eight SecurityEvaluation<M> fields this file can construct for real.
+ * `evaluationId` joined the other seven 2026-08-26 — DEC-15's amendment: a
+ * random UUIDv4, matching `spec/Logical-Database-Design-Specification-v1_1.md`
+ * §5.13's `evaluation_id: generated` column (the same `UUID / generated /
+ * PK` shape as eight sibling primary keys in that document) and the
+ * project's general "assigned UUIDv4, no deterministic derivation" rule
+ * (LDD line 81) — not a fabricated scheme; see DEC-15 for the full
+ * evidence trail and why this specific field was judged safe to resolve
+ * without an Architecture Owner ruling (no rule predicate reads
+ * `evaluationId`, confirmed by grep against rulesets/rules-v0.1.0.json —
+ * zero analytical consequence either way).
+ */
 export interface MechanicalEnvelopeFields<M extends ModuleId> {
   readonly contractVersion: typeof EVALUATION_CONTRACT_VERSION;
+  readonly evaluationId: string;
   readonly targetResourceId: SecurityEvidence['targetResourceId'];
   readonly analysisSessionId: SecurityEvidence['analysisSessionId'];
   readonly passOrdinal: number;
@@ -183,10 +201,12 @@ export interface MechanicalEnvelopeFields<M extends ModuleId> {
 
 /**
  * Thrown by `assembleSecurityEvaluation` instead of fabricating
- * `evaluationId`/`moduleVersion`/`indicators`/`consistency`/`summary`.
- * Carries what WAS genuinely computed — the real module dispatch result
- * and the seven mechanical fields — as a diagnostic payload, so a caller
- * (or a future resumption once DEC-15 is resolved) can see exactly how far
+ * `moduleVersion`/`indicators`/`consistency`/`summary` — the four fields
+ * DEC-15's 2026-08-26 amendment leaves open pending an Architecture Owner
+ * ruling. Carries what WAS genuinely computed — the real module dispatch
+ * result and the eight resolved fields (including `evaluationId`, as of
+ * this pass) — as a diagnostic payload, so a caller (or a future
+ * resumption once the rest of DEC-15 is resolved) can see exactly how far
  * assembly got rather than receiving a bare failure.
  */
 export class Stage1EnvelopeBlockedError extends Error {
@@ -194,15 +214,15 @@ export class Stage1EnvelopeBlockedError extends Error {
   readonly moduleResult: ModuleDispatchResult;
   readonly mechanicalFields: MechanicalEnvelopeFields<ModuleId>;
   readonly missingFields: readonly string[] = [
-    'evaluationId', 'moduleVersion', 'indicators', 'consistency', 'summary',
+    'moduleVersion', 'indicators', 'consistency', 'summary',
   ];
 
   constructor(moduleResult: ModuleDispatchResult, mechanicalFields: MechanicalEnvelopeFields<ModuleId>) {
     super(
       `Stage 1 orchestration for module "${moduleResult.moduleId}" cannot construct a complete ` +
-      `SecurityEvaluation: evaluationId, moduleVersion, indicators, consistency, and summary have no ` +
-      `documented generation scheme (DECISIONS.md DEC-15, open). Dispatch succeeded — see ` +
-      `.moduleResult and .mechanicalFields on this error.`,
+      `SecurityEvaluation: moduleVersion, indicators, consistency, and summary have no documented ` +
+      `generation scheme (DECISIONS.md DEC-15, open — evaluationId was resolved 2026-08-26). ` +
+      `Dispatch succeeded — see .moduleResult and .mechanicalFields on this error.`,
     );
     this.name = 'Stage1EnvelopeBlockedError';
     this.moduleId = moduleResult.moduleId;
@@ -231,6 +251,7 @@ export async function assembleSecurityEvaluation(
 
   const mechanicalFields: MechanicalEnvelopeFields<ModuleId> = {
     contractVersion: EVALUATION_CONTRACT_VERSION,
+    evaluationId: randomUUID(),
     targetResourceId: evidence.targetResourceId,
     analysisSessionId: evidence.analysisSessionId,
     passOrdinal: evidence.collectionContext.passOrdinal,

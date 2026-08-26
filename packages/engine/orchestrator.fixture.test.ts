@@ -155,14 +155,21 @@ for (const moduleId of ALL_MODULE_IDS) {
   assert.ok(caught instanceof Stage1EnvelopeBlockedError, `${moduleId}: wrong error type thrown`);
   const blocked = caught as Stage1EnvelopeBlockedError;
   assert.equal(blocked.moduleId, moduleId);
+  // evaluationId was resolved 2026-08-26 (DEC-15 amendment) — only the
+  // remaining four fields are still reported as missing.
   assert.deepEqual(
     [...blocked.missingFields].sort(),
-    ['consistency', 'evaluationId', 'indicators', 'moduleVersion', 'summary'],
+    ['consistency', 'indicators', 'moduleVersion', 'summary'],
   );
 
   // The mechanical fields ARE genuinely correct, not placeholder values.
   assert.equal(blocked.mechanicalFields.moduleId, moduleId);
   assert.equal(blocked.mechanicalFields.contractVersion, '1.1.0');
+  assert.match(
+    blocked.mechanicalFields.evaluationId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    `${moduleId}: evaluationId must be a well-formed UUIDv4`,
+  );
   assert.equal(blocked.mechanicalFields.targetResourceId, cleanLogin.targetResourceId);
   assert.equal(blocked.mechanicalFields.analysisSessionId, cleanLogin.analysisSessionId);
   assert.equal(blocked.mechanicalFields.passOrdinal, cleanLogin.collectionContext.passOrdinal);
@@ -174,6 +181,20 @@ for (const moduleId of ALL_MODULE_IDS) {
   const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
   assert.deepEqual(blocked.moduleResult, directDispatch);
 }
+
+// --- Part 3b: evaluationId is freshly generated per call, not cached/fixed
+
+const firstCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader).catch(
+  (err: unknown) => err as Stage1EnvelopeBlockedError,
+);
+const secondCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader).catch(
+  (err: unknown) => err as Stage1EnvelopeBlockedError,
+);
+assert.notEqual(
+  firstCall.mechanicalFields.evaluationId,
+  secondCall.mechanicalFields.evaluationId,
+  'evaluationId must be generated fresh per envelope assembly, not fixed or derived from the evidence',
+);
 
 // --- Part 4: evidenceRefs.category correctly diverges from moduleId -------
 // (ssl -> transport, loginForm/authContext -> loginInterface, not identity)
