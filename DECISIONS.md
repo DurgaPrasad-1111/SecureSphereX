@@ -331,9 +331,17 @@ are registered separately.
 | DEC-7 | Implementer accountability | Step 15 | When convenient |
 | DEC-10 | One similarity fn | Step 11/13 | When convenient |
 | DEC-9 | B1.5 ownership | week 4 | Open by design |
+| DEC-16 | A-01 evidence gap (zero guards in the live rule set) | Stage 4 (any rule-set version adding A-01) | When convenient |
+| DEC-17 | S-01 guard narrowing (2 of 3 §6.2 conditions live) | Stage 4 (S-01 itself unaffected; a future rule-set revision if closed) | When convenient |
 
 **To unblock the critical path today, sign DEC-1, DEC-2, DEC-3, DEC-8.** The rest gate
 later steps and can be signed in any order.
+
+*This table predates DEC-11 through DEC-15 and was never fully
+maintained after initial signing (see the "already resolved" correction
+in `docs/ArchitectureOwnerReviewQueue.md`) — DEC-16/DEC-17 are added here
+per explicit instruction, not as a signal the rest of this table is
+current.*
 
 ---
 
@@ -1065,3 +1073,149 @@ the two rule-set content gaps above — A-01 cannot be scaffolded at all
 today (no guard data exists to build it from), and S-01 can only be
 scaffolded to its already-narrowed, self-documented two-condition form,
 not §6.2's literal three-condition text.
+
+Both gaps are formalized below as their own DEC candidates — they were
+only prose inside this addendum until now, unlike DEC-12/DEC-13/DEC-15,
+which each got a standalone entry with its own number and signing line.
+
+---
+
+## DEC-16 (CANDIDATE — unsigned, open) — A-01 / User-Trusted Origin evidence gap
+
+**[R]** `rulesets/rules-v0.1.0.json`'s own `changeLog` entry (version
+`0.1.0`) states the gap directly, in full, verbatim:
+
+> "TWO of THREE §6 suppressions included (S-01, S-02); A-01 (User-Trusted
+> Origin) is OMITTED. Checked exhaustively across every module contract,
+> not just the two most obviously relevant ones: no field anywhere
+> represents a per-origin explicit user trust action. D0.8's
+> `lifecycleState` is authentication-derived (repeated logins over time),
+> architecturally distinct from A-01's "explicit, recorded user trust
+> action" (a single deliberate click past a warning). Sharper framing of
+> the gap: `trust_validity_days` IS a defined, frozen `ParameterId`
+> (`ruleset_format_v1.ts:70`, tagged `// A-01`) — the spec froze A-01's
+> tunable parameter without ever providing anywhere for its underlying
+> guard data to live. §6.1 forbids an unguarded suppression ("A
+> suppression without guards is an exploitable bypass"), and no V-check
+> enforces non-empty guards, so shipping A-01 with `guards: []` would be
+> a silent, uncaught violation of a frozen architectural invariant. Needs
+> either an evidence-contract amendment adding the missing evidence
+> category, or confirmation that user-trust suppression is handled
+> entirely outside the rule-set predicate mechanism."
+
+**[R]** §6.4 (A-01 — User-Trusted Origin) specifies the guard condition
+the missing evidence category would need to satisfy: "An explicit,
+recorded user trust action, scoped to a single origin, within its
+validity period." Applies to CRED-01, CRED-04, CRED-07, PM-01, DL-01 →
+halve (maximum reduction 0.5, never nullifies).
+
+**[I]** Confirmed independently, not just trusting the changeLog's own
+claim: `trust_validity_days` is indeed listed among the rule set's
+current eleven `ParameterId`s (`rulesets/rules-v0.1.0.json`'s
+`parameters` array), and none of the ten evidence categories in
+`evidence.contract.v1.ts`'s `EvidenceByCategory` carries a field
+resembling "recorded user trust action" — the closest candidate,
+`authContext.lifecycleState`, is explicitly a different concept (derived
+from repeated authentication over time, not a single deliberate
+override click).
+
+**Question for architect ruling — exactly as the rule set's own text
+frames it, no third option invented here:**
+(a) An evidence-contract amendment adding the missing evidence category
+(what a "recorded user trust action" would need to look like — where
+it's captured, by what mechanism, at what layer — is itself undecided);
+or
+(b) Confirmation that user-trust suppression is handled entirely outside
+the rule-set predicate mechanism (e.g., enforced at a different
+architectural layer entirely, never modeled as a Stage 4
+`SuppressionDefinition` at all).
+
+No recommendation given — the corpus does not lean toward either path;
+the changeLog itself presents them as two live, equally-open options.
+
+**Status.** Open. Blocks: A-01 cannot be added to any rule-set version
+until this is resolved. Its five target rules (CRED-01, CRED-04,
+CRED-07, PM-01, DL-01) currently receive no user-trust-based reduction
+at all — not a partial or narrowed implementation the way S-01 is
+(DEC-17), a complete absence. Does not block Stage 4 scaffolding of S-01
+or S-02, which are independently specified and guard-complete (S-02) or
+guard-narrowed-but-present (S-01).
+
+**Decision:** _pending_
+**Signed by:** _pending_
+
+---
+
+## DEC-17 (CANDIDATE — unsigned, open) — S-01 guard narrowing (missing drift-tolerance condition)
+
+**[R]** `rulesets/rules-v0.1.0.json`'s S-01 (`introducedIn`/
+`lastModifiedIn`: `0.1.0`) carries this `rationale` field, quoted in
+full, verbatim — **this is the live, shipped, currently-active
+suppression definition, not a draft or a hypothetical**:
+
+> "INTERPRETIVE NARROWING, FLAGGED FOR REVIEW: §6.2's guard is stated as
+> three conditions — origin_present=true, lifecycleState=ESTABLISHED,
+> AND fingerprint drift within tolerance. No ParameterId exists for a
+> drift-tolerance threshold (checked against the full §13.2 tunable
+> list; 'drift tolerance' has no corresponding entry), so the third
+> condition cannot be expressed as a guard Predicate. This guard checks
+> only origin_present and lifecycleState=ESTABLISHED, treating
+> drift-within-tolerance as already folded into the module's own
+> ESTABLISHED determination rather than independently re-checked at
+> Stage 2. This is a real narrowing of §6.2's literal three-condition
+> wording, not a full implementation of it."
+
+**[R]** §6.2 (S-01 — Prior Authentication) specifies the full three-part
+guard condition this narrows: "The AuthContext Evaluation (§20.11)
+reports `origin_present = true` with lifecycle state `ESTABLISHED`,
+**and** reports fingerprint drift for that origin within tolerance." As
+shipped, `guards` contains exactly two `Predicate`s — `is(authContext.
+originPresent)` and `eq(authContext.lifecycleState, 'ESTABLISHED')` —
+confirmed directly against the live rule set's `guards` array, not
+assumed from the rationale text alone.
+
+**[I]** Re-confirmed independently, not just trusting S-01's own
+rationale claim: the current eleven `ParameterId`s in
+`rulesets/rules-v0.1.0.json` (`tau_sim`, `redirect_hop_min`,
+`page_age_max_ms`, `threshold_medium`, `threshold_high`, `tau_collision`,
+`auth_count_n`, `auth_days_m`, `provisional_expiry_days`,
+`trust_validity_days`, `establishment_rate_max`) genuinely contain
+nothing representing a fingerprint-drift-tolerance threshold. What would
+be needed to close the gap: a new `ParameterId` (e.g.
+`fingerprint_drift_tolerance` or similar), registered the same way every
+other empirical threshold in §13.2 already is, plus extending S-01's
+`guards` array with a third `Predicate` comparing
+`authContext.fingerprintDrift` against it.
+
+**This is currently SHIPPED and LIVE, not a hypothetical future gap.**
+Anyone relying on S-01 today — CRED-02's nullification, CRED-01's and
+CRED-04's halving — is relying on the narrowed two-condition version,
+not §6.2's literal three-condition text. This has been true since
+`rules-v0.1.0`'s authoring, not since this addendum was written.
+
+**Question for architect ruling.** Should a drift-tolerance `ParameterId`
+be added, closing the gap to match §6.2 literally? Or is the current
+narrowing — treating drift-within-tolerance as already folded into the
+AuthContext module's own `ESTABLISHED` determination rather than
+independently re-checked at Stage 2 — an accepted, permanent
+interpretation of §6.2, not a defect to fix? No recommendation given;
+both readings are defensible and the rule set's own rationale
+deliberately flagged this for review rather than picking one.
+
+**Status.** Open. Currently shipped as the narrowed (two-condition)
+version — no rule-set validation failure results (V-9's checks do not
+require guard completeness against §6.2's prose, only structural
+validity), so this does not block Stage 4 scaffolding of S-01 itself;
+scaffolding would simply build against the narrowed guard as it exists
+today. The gap is between the live implementation and §6.2's literal
+text, open since `rules-v0.1.0`'s authoring (Step 11, commit `fd61b76`
+per `docs/DEFECTS.md` DEFECT-16's citation) — **not discovered today.**
+No more precise calendar date for Step 11's completion is recorded
+anywhere in the corpus; bounded only by the surrounding dated entries —
+after DEC-3/DEC-8's 2026-08-21 signing (Step 11 depends on both, per the
+Signing Summary table) and before DEFECT-15's 2026-08-24 investigation,
+which already cites DEFECT-16's occurrence 1 (found "at rule-set
+authoring time") as an established, past fact by that point.
+
+**Decision:** _pending_
+**Signed by:** _pending_

@@ -67,8 +67,80 @@ separate Stage 2 dependency-check finding, recorded alongside DEC-15 in
 `DECISIONS.md`) — Stage 2 predicate evaluation is a distinct blocker with
 its own dependency check.
 
-**Verbatim source:** `DECISIONS.md`, `## DEC-15` through the end of the
-file (currently the last entry).
+**Verbatim source:** `DECISIONS.md`, `## DEC-15` through its 2026-08-26
+amendment (now followed by DEC-16 and DEC-17, below — formalized out of
+that amendment's Stage 4 addendum, not part of DEC-15 itself).
+
+---
+
+### DEC-16 — A-01 / User-Trusted Origin evidence gap
+
+**How long open:** since `rules-v0.1.0`'s authoring (Step 11) — the gap
+was recorded in the rule set's own `changeLog` at that time, not
+discovered when this entry was written (2026-08-26). No more precise
+calendar date for Step 11 is recorded anywhere in the corpus.
+
+**What's being decided:** A-01 (§6.4, User-Trusted Origin) has **zero**
+guards in `rulesets/rules-v0.1.0.json` — it does not exist in the
+`suppressions` array at all (only S-01 and S-02 are present). The rule
+set's own `changeLog` explains why, verbatim: no evidence category
+anywhere represents "a per-origin explicit user trust action"; the
+frozen `trust_validity_days` `ParameterId` (§13.2) has nowhere for its
+underlying guard data to live; shipping A-01 with `guards: []` would
+silently violate §6.1's "no unguarded suppression" invariant, so it was
+correctly omitted rather than shipped broken.
+
+**Current recommendation:** None — genuinely two open paths, not one
+obvious answer, exactly as the rule set's own text frames it: (a) an
+evidence-contract amendment adding the missing evidence category, or (b)
+confirmation that user-trust suppression is handled entirely outside the
+rule-set predicate mechanism (a different architectural layer, never a
+Stage 4 `SuppressionDefinition`).
+
+**What resolving it unblocks:** A-01 becoming addable to a future
+rule-set version. Its five target rules (CRED-01, CRED-04, CRED-07,
+PM-01, DL-01) currently get no user-trust-based reduction at all — a
+complete absence, not a partial one (contrast DEC-17/S-01, which is
+present but narrowed).
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-16`.
+
+---
+
+### DEC-17 — S-01 guard narrowing (missing drift-tolerance condition)
+
+**How long open:** since `rules-v0.1.0`'s authoring (Step 11, commit
+`fd61b76`) — S-01's own `rationale` field was written at that time,
+flagging this for review then, not discovered today. Bounded between
+DEC-3/DEC-8's 2026-08-21 signing and DEFECT-15's 2026-08-24
+investigation (which already cites this as an established past fact); no
+more precise date is recorded.
+
+**What's being decided:** S-01 (§6.2, Prior Authentication) **is live
+and shipping today**, but self-narrowed. §6.2 specifies three guard
+conditions (`origin_present=true`, `lifecycleState=ESTABLISHED`, **and**
+fingerprint drift within tolerance); the live rule set's S-01 encodes
+only the first two. Its own `rationale` field states why, verbatim: "No
+ParameterId exists for a drift-tolerance threshold... This guard checks
+only origin_present and lifecycleState=ESTABLISHED, treating
+drift-within-tolerance as already folded into the module's own
+ESTABLISHED determination... This is a real narrowing of §6.2's literal
+three-condition wording, not a full implementation of it."
+
+**Current recommendation:** None — should a drift-tolerance
+`ParameterId` be added (closing the gap to match §6.2 literally), or is
+the current narrowing an accepted, permanent interpretation? Both are
+defensible; the rule set's own rationale deliberately flagged this for
+review rather than picking one.
+
+**What resolving it unblocks:** Nothing functionally today — S-01
+validates cleanly and Stage 4 could scaffold against it as-is. This is a
+spec-vs-implementation gap, not a functional blocker: **anyone relying
+on S-01 today (CRED-02 nullification, CRED-01/CRED-04 halving) is
+relying on the narrowed two-condition version**, which is worth Jayanth
+knowing even though nothing is currently broken by it.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-17`.
 
 ---
 
@@ -266,6 +338,8 @@ decision gates Step 6 and therefore Steps 7, 8, and 11."
 | DEC-1 | ☑ Resolved | — | nothing (already resolved) |
 | DEC-3 | ☑ Resolved | — | nothing (already resolved) |
 | DEC-15 (`moduleVersion`, `indicators`, `consistency`, `summary`) | 🚧 Open | 2026-08-26 | A complete Stage 1 envelope; does not by itself block Stage 2 (see DEC-15 amendment) |
+| DEC-16 (A-01 evidence gap, zero guards) | 🚧 Open | ~Step 11 authoring | A-01 addable to a future rule-set version; 5 target rules get zero user-trust reduction today |
+| DEC-17 (S-01 guard narrowing, live+shipped) | 🚧 Open | ~Step 11 authoring | Nothing functionally — spec-vs-implementation gap in a rule already live and relied upon |
 | DEC-12 (brand constructors) | 🚧 Open | ~2026-08-21 (Step 8) | Nothing today; relevant when the engine ingests corpus payloads or capture ingests external data |
 | DEC-13 (cross-environment payload access) | 🚧 Open | 2026-08-22 | Nothing today; relevant if CI/a teammate/disaster recovery ever needs real payload |
 | DEFECT-11 (456 orphaned index entries) | 🚧 Open | 2026-08-22 | `INDEX.jsonl`-trusting tooling (Step 13 `--report`, future metrics harness) |
