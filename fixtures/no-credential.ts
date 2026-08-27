@@ -12,11 +12,11 @@
 
 import type {
   SecurityEvidence, TargetResourceId, AnalysisSessionId, DayStamp,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 import {
   EVIDENCE_CONTRACT_VERSION,
   present, absent, notCollected,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 
 export const noCredential: SecurityEvidence = {
   targetResourceId: 'res_no_credential_0001' as TargetResourceId,
