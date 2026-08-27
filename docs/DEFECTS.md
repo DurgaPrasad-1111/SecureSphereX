@@ -923,6 +923,23 @@ report `'unmatched'` when it should more precisely report
 `'unevaluable'` — a mislabeling of the REASON a rule produced no
 finding, never a fabricated finding.
 
+> **CORRECTION (2026-08-27) — the paragraph immediately above is WRONG and
+> is retained only so the error is legible, per this register's "record,
+> not a fix list" rule.** Its reasoning holds for a check read directly,
+> but not through `not()`. `matchPredicate` returned a two-state
+> `boolean`, so `is` collapsed the UNEVALUABLE sentinel to `false` before
+> `not` ever saw it, and `!false` fabricated a match. An unevaluable
+> required module therefore COULD cause a false `'matched'` and a real,
+> fabricated `CorrelationFinding` — demonstrated on all four committed
+> fixtures, where `DL-02` (`requiredModules: ['downloadContext']`) fired
+> with `downloadContext` unevaluable and no download evidence of any kind.
+> `CRED-06` was latently exposed the same way and is far more serious: a
+> PRIMARY at weight 40 that counts in the score, so a fabricated match
+> there corrupts the tier directly. Logged and fixed as **DEFECT-22**;
+> see that entry for the full analysis. What survives of DEFECT-21 is only
+> the `'unmatched'`-vs-`'unevaluable'` conflation described below, which
+> the DEFECT-22 fix deliberately did NOT close.
+
 DOES affect: the full three-state `RuleOutcome` cannot yet be built
 correctly from `stage2.ts`'s output alone — `'unmatched'` is ambiguous
 between "genuinely evaluated, no match" and "a required module was
@@ -947,3 +964,133 @@ repeating this analysis.
   construction (not yet started); does not block Stage 3
   (`CorrelationFinding`, already built and tested against this exact
   gap).
+- **Amended 2026-08-27:** impact analysis corrected (see the CORRECTION
+  block above). The fabricated-match half is now DEFECT-22, FIXED; the
+  `'unmatched'`/`'unevaluable'` conflation recorded here remains OPEN.
+  DEFECT-22's fix added an internal three-state `PredicateResult` to
+  `stage2.ts`, which is the raw material a future fix here needs —
+  `evaluatePredicate` already returns `'unevaluable'` where §15.2 wants
+  it; what is still missing is the `requiredModules` pre-check and the
+  `RuleMatchResult`/`RuleOutcome` surface to report it on.
+
+---
+
+## DEFECT-22 — `not()` over an unevaluable module fabricates a match; §5.6 did not survive negation (found and FIXED 2026-08-27)
+
+Finding: `packages/engine/stage2.ts`'s `matchPredicate` returned a
+two-state `boolean`. `resolveFindingPath` correctly returns an
+`UNEVALUABLE` sentinel for any path into a module whose result is not
+`'evaluated'`, and every leaf operator correctly refused to match on it
+— but each did so by returning plain `false`, discarding the distinction
+between "evaluated, and the answer is no" and "could not evaluate."
+`not` then inverted that `false` into `true`:
+
+```ts
+case 'is': {
+  const value = resolveValuePath(predicate.path, evaluations, boundItem);
+  return value === true;          // UNEVALUABLE -> false
+}
+case 'not':
+  return !matchPredicate(predicate.operand, ...);   // !false -> TRUE
+```
+
+The file's own header asserted the invariant it then failed to hold:
+"any `ValuePath` that resolves against an `unevaluable` module ... makes
+the containing check false, not an error and not a guessed default."
+True of the containing CHECK; false of any `not()` wrapping it. §5.6
+("Where the evidence required by a predicate is absent, the predicate
+simply does not match") was therefore enforced everywhere except through
+negation — the one place it inverts into its opposite.
+
+**Load-bearing consequence — measured, not reasoned about.** All three
+`not()` nodes in `rulesets/rules-v0.1.0.json` were enumerated by walking
+every rule's predicate AST (including `exists.where` subtrees) and both
+suppression guard sets. Exactly three exist, each wrapping a bare `is`:
+
+| Rule | Negated path | Module | Exposed? |
+|---|---|---|---|
+| `CRED-06` (primary, w=40) | `url.isSecureScheme` | `url` | **YES — latent, severe** |
+| `DL-02` (aggravator, w=20) | `downloadContext.extensionMimeConsistent` | `downloadContext` | **YES — firing on every fixture** |
+| `PM-01` (primary, w=25) | `permissionContext.precededByUserGesture` | `permissionContext` | No — accidentally protected |
+
+- **`DL-02` fired on ALL FOUR committed fixtures**, none of which
+  contains any download evidence (`clean-login`, `no-credential`,
+  `off-origin-post`, `sso-flow` all carry `downloadContext` entirely
+  `notCollected('not_applicable')`, making the module `unevaluable`). A
+  real `CorrelationFinding` was minted asserting a download's extension
+  and MIME type disagreed, on pages where no download was ever observed.
+  It scored 0 only because its parent `DL-01` never fires
+  (`parentQualified` false, §9.3) — containment by accident, not design.
+- **`CRED-06` is the serious one.** It is a PRIMARY at weight 40 that
+  counts directly in `primarySum`. Any evidence set with an evaluable
+  `loginForm` and an unevaluable `url` module fabricated a 40-point
+  match — enough on its own to cross `threshold_medium` (30). Confirmed
+  by construction: setting `url.scheme` to `notCollected` on
+  `clean-login` produced `CRED-06: matched`. No committed fixture
+  triggers it, which is exactly why no test caught it.
+- **`PM-01` was protected only by conjunct ORDER** — its first conjunct
+  `neq(permissionContext.requestedPermission, null)` returns false on an
+  unevaluable module and short-circuits before the `not()` is reached.
+  Reordering the conjuncts would have exposed it. Not a structural
+  protection.
+
+**Why the existing tests all passed.** Every per-module and per-stage
+test built its own inputs and asserted its own unit; none ran a real
+fixture through dispatch → Stage 2 → Stage 3 → Stage 5/6 in one pass.
+`tools/ci/test-fixtures.ts`'s four "round-trip" checks (gate G-7) do not
+import the engine at all — they are JSON serialization identity checks
+(`JSON.stringify(f) === JSON.stringify(JSON.parse(JSON.stringify(f)))`)
+plus three Observation-state spot checks. The defect lived in the seam
+between units, where nothing was looking.
+
+**Fix, implemented 2026-08-27** (`packages/engine/stage2.ts`): a new
+internal three-state `PredicateResult` (`'match' | 'noMatch' |
+'unevaluable'`) and `evaluatePredicate`, which propagates `'unevaluable'`
+through every operator instead of collapsing it. `not('unevaluable')` is
+`'unevaluable'`, never `'match'`. `matchPredicate` is retained as a thin
+boolean wrapper (`evaluatePredicate(...) === 'match'`) so no caller
+changes — `stage4.ts`'s guard evaluation and every existing test keep
+their current signature, and an unevaluable guard now correctly declines
+to suppress rather than suppressing on unknown data.
+
+Two deliberate non-changes, both to keep the fix narrow:
+
+1. **Operand evaluation order is preserved exactly** (`and` stops at the
+   first non-`match`, `or` at the first `match`, mirroring the previous
+   `Array.every`/`Array.some`). This is not cosmetic:
+   `priorFindingActive` throws, and `DL-01`'s first conjunct reads the
+   unevaluable `downloadContext`. Evaluating operands the old code
+   short-circuited past would have converted `DL-01` from `'unmatched'`
+   to a thrown `PriorFindingActiveUnavailableError` on every fixture —
+   a behaviour change unrelated to this defect.
+2. **A genuine `null` Findings value still yields `'noMatch'`, never
+   `'unevaluable'`.** Only the UNEVALUABLE sentinel — an unevaluable
+   MODULE — produces `'unevaluable'`. DEFECT-19's settled semantics
+   (`notSameSite(null, null)` is not a match) are unchanged, as are
+   `permissionContext`'s nullable-field readings.
+
+**Verification** (`packages/engine/e2e.sso-flow.fixture.test.ts`, new):
+all three `not()` rules asserted on BOTH an evaluable and an unevaluable
+operand — `CRED-06` still fires on a genuinely `http` scheme and no
+longer fires when `url` is unevaluable; `DL-02` still fires on a
+genuinely inconsistent extension/MIME pair and no longer fires on any of
+the four fixtures; `PM-01` still fires on a real no-gesture permission
+request and is now asserted against the unevaluable case so conjunct
+reordering cannot silently expose it. Full suite green afterwards: `tsc
+-b` clean, 16/16 test files pass, `test:fixtures` 7/7,
+`validate:ruleset` CONFORMANT.
+
+**Relationship to DEFECT-21.** Distinct and more severe, not a
+duplicate. DEFECT-21 is about the `RuleMatchResult` SURFACE conflating
+`'unmatched'` with `'unevaluable'`; it explicitly claimed an unevaluable
+module "can never cause a false `'matched'`." That claim is what this
+entry disproves, and DEFECT-21 has been amended with a correction block
+pointing here. DEFECT-21's own subject — the missing `requiredModules`
+pre-check and the two-state `RuleMatchResult` — remains OPEN and
+untouched by this fix.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** FIXED 2026-08-27 in `packages/engine/stage2.ts`, with the
+  regression matrix in `packages/engine/e2e.sso-flow.fixture.test.ts`.
+  No rule-set change was required — the defect was in the evaluator, not
+  in any rule's predicate.

@@ -127,10 +127,143 @@ function resolveSet(set: RefinementSetId, ruleSet: RuleSet): readonly string[] {
 }
 
 /**
- * Evaluates one `Predicate` node. `boundItem` is only meaningful inside an
- * `exists.where` subtree (§ItemPath); `undefined` everywhere else, matching
- * `ItemPath`'s own contract note that it's "Valid ONLY inside an
- * `exists.where` subtree."
+ * Three-state predicate result. `unevaluable` is NOT a synonym for
+ * `noMatch` — it is "this check read a module that produced no findings, so
+ * no honest true/false answer exists." Keeping the two apart is what makes
+ * §5.6 survive negation: see DEFECT-22.
+ *
+ * A genuine `null` Findings value (e.g. `registrableDomain: null`,
+ * `requestedPermission: null`) is a real, positive answer and yields
+ * `noMatch`, never `unevaluable` — only the UNEVALUABLE sentinel, i.e. an
+ * unevaluable MODULE, produces `unevaluable`.
+ */
+export type PredicateResult = 'match' | 'noMatch' | 'unevaluable';
+
+/**
+ * Evaluates one `Predicate` node to a three-state result. `boundItem` is
+ * only meaningful inside an `exists.where` subtree (§ItemPath); `undefined`
+ * everywhere else, matching `ItemPath`'s own contract note that it's "Valid
+ * ONLY inside an `exists.where` subtree."
+ *
+ * OPERAND EVALUATION ORDER IS PRESERVED EXACTLY as the previous
+ * `Array.every`/`Array.some` implementation: `and` stops at the first
+ * operand that is not `match`, `or` stops at the first operand that IS
+ * `match`. This matters beyond style — `priorFindingActive` throws, so
+ * evaluating an operand the old code short-circuited past would turn a
+ * currently-`unmatched` rule (DL-01 on every present fixture, whose first
+ * conjunct reads the unevaluable `downloadContext` module) into a thrown
+ * `PriorFindingActiveUnavailableError`. Fixing DEFECT-22 must not silently
+ * change which rules reach the store dependency.
+ */
+export function evaluatePredicate(
+  predicate: Predicate,
+  evaluations: EvaluationSetForMatching,
+  ruleSet: RuleSet,
+  ruleId: string,
+  boundItem: unknown = undefined,
+): PredicateResult {
+  switch (predicate.op) {
+    case 'is': {
+      const value = resolveValuePath(predicate.path, evaluations, boundItem);
+      if (value === UNEVALUABLE) return 'unevaluable';
+      return value === true ? 'match' : 'noMatch';
+    }
+    case 'not': {
+      // THE DEFECT-22 FIX. Negating an unevaluable operand yields
+      // unevaluable, never a match: "we could not look" does not become
+      // "we looked and found the opposite." Previously this was
+      // `!matchPredicate(...)`, where `is` had already collapsed
+      // UNEVALUABLE to `false` and `!false` fabricated a match.
+      const inner = evaluatePredicate(predicate.operand, evaluations, ruleSet, ruleId, boundItem);
+      if (inner === 'unevaluable') return 'unevaluable';
+      return inner === 'match' ? 'noMatch' : 'match';
+    }
+    case 'and': {
+      // Mirrors Array.every: stop at the first non-`match` operand.
+      for (const operand of predicate.operands) {
+        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
+        if (result !== 'match') return result;
+      }
+      return 'match';
+    }
+    case 'or': {
+      // Mirrors Array.some: stop at the first `match`. If none matched, the
+      // disjunction is only honestly `noMatch` when every operand was a
+      // real `noMatch` — one unevaluable operand leaves the whole `or`
+      // unevaluable, since that operand might have matched had it been
+      // readable.
+      let sawUnevaluable = false;
+      for (const operand of predicate.operands) {
+        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
+        if (result === 'match') return 'match';
+        if (result === 'unevaluable') sawUnevaluable = true;
+      }
+      return sawUnevaluable ? 'unevaluable' : 'noMatch';
+    }
+    case 'gte':
+    case 'lte':
+    case 'gt':
+    case 'lt': {
+      const value = resolveValuePath(predicate.path, evaluations, boundItem);
+      if (value === UNEVALUABLE) return 'unevaluable';
+      if (typeof value !== 'number') return 'noMatch';
+      const paramValue = resolveParam(predicate.param, ruleSet);
+      if (predicate.op === 'gte') return value >= paramValue ? 'match' : 'noMatch';
+      if (predicate.op === 'lte') return value <= paramValue ? 'match' : 'noMatch';
+      if (predicate.op === 'gt') return value > paramValue ? 'match' : 'noMatch';
+      return value < paramValue ? 'match' : 'noMatch';
+    }
+    case 'eq':
+    case 'neq': {
+      const value = resolveValuePath(predicate.path, evaluations, boundItem);
+      if (value === UNEVALUABLE) return 'unevaluable';
+      const equal = value === predicate.value;
+      return (predicate.op === 'eq' ? equal : !equal) ? 'match' : 'noMatch';
+    }
+    case 'sameSite':
+    case 'notSameSite': {
+      const left = resolveValuePath(predicate.left, evaluations, boundItem);
+      const right = resolveValuePath(predicate.right, evaluations, boundItem);
+      // An unevaluable MODULE on either side leaves the comparison
+      // unevaluable. A genuine `null` domain is different: that is a real
+      // finding, and DEFECT-19 already settled that notSameSite(null, null)
+      // is a `noMatch`, not a match — preserved exactly.
+      if (left === UNEVALUABLE || right === UNEVALUABLE) return 'unevaluable';
+      if (typeof left !== 'string' || typeof right !== 'string') return 'noMatch';
+      const same = left === right;
+      return (predicate.op === 'sameSite' ? same : !same) ? 'match' : 'noMatch';
+    }
+    case 'inSet': {
+      const value = resolveValuePath(predicate.path, evaluations, boundItem);
+      if (value === UNEVALUABLE) return 'unevaluable';
+      if (typeof value !== 'string') return 'noMatch';
+      return resolveSet(predicate.set, ruleSet).includes(value) ? 'match' : 'noMatch';
+    }
+    case 'exists': {
+      const collection = resolveFindingPath(predicate.collection, evaluations);
+      if (collection === UNEVALUABLE) return 'unevaluable';
+      if (!Array.isArray(collection)) return 'noMatch';
+      let sawUnevaluable = false;
+      for (const item of collection) {
+        const result = evaluatePredicate(predicate.where, evaluations, ruleSet, ruleId, item);
+        if (result === 'match') return 'match';
+        if (result === 'unevaluable') sawUnevaluable = true;
+      }
+      return sawUnevaluable ? 'unevaluable' : 'noMatch';
+    }
+    case 'priorFindingActive':
+      throw new PriorFindingActiveUnavailableError(ruleId);
+  }
+}
+
+/**
+ * Boolean view of `evaluatePredicate` — "did this predicate MATCH?"
+ * `unevaluable` is not a match (§5.6), so it collapses to `false` here.
+ *
+ * The collapse happens ONLY at this outermost boundary, never inside the
+ * recursion — that is precisely the DEFECT-22 fix. Callers that need the
+ * three-state answer (a future DEFECT-21 fix building `RuleOutcome`'s
+ * `unevaluable` variant) should call `evaluatePredicate` directly.
  */
 export function matchPredicate(
   predicate: Predicate,
@@ -139,59 +272,7 @@ export function matchPredicate(
   ruleId: string,
   boundItem: unknown = undefined,
 ): boolean {
-  switch (predicate.op) {
-    case 'is': {
-      const value = resolveValuePath(predicate.path, evaluations, boundItem);
-      return value === true;
-    }
-    case 'not':
-      return !matchPredicate(predicate.operand, evaluations, ruleSet, ruleId, boundItem);
-    case 'and':
-      return predicate.operands.every((op) => matchPredicate(op, evaluations, ruleSet, ruleId, boundItem));
-    case 'or':
-      return predicate.operands.some((op) => matchPredicate(op, evaluations, ruleSet, ruleId, boundItem));
-    case 'gte':
-    case 'lte':
-    case 'gt':
-    case 'lt': {
-      const value = resolveValuePath(predicate.path, evaluations, boundItem);
-      if (typeof value !== 'number') return false;
-      const paramValue = resolveParam(predicate.param, ruleSet);
-      if (predicate.op === 'gte') return value >= paramValue;
-      if (predicate.op === 'lte') return value <= paramValue;
-      if (predicate.op === 'gt') return value > paramValue;
-      return value < paramValue;
-    }
-    case 'eq':
-    case 'neq': {
-      const value = resolveValuePath(predicate.path, evaluations, boundItem);
-      if (value === UNEVALUABLE) return false;
-      return predicate.op === 'eq' ? value === predicate.value : value !== predicate.value;
-    }
-    case 'sameSite':
-    case 'notSameSite': {
-      const left = resolveValuePath(predicate.left, evaluations, boundItem);
-      const right = resolveValuePath(predicate.right, evaluations, boundItem);
-      // Both sides must be known, non-null strings — R-01 compares two
-      // registrable domains, and "unknown compared to unknown" answers
-      // neither "same" nor "not same" honestly. See the header comment
-      // and DEFECT-19 for why notSameSite(null, null) is NOT a match.
-      if (typeof left !== 'string' || typeof right !== 'string') return false;
-      return predicate.op === 'sameSite' ? left === right : left !== right;
-    }
-    case 'inSet': {
-      const value = resolveValuePath(predicate.path, evaluations, boundItem);
-      if (typeof value !== 'string') return false;
-      return resolveSet(predicate.set, ruleSet).includes(value);
-    }
-    case 'exists': {
-      const collection = resolveFindingPath(predicate.collection, evaluations);
-      if (!Array.isArray(collection)) return false;
-      return collection.some((item) => matchPredicate(predicate.where, evaluations, ruleSet, ruleId, item));
-    }
-    case 'priorFindingActive':
-      throw new PriorFindingActiveUnavailableError(ruleId);
-  }
+  return evaluatePredicate(predicate, evaluations, ruleSet, ruleId, boundItem) === 'match';
 }
 
 export function matchRule(rule: RuleDefinition, evaluations: EvaluationSetForMatching, ruleSet: RuleSet): boolean {
