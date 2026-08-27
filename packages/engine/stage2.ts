@@ -48,7 +48,7 @@
  * default.
  */
 
-import type { ModuleId } from '../contracts/evaluation.contract.v1';
+import type { ModuleId, UnevaluableReason } from '../contracts/evaluation.contract.v1';
 import type {
   Predicate, ValuePath, ParameterId, RefinementSetId, RuleDefinition, RuleSet,
 } from '../contracts/ruleset.format.v1';
@@ -279,22 +279,97 @@ export function matchRule(rule: RuleDefinition, evaluations: EvaluationSetForMat
   return matchPredicate(rule.predicate, evaluations, ruleSet, rule.id);
 }
 
+/**
+ * One rule's Stage 2 outcome.
+ *
+ * `unevaluable` is a FIRST-CLASS outcome, distinct from `unmatched` —
+ * required by `evaluation.contract.v1.ts`'s invariant **E-6**: "`unevaluable`
+ * is a produced evaluation, not a missing one. **Stage 2 MUST distinguish it
+ * from evaluated-with-negative-findings**", and by §15.2
+ * (`ruleset.format.v1.ts:176-183`): "if ANY required module is `unevaluable`
+ * for this pass, the rule outcome is `unevaluable` — NOT a non-match. A rule
+ * that could not be tested MUST NOT be recorded as a rule that found
+ * nothing."
+ *
+ * Shaped to feed `passresult.contract.v1.ts`'s `RuleOutcome` directly: its
+ * `unevaluable` variant carries exactly `reason` + `unevaluableModules`.
+ * `matched`/`unmatched` map to `RuleOutcome`'s `matched`/`notMatched`.
+ *
+ * `blocked` is retained as a separate status, NOT folded into `unevaluable`:
+ * it means the predicate reached `priorFindingActive`, which needs Analysis
+ * History from a store that does not exist yet. That is a missing
+ * DEPENDENCY, not an unevaluable module, and collapsing the two would lose
+ * the distinction the error message carries.
+ */
 export type RuleMatchResult =
   | { readonly ruleId: string; readonly status: 'matched' | 'unmatched' }
+  | {
+      readonly ruleId: string;
+      readonly status: 'unevaluable';
+      readonly reason: UnevaluableReason | 'undeclared_required_module';
+      /** Which of the rule's `requiredModules` were unevaluable (§15.2). */
+      readonly unevaluableModules: readonly ModuleId[];
+    }
   | { readonly ruleId: string; readonly status: 'blocked'; readonly reason: string };
 
 /**
+ * The `requiredModules` pre-check §15.2 mandates: which of this rule's
+ * declared required modules did not produce findings this pass.
+ */
+function unevaluableRequiredModules(
+  rule: RuleDefinition,
+  evaluations: EvaluationSetForMatching,
+): readonly ModuleId[] {
+  return rule.requiredModules.filter((moduleId) => evaluations[moduleId].result.status !== 'evaluated');
+}
+
+/**
  * Evaluates every rule in the rule set against one evaluation set.
+ *
+ * Order matters and is specified, not incidental — §15.2 requires the
+ * `requiredModules` check BEFORE predicate evaluation, so a rule that could
+ * not be tested is never reported as one that found nothing, regardless of
+ * how its predicate would have short-circuited.
+ *
  * `priorFindingActive` is isolated per-rule (currently only DL-01) so one
  * genuinely-blocked rule doesn't prevent an answer for the other ten.
  */
 export function matchAllRules(evaluations: EvaluationSetForMatching, ruleSet: RuleSet): readonly RuleMatchResult[] {
-  return ruleSet.rules.map((rule) => {
+  return ruleSet.rules.map((rule): RuleMatchResult => {
+    // §15.2 pre-check, before the predicate is touched.
+    const blockedModules = unevaluableRequiredModules(rule, evaluations);
+    if (blockedModules.length > 0) {
+      // Report the FIRST required module's own reason rather than inventing
+      // a rule-level one — it is the genuine, module-supplied cause, and
+      // `RuleOutcome.reason` is typed `UnevaluableReason`, the same union.
+      const first = evaluations[blockedModules[0]!].result;
+      return {
+        ruleId: rule.id,
+        status: 'unevaluable',
+        reason: first.status === 'unevaluable' ? first.reason : 'module_error',
+        unevaluableModules: blockedModules,
+      };
+    }
+
     try {
-      return { ruleId: rule.id, status: matchRule(rule, evaluations, ruleSet) ? 'matched' : 'unmatched' } as const;
+      const result = evaluatePredicate(rule.predicate, evaluations, ruleSet, rule.id);
+      if (result === 'match') return { ruleId: rule.id, status: 'matched' };
+      if (result === 'noMatch') return { ruleId: rule.id, status: 'unmatched' };
+      // Every declared required module WAS evaluable, yet the predicate still
+      // read an unevaluable one — the rule's `requiredModules` under-declares
+      // what its predicate actually reads (DEFECT-16's shape). Reported
+      // honestly as unevaluable with an empty module list rather than
+      // silently downgraded to `unmatched`, which is the exact conflation
+      // E-6 forbids.
+      return {
+        ruleId: rule.id,
+        status: 'unevaluable',
+        reason: 'undeclared_required_module',
+        unevaluableModules: [],
+      };
     } catch (err) {
       if (err instanceof PriorFindingActiveUnavailableError) {
-        return { ruleId: rule.id, status: 'blocked', reason: err.message } as const;
+        return { ruleId: rule.id, status: 'blocked', reason: err.message };
       }
       throw err;
     }

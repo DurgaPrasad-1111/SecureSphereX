@@ -180,14 +180,38 @@ const statusOf = (ruleId: string): string => {
 //          on ALL FOUR fixtures, none of which has any download evidence.
 //  PM-01   unmatched — permissionContext.requestedPermission is null, so
 //          `neq(..., null)` is false.
+//
+// E-6 / §15.2 (added 2026-08-27): rules whose requiredModules include an
+// unevaluable module are 'unevaluable', NOT 'unmatched'. On sso-flow that is
+// CRED-02 (authContext) and DL-01/DL-02 (downloadContext). The distinction is
+// mandated by evaluation.contract.v1.ts's invariant E-6 — "Stage 2 MUST
+// distinguish it from evaluated-with-negative-findings" — and by §15.2's
+// "a rule that could not be tested MUST NOT be recorded as a rule that found
+// nothing." These three previously reported 'unmatched'.
 assert.equal(statusOf('CRED-01'), 'unmatched');
-assert.equal(statusOf('CRED-02'), 'unmatched');
+assert.equal(statusOf('CRED-02'), 'unevaluable');
 assert.equal(statusOf('CRED-03'), 'unmatched');
 assert.equal(statusOf('CRED-06'), 'unmatched');
 assert.equal(statusOf('CRED-07'), 'unmatched');
-assert.equal(statusOf('DL-01'), 'unmatched');
-assert.equal(statusOf('DL-02'), 'unmatched');
+assert.equal(statusOf('DL-01'), 'unevaluable');
+assert.equal(statusOf('DL-02'), 'unevaluable');
 assert.equal(statusOf('PM-01'), 'unmatched');
+
+// The unevaluable outcomes must name WHICH required modules were unevaluable
+// and carry the module's own reason — RuleOutcome's `unevaluable` variant
+// (passresult.contract.v1.ts:74-77) is typed exactly this way, so Stage 2's
+// output can feed it without invention.
+const outcomeOf = (ruleId: string) => matchResults.find((r) => r.ruleId === ruleId)!;
+for (const [ruleId, expectedModule] of [
+  ['CRED-02', 'authContext'], ['DL-01', 'downloadContext'], ['DL-02', 'downloadContext'],
+] as const) {
+  const outcome = outcomeOf(ruleId);
+  assert.equal(outcome.status, 'unevaluable', `${ruleId}`);
+  assert.ok(outcome.status === 'unevaluable' && outcome.unevaluableModules.includes(expectedModule),
+    `${ruleId}: must name ${expectedModule} in unevaluableModules (§15.2)`);
+  assert.equal(outcome.status === 'unevaluable' ? outcome.reason : null,
+    'required_evidence_not_collected', `${ruleId}: carries the module's own reason`);
+}
 
 // ---------------------------------------------------------------------------
 // 4. The three known-dead rules: prove NO CRASH, then prove NO MATCH.
@@ -318,7 +342,11 @@ const urlBlind = structuredClone(ssoFlow);
 (urlBlind as unknown as { evidence: { url: { scheme: { state: string; reason: string } } } })
   .evidence.url.scheme = { state: 'notCollected', reason: 'api_unavailable' };
 const urlBlindStatuses = await statusesFor(urlBlind);
-assert.equal(statusIn(urlBlindStatuses, 'CRED-06'), 'unmatched',
+// 'unevaluable', not 'unmatched': post-E-6 the §15.2 pre-check fires first
+// (CRED-06 declares requiredModules ['loginForm','url']). Either way the
+// DEFECT-22 property holds — it is not a match — but the reported status is
+// now the honest one.
+assert.equal(statusIn(urlBlindStatuses, 'CRED-06'), 'unevaluable',
   'CRED-06 must not fabricate a match when the url module is unevaluable (DEFECT-22)');
 
 // --- DL-02: not(is(downloadContext.extensionMimeConsistent)) --------------
@@ -340,8 +368,8 @@ assert.equal(statusIn(realDownloadStatuses, 'DL-02'), 'matched',
   'DL-02 must still fire on a genuinely inconsistent extension/MIME pair');
 
 // Unevaluable downloadContext -> must NOT fire. The original DEFECT-22 case.
-assert.equal(statusOf('DL-02'), 'unmatched',
-  'DL-02 must not fire when downloadContext is unevaluable (DEFECT-22)');
+assert.equal(statusOf('DL-02'), 'unevaluable',
+  'DL-02 must not fire when downloadContext is unevaluable (DEFECT-22; E-6 status)');
 
 // --- PM-01: not(is(permissionContext.precededByUserGesture)) --------------
 
@@ -364,7 +392,7 @@ assert.equal(statusIn(await statusesFor(realPermission), 'PM-01'), 'matched',
 const pcBlind = structuredClone(ssoFlow);
 (pcBlind as unknown as { evidence: { permissionContext: { requestedPermission: unknown } } })
   .evidence.permissionContext.requestedPermission = { state: 'notCollected', reason: 'api_unavailable' };
-assert.equal(statusIn(await statusesFor(pcBlind), 'PM-01'), 'unmatched',
+assert.equal(statusIn(await statusesFor(pcBlind), 'PM-01'), 'unevaluable',
   'PM-01 must not fabricate a match when permissionContext is unevaluable');
 
 // ---------------------------------------------------------------------------

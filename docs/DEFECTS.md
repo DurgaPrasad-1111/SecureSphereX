@@ -959,19 +959,96 @@ a fully-evaluated predicate. Full cross-reference:
 `packages/engine/stage3.ts`'s header comment points here rather than
 repeating this analysis.
 
+> **AMENDMENT (2026-08-27) — THE INVARIANT THIS VIOLATES, NOW IDENTIFIED.**
+> This entry was filed and analysed against §15.2 alone. It is in fact a
+> violation of a **frozen-contract invariant**, which the original entry
+> never cited: `packages/contracts/evaluation.contract.v1.ts:304`,
+> invariant **E-6** — "`unevaluable` is a produced evaluation, not a
+> missing one. **Stage 2 MUST distinguish it from
+> evaluated-with-negative-findings.**" That is normative contract text,
+> not a spec preference, and `packages/contracts/` is FROZEN. The same
+> requirement is restated at `passresult.contract.v1.ts:64-67` ("`unevaluable`
+> is an OUTCOME, not an absence — §15.2's whole mechanism depends on
+> distinguishing 'tested, no match' from 'could not test'") and at
+> `ruleset.format.v1.ts:176-183` (§15.2, "CRITICAL"). Filing this as a
+> §15.2 shortfall understated it: shipped code was violating a frozen
+> invariant, not merely missing a nicety.
+
+**FIX (2026-08-27) — `packages/engine/stage2.ts`.** Two changes at the
+reporting boundary, the collapse point DEFECT-22's fix deliberately left
+in place:
+
+1. **`RuleMatchResult` gained a first-class `'unevaluable'` variant**,
+   carrying `reason` and `unevaluableModules` — shaped to feed
+   `passresult.contract.v1.ts`'s `RuleOutcome.unevaluable` directly, whose
+   own fields are exactly `reason: UnevaluableReason` and
+   `unevaluableModules: readonly ModuleId[]`. The reason reported is the
+   FIRST unevaluable required module's own `Evaluability.reason`, not a
+   rule-level invention.
+2. **§15.2's `requiredModules` pre-check now runs BEFORE the predicate**,
+   as that section's text requires. Order is load-bearing, not incidental:
+   evaluating the predicate first would let `and`-short-circuiting report
+   `'unmatched'` for a rule that was never actually testable.
+
+`'blocked'` is deliberately NOT folded into `'unevaluable'`: it means the
+predicate reached `priorFindingActive`, i.e. a missing store DEPENDENCY,
+not an unevaluable module. Collapsing them would lose the distinction the
+error message carries. A residual case is also reported honestly rather
+than downgraded — if every declared required module was evaluable but the
+predicate still read an unevaluable one, the rule's `requiredModules`
+under-declares what it reads (DEFECT-16's shape); that surfaces as
+`unevaluable` with reason `'undeclared_required_module'` and an empty
+module list.
+
+**No score changed — verified, not assumed.** E-6 governs REPORTING, not
+weight: `stage3.ts` produces a `CorrelationFinding` only for `'matched'`,
+and nothing that previously reported `'matched'` now reports otherwise.
+Checked before implementing, by computing the pre-check against every rule
+on all four fixtures: the sole matched rule (`CRED-01` on
+`off-origin-post`) has all required modules evaluated. After the fix, all
+four fixtures produce byte-identical scores and tiers to the
+post-DEFECT-22/DEC-20 values: `clean-login` 0/Low, `no-credential` 0/Low,
+`off-origin-post` 45/Medium (CRED-01 alone), `sso-flow` 0/Low.
+
+**What changed is what the pass now SAYS.** On `sso-flow`, `CRED-02`
+(requires `authContext`) and `DL-01`/`DL-02` (require `downloadContext`)
+now report `'unevaluable'` naming the responsible module, where they
+previously claimed to have been tested and found nothing. On
+`no-credential`, seven rules move from `'unmatched'` to `'unevaluable'` —
+that fixture has no login form, so most rules genuinely could not be
+tested at all.
+
+**Three tests had encoded the violation as expected behaviour** and were
+corrected alongside the fix — the same pattern DEC-20 documents:
+`stage2.fixture.test.ts` asserted `'unmatched'` for a rule whose own
+inline comment already read "url module unevaluable in baseEvaluations()";
+its integration loop whitelisted only `matched|unmatched|blocked`; and its
+DEFECT-19 check asserted the literal status `'unmatched'` rather than the
+property DEFECT-19 actually established ("never MATCHED"), which is now
+asserted directly. `e2e.sso-flow.fixture.test.ts` gained assertions that
+each unevaluable outcome names its module and carries the module's reason.
+
+**No new defect number was opened for this fix, deliberately.** DEFECT-21's
+own heading already names this exact subject — "`RuleMatchResult` conflates
+an unevaluable required module with a genuine non-match" — so a new entry
+would duplicate it. This differs from DEFECT-22, which earned its own
+number because it was a distinct root cause (`not()` inverting a collapsed
+boolean) that this entry had explicitly claimed was impossible. Current
+highest defect number verified as 23 before deciding; no DEFECT-24 was
+created.
+
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. Blocks `RuleOutcome`/`AnalysisPassResult`
-  construction (not yet started); does not block Stage 3
-  (`CorrelationFinding`, already built and tested against this exact
-  gap).
-- **Amended 2026-08-27:** impact analysis corrected (see the CORRECTION
-  block above). The fabricated-match half is now DEFECT-22, FIXED; the
-  `'unmatched'`/`'unevaluable'` conflation recorded here remains OPEN.
-  DEFECT-22's fix added an internal three-state `PredicateResult` to
-  `stage2.ts`, which is the raw material a future fix here needs —
-  `evaluatePredicate` already returns `'unevaluable'` where §15.2 wants
-  it; what is still missing is the `requiredModules` pre-check and the
-  `RuleMatchResult`/`RuleOutcome` surface to report it on.
+- **Status:** **FIXED 2026-08-27** in `packages/engine/stage2.ts`. E-6 is
+  now satisfied at Stage 2's reporting surface. `RuleOutcome` /
+  `AnalysisPassResult` construction remains unstarted, but is no longer
+  BLOCKED by this defect — `matchAllRules` now emits everything
+  `RuleOutcome`'s three variants require.
+- **Amended 2026-08-27 (earlier, same day):** impact analysis corrected
+  (see the CORRECTION block above). The fabricated-match half became
+  DEFECT-22, FIXED. That amendment stated the remaining conflation was
+  still OPEN and listed what a fix would need — "the `requiredModules`
+  pre-check and the `RuleMatchResult`/`RuleOutcome` surface to report it
+  on." Both are now implemented; this entry is closed.
 
 ---
 

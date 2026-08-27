@@ -360,7 +360,17 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
   const results = matchAllRules(baseEvaluations(), ruleSetWithOneBlockedRule);
   assert.equal(results.length, 2);
   assert.equal(results[0]?.status, 'blocked');
-  assert.equal(results[1]?.status, 'unmatched'); // url module unevaluable in baseEvaluations()
+  // CORRECTED 2026-08-27 (E-6). FAKE-URL declares requiredModules: ['url'],
+  // and `url` is unevaluable in baseEvaluations() — so §15.2's pre-check
+  // makes this `unevaluable`, NOT `unmatched`. The previous expectation was
+  // the E-6 violation itself: its own comment already noted the module was
+  // unevaluable while asserting the rule "found nothing".
+  const fakeUrl = results[1];
+  assert.equal(fakeUrl?.status, 'unevaluable');
+  assert.ok(fakeUrl?.status === 'unevaluable' && fakeUrl.unevaluableModules.includes('url'),
+    'the unevaluable module must be named in the outcome (§15.2 unevaluableModules)');
+  assert.equal(fakeUrl?.status === 'unevaluable' ? fakeUrl.reason : null, 'required_evidence_not_collected',
+    "the module's own reason is carried through, not a rule-level invention");
 }
 
 // --- Integration: real rules-v0.1.0.json against real fixtures, via the
@@ -383,18 +393,26 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
 
   assert.equal(results.length, ruleSet.rules.length, `${name}: one result per rule`);
   for (const result of results) {
-    assert.ok(['matched', 'unmatched', 'blocked'].includes(result.status), `${name}/${result.ruleId}: bad status`);
+    // 'unevaluable' added 2026-08-27 — invariant E-6 (evaluation.contract.v1.ts:304)
+    // requires Stage 2 to distinguish "could not test" from "tested, no match".
+    assert.ok(['matched', 'unmatched', 'unevaluable', 'blocked'].includes(result.status),
+      `${name}/${result.ruleId}: bad status`);
+    // Every unevaluable outcome must carry §15.2's diagnostic payload.
+    if (result.status === 'unevaluable') {
+      assert.ok(Array.isArray(result.unevaluableModules), `${name}/${result.ruleId}: missing unevaluableModules`);
+      assert.equal(typeof result.reason, 'string', `${name}/${result.ruleId}: missing reason`);
+    }
   }
 
   // DL-01 is the only rule using priorFindingActive, so it's the only one
-  // that can EVER be reported 'blocked' — but 'and' short-circuits (§5.6:
-  // absent evidence simply doesn't match), so DL-01 legitimately resolves
-  // 'unmatched' whenever an earlier conjunct (inSet/referrerPresent/
-  // notSameSite) is already false without reaching priorFindingActive at
-  // all, which is every one of these 4 fixtures — none has download
-  // evidence satisfying the first three conjuncts. The dedicated
-  // short-circuit-avoidance case is covered in the unit tests above
-  // (ruleSetWithOneBlockedRule).
+  // that can EVER be reported 'blocked'. On these 4 fixtures it never is:
+  // CORRECTED 2026-08-27 — DL-01 declares requiredModules ['downloadContext'],
+  // which is unevaluable on all four (no fixture has download evidence), so
+  // §15.2's pre-check reports 'unevaluable' before the predicate is touched.
+  // It previously reported 'unmatched' via 'and' short-circuit — the exact
+  // E-6 conflation this change fixes. The dedicated case where
+  // priorFindingActive IS reached is covered in the unit tests above
+  // (ruleSetWithOneBlockedRule, whose FAKE-DL declares requiredModules: []).
   const blocked = results.filter((r) => r.status === 'blocked');
   assert.ok(
     blocked.every((r) => r.ruleId === 'DL-01'),
@@ -403,8 +421,20 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
 
   // DEFECT-19: CRED-04 can never match against real dispatch, for any
   // fixture, because redirect.ts always reports both domain fields null.
+  //
+  // CORRECTED 2026-08-27 (E-6): the property being asserted is "never
+  // MATCHED", which is what DEFECT-19 established. The exact non-matching
+  // STATUS is now fixture-dependent: CRED-04 declares requiredModules
+  // ['redirect','loginForm'], and on no-credential `loginForm` is unevaluable,
+  // so §15.2 reports 'unevaluable' there while the other three fixtures
+  // report 'unmatched'. Asserting 'unmatched' flatly would re-encode the very
+  // conflation E-6 forbids, so the invariant is asserted directly instead.
   const cred04 = results.find((r) => r.ruleId === 'CRED-04');
-  assert.equal(cred04?.status, 'unmatched', `${name}: CRED-04 must never match (DEFECT-19)`);
+  assert.notEqual(cred04?.status, 'matched', `${name}: CRED-04 must never match (DEFECT-19)`);
+  assert.ok(
+    cred04?.status === 'unmatched' || cred04?.status === 'unevaluable',
+    `${name}: CRED-04 status should be unmatched or unevaluable, got ${cred04?.status}`,
+  );
 }
 
 console.log('all stage2 fixture assertions passed');
