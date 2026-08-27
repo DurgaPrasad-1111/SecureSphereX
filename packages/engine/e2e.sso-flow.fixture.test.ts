@@ -117,19 +117,45 @@ for (const moduleId of ALL_MODULE_IDS) {
   );
 }
 
-// The FULL SecurityEvaluation<M> envelope is still unreachable — DEC-15's
-// four unresolved fields. assembleSecurityEvaluation is typed Promise<never>
-// and always throws. Asserted rather than skipped, so that the day DEC-15 is
-// resolved this test fails loudly and gets updated instead of silently
-// continuing to describe a pipeline that has changed shape.
+// WHY THIS TEST STILL ASSERTS AGAINST ModuleDispatchResult, NOT
+// SecurityEvaluation<M> — deliberate, one field deferred, not an oversight.
+//
+// The Architecture Owner's 2026-08-27 ruling resolved three of DEC-15's four
+// remaining fields (moduleVersion, indicators, summary). `consistency` was
+// deliberately NOT resolved: its nearest enum value, 'indeterminate', is
+// defined in the frozen contract as "insufficient evidence to assess
+// coherence" — a substantive analytical claim that would be FALSE on an
+// evaluation with complete evidence. Stamping it as a placeholder would be
+// the same fabrication shape as DEFECT-22, DEC-20, and the E-6 violation.
+//
+// So `assembleSecurityEvaluation` is still typed Promise<never> and still
+// throws, and a real SecurityEvaluation<M> still cannot be constructed. The
+// consequence worth naming: invariant E-8 ("Exactly one evaluation per
+// module per pass. Never zero, never two.", evaluation.contract.v1.ts:307)
+// remains UNTESTABLE — what section 2 above asserts is one
+// ModuleDispatchResult per module, which is the closest true statement
+// available, not E-8 itself. That is the correct outcome of the ruling, not
+// a shortfall in this test. See DEC-21.
+//
+// Asserted rather than skipped, so the day DEC-21 is resolved this fails
+// loudly and gets updated instead of silently continuing to describe a
+// pipeline that has changed shape.
 await assert.rejects(
   () => assembleSecurityEvaluation(ssoFlow, 'url', uncalledStoreReader),
   (err: unknown) => {
     assert.ok(err instanceof Stage1EnvelopeBlockedError, 'expected Stage1EnvelopeBlockedError');
-    assert.deepEqual(err.missingFields, ['moduleVersion', 'indicators', 'consistency', 'summary']);
+    // NARROWED 2026-08-27: was all four fields; only `consistency` remains.
+    assert.deepEqual(err.missingFields, ['consistency']);
+    // The three resolved fields must be genuinely present on the payload —
+    // proving they were computed, not merely removed from the missing list.
+    assert.equal(err.mechanicalFields.moduleVersion, '0.1.0', 'moduleVersion resolved per-module');
+    assert.deepEqual(err.mechanicalFields.indicators, [], 'indicators resolved to the schema default');
+    assert.match(err.mechanicalFields.summary, /^\[DEC-15 UNRESOLVED\]/,
+      'summary is an explicitly-labelled placeholder, not prose that could pass as real content');
+    assert.ok(err.mechanicalFields.summary.includes('"url"'), 'summary names its module');
     return true;
   },
-  'assembleSecurityEvaluation should still be blocked by DEC-15',
+  'assembleSecurityEvaluation should still be blocked by DEC-21 (consistency)',
 );
 
 // ---------------------------------------------------------------------------

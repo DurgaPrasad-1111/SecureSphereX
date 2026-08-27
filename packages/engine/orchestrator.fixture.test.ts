@@ -31,6 +31,7 @@ import {
   assembleSecurityEvaluation,
   Stage1EnvelopeBlockedError,
 } from './orchestrator.ts';
+import { MODULE_VERSIONS } from './module-versions.ts';
 
 const ALL_MODULE_IDS: readonly ModuleId[] = [
   'url', 'ssl', 'dns', 'redirect', 'loginForm', 'javascript',
@@ -155,12 +156,24 @@ for (const moduleId of ALL_MODULE_IDS) {
   assert.ok(caught instanceof Stage1EnvelopeBlockedError, `${moduleId}: wrong error type thrown`);
   const blocked = caught as Stage1EnvelopeBlockedError;
   assert.equal(blocked.moduleId, moduleId);
-  // evaluationId was resolved 2026-08-26 (DEC-15 amendment) — only the
-  // remaining four fields are still reported as missing.
-  assert.deepEqual(
-    [...blocked.missingFields].sort(),
-    ['consistency', 'indicators', 'moduleVersion', 'summary'],
-  );
+  // NARROWED 2026-08-27 by Architecture Owner ruling. evaluationId was
+  // resolved 2026-08-26; moduleVersion, indicators and summary were resolved
+  // 2026-08-27. `consistency` alone remains open — no placeholder is stamped
+  // because 'indeterminate' means "insufficient evidence to assess
+  // coherence" (evaluation.contract.v1.ts:76), a substantive claim that
+  // would be false on a fully-evidenced evaluation. See DEC-21.
+  assert.deepEqual([...blocked.missingFields].sort(), ['consistency']);
+
+  // The three newly-resolved fields must be genuinely populated — asserted
+  // here per module, so "resolved" means computed, not merely delisted.
+  assert.equal(blocked.mechanicalFields.moduleVersion, MODULE_VERSIONS[moduleId],
+    `${moduleId}: moduleVersion comes from the per-module table, not a shared constant`);
+  assert.deepEqual(blocked.mechanicalFields.indicators, [],
+    `${moduleId}: indicators is the LDD's sanctioned empty default`);
+  assert.match(blocked.mechanicalFields.summary, /^\[DEC-15 UNRESOLVED\]/,
+    `${moduleId}: summary must be an explicitly-labelled placeholder`);
+  assert.ok(blocked.mechanicalFields.summary.includes(`"${moduleId}"`),
+    `${moduleId}: summary must name its own module`);
 
   // The mechanical fields ARE genuinely correct, not placeholder values.
   assert.equal(blocked.mechanicalFields.moduleId, moduleId);

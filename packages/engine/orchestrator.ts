@@ -4,7 +4,7 @@
  * functions and assembles their SecurityEvaluation<M> envelopes.
  *
  * PARTIAL BY DESIGN — see DECISIONS.md DEC-15 (CANDIDATE, open; amended
- * 2026-08-26). Of SecurityEvaluation<M>'s twelve fields, EIGHT are now
+ * 2026-08-26). Of SecurityEvaluation<M>'s THIRTEEN fields, TWELVE are now
  * constructed for real: `contractVersion`, `targetResourceId`,
  * `analysisSessionId`, `passOrdinal`, `moduleId`, `evidenceRefs`,
  * `collectionContext` (mechanical from the start) plus `evaluationId`
@@ -14,14 +14,24 @@
  * complete envelope;
  * see DEC-15's amendment for the LDD evidence this is based on) — and
  * `result`, which is exactly what each module's own compute*Findings
- * function already returns. FOUR REMAIN BLOCKED: `moduleVersion`,
- * `indicators`, `consistency`, `summary`. Their stated source — "Domain
- * Model §7.3 / §8.3.5" — is a document that is not among the 46 files in
- * spec/, and no amount of re-checking the corpus turned up a derivation
- * scheme for these four (DEC-15's amendment records the exhaustive
- * re-check in full; it is not re-derived here).
+ * function already returns — plus, as of the Architecture Owner's
+ * 2026-08-27 ruling, `moduleVersion` (per-module, `module-versions.ts`),
+ * `indicators` (`[]`, the LDD's own sanctioned schema default), and
+ * `summary` (an explicitly-labelled interim placeholder, DEC-5's
+ * "conformant stub" precedent).
  *
- * Rather than guess a convention for those four (exactly what DEC-15 says
+ * ONE REMAINS BLOCKED: `consistency`. Its stated source — "Domain Model
+ * §7.3 / §8.3.5" — is a document that is not among the 46 files in spec/,
+ * and no amount of re-checking the corpus turned up a coherence-assessment
+ * scheme (DEC-15's amendment records the exhaustive re-check in full; it is
+ * not re-derived here). Unlike `summary`, it cannot take a self-evidently
+ * fake placeholder: `ConsistencyAssessment` admits only three values, and
+ * the nearest candidate is defined as a substantive claim —
+ * `'indeterminate'  // insufficient evidence to assess coherence` — which
+ * would be FALSE on an evaluation whose evidence was complete. See DEC-21
+ * and Stage1EnvelopeBlockedError's header.
+ *
+ * Rather than guess a convention for that one (exactly what DEC-15 says
  * not to do), this file is split into two honest pieces:
  *
  *   `evaluateModule` / `evaluateAllModules` — the dispatch layer. Fully
@@ -32,11 +42,11 @@
  *   Evaluation") — module evaluation, not yet the D0.2 envelope around it.
  *
  *   `assembleSecurityEvaluation` — attempts the full SecurityEvaluation<M>
- *   envelope. Builds the eight resolved fields for real, then throws
- *   Stage1EnvelopeBlockedError before fabricating the remaining four — the
+ *   envelope. Builds the twelve resolved fields for real, then throws
+ *   Stage1EnvelopeBlockedError before fabricating `consistency` — the
  *   error carries the genuinely-computed module result and resolved
- *   fields as its payload, so a caller (or a future resumption once the
- *   rest of DEC-15 is resolved) can see exactly how far assembly got.
+ *   fields as its payload, so a caller (or a future resumption once
+ *   DEC-21 is resolved) can see exactly how far assembly got.
  *
  * Not itself one of the ten modules (§2.6) — it is the layer above them,
  * so unlike a module it is allowed to read across evidence categories
@@ -52,11 +62,12 @@
 // real). Type-only imports below stay extensionless, matching every module
 // file's established convention exactly.
 import { mintEvaluationId } from './id.ts';
+import { MODULE_VERSIONS } from './module-versions.ts';
 import { toOrigin } from '../contracts/evidence.contract.v1.ts';
 import type { SecurityEvidence } from '../contracts/evidence.contract.v1';
 import { EVALUATION_CONTRACT_VERSION } from '../contracts/evaluation.contract.v1.ts';
 import type {
-  ModuleId, Evaluability, FindingsByModule, EvidenceRef,
+  ModuleId, Evaluability, FindingsByModule, EvidenceRef, SecurityIndicator,
 } from '../contracts/evaluation.contract.v1';
 import type { AuthStoreReader } from '../contracts/boundary.interfaces.v1';
 
@@ -213,31 +224,77 @@ export interface MechanicalEnvelopeFields<M extends ModuleId> {
   readonly moduleId: M;
   readonly evidenceRefs: readonly EvidenceRef[];
   readonly collectionContext: SecurityEvidence['collectionContext'];
+
+  /* Resolved 2026-08-27 by Architecture Owner ruling — see DEC-15. */
+
+  /** Per-module, from `module-versions.ts`. The shared-engine-constant
+   *  option was explicitly rejected: audit and deterministic replay need to
+   *  show WHICH module version produced a finding. */
+  readonly moduleVersion: string;
+
+  /** The LDD's own schema default (`indicators | JSONB | No | '[]'`). An
+   *  empty list is a TRUE statement — "no indicators were derived" — not a
+   *  guess at content, which is why this one is safe where `consistency`
+   *  is not. The per-module indicator registry remains undesigned. */
+  readonly indicators: readonly SecurityIndicator[];
+
+  /** Explicitly-labelled interim placeholder, DEC-5's "conformant stub"
+   *  precedent. Deliberately not prose: it must be self-evidently NOT real
+   *  Evaluation Summary content, and greppable. Note D0.9's
+   *  `ExplanationItem.summary` (boundary.interfaces.v1.ts:152) is a
+   *  DIFFERENT, user-facing field keyed by ruleId — nothing wires this one
+   *  to it today, and this prefix is what makes it obvious if anyone tries. */
+  readonly summary: string;
 }
 
 /**
  * Thrown by `assembleSecurityEvaluation` instead of fabricating
- * `moduleVersion`/`indicators`/`consistency`/`summary` — the four fields
- * DEC-15's 2026-08-26 amendment leaves open pending an Architecture Owner
- * ruling. Carries what WAS genuinely computed — the real module dispatch
- * result and the eight resolved fields (including `evaluationId`, as of
- * this pass) — as a diagnostic payload, so a caller (or a future
- * resumption once the rest of DEC-15 is resolved) can see exactly how far
- * assembly got rather than receiving a bare failure.
+ * `consistency` — the ONE field of DEC-15's original five still open after
+ * the Architecture Owner's 2026-08-27 ruling.
+ *
+ * NARROWED 2026-08-27. This error previously named four missing fields.
+ * Three were resolved by that ruling: `moduleVersion` (per-module tracking,
+ * `module-versions.ts`), `indicators` (`[]`, the LDD's own sanctioned
+ * default), and `summary` (an explicitly-labelled interim placeholder, DEC-5
+ * "conformant stub" precedent). Only `consistency` remains.
+ *
+ * WHY `consistency` GETS NO PLACEHOLDER, unlike `summary`. Its type admits
+ * exactly three values, and the frozen contract defines the closest
+ * candidate as a substantive claim, not a neutral marker:
+ * `'indeterminate'  // insufficient evidence to assess coherence`
+ * (`evaluation.contract.v1.ts:76`). Stamping that on a fully-evidenced
+ * evaluation — the `url` module with all eleven fields present, say — would
+ * assert that the evidence was insufficient when it plainly was not. That is
+ * a fabricated analytical claim, the same failure shape as DEFECT-22
+ * (`not()` fabricating a match), DEC-20 (a skeleton emitted where none was
+ * distinct), and the E-6 violation (a rule reporting it found nothing when it
+ * was never tested). `summary` is different only because `string` has room
+ * for a value that is self-evidently not real content; `ConsistencyAssessment`
+ * has no such room.
+ *
+ * Closing it needs either a genuine per-module coherence-assessment design,
+ * or a contract amendment adding a value distinct from `'indeterminate'`'s
+ * substantive claim (frozen contract — hand-typed, DEC-3-level). Neither was
+ * undertaken. See DEC-21.
+ *
+ * Carries what WAS genuinely computed — the real module dispatch result and
+ * every resolved field — as a diagnostic payload, so a caller can see exactly
+ * how far assembly got rather than receiving a bare failure.
  */
 export class Stage1EnvelopeBlockedError extends Error {
   readonly moduleId: ModuleId;
   readonly moduleResult: ModuleDispatchResult;
   readonly mechanicalFields: MechanicalEnvelopeFields<ModuleId>;
-  readonly missingFields: readonly string[] = [
-    'moduleVersion', 'indicators', 'consistency', 'summary',
-  ];
+  readonly missingFields: readonly string[] = ['consistency'];
 
   constructor(moduleResult: ModuleDispatchResult, mechanicalFields: MechanicalEnvelopeFields<ModuleId>) {
     super(
       `Stage 1 orchestration for module "${moduleResult.moduleId}" cannot construct a complete ` +
-      `SecurityEvaluation: moduleVersion, indicators, consistency, and summary have no documented ` +
-      `generation scheme (DECISIONS.md DEC-15, open — evaluationId was resolved 2026-08-26). ` +
+      `SecurityEvaluation: "consistency" has no coherence-assessment design, and its nearest ` +
+      `enum value 'indeterminate' means "insufficient evidence to assess coherence" — a ` +
+      `substantive claim that would be false on an evaluation with complete evidence, so no ` +
+      `placeholder is stamped (DECISIONS.md DEC-21, open). moduleVersion, indicators, and ` +
+      `summary were resolved 2026-08-27; evaluationId was resolved 2026-08-26. ` +
       `Dispatch succeeded — see .moduleResult and .mechanicalFields on this error.`,
     );
     this.name = 'Stage1EnvelopeBlockedError';
@@ -279,7 +336,12 @@ export async function assembleSecurityEvaluation(
     moduleId,
     evidenceRefs: [{ evidenceId: evidence.evidenceId, category: EVIDENCE_CATEGORY_BY_MODULE[moduleId] }],
     collectionContext: evidence.collectionContext,
+    moduleVersion: MODULE_VERSIONS[moduleId],
+    indicators: [],
+    summary: `[DEC-15 UNRESOLVED] No Evaluation Summary generation rule is specified for module "${moduleId}".`,
   };
 
+  // Still throws — `consistency` alone remains open. See the error class's
+  // header for why no placeholder is stamped for it.
   throw new Stage1EnvelopeBlockedError(moduleResult, mechanicalFields);
 }
