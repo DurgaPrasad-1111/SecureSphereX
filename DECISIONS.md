@@ -492,7 +492,7 @@ authority cited by name but not delivered with the corpus — except DEC-11
 covered module-level behavioral detail; this decision covers the
 orchestration layer above the modules, which no prior decision addresses.
 
-**[I]** Of `SecurityEvaluation<M>`'s twelve fields, seven are fully
+**[I]** Of `SecurityEvaluation<M>`'s thirteen fields, eight are fully
 mechanical given only the already-frozen contracts — no invention
 required: `contractVersion` (the `EVALUATION_CONTRACT_VERSION` constant),
 `targetResourceId`/`analysisSessionId` (direct from the source
@@ -740,6 +740,93 @@ OPEN. Options and recommendations above are input for the ruling, not a
 substitute for it.
 **Signed by:** _pending (Architecture Owner ruling required for the
 remaining four fields)_
+
+---
+
+### Amendment — 2026-08-27 — Architecture Owner ruling on the remaining four
+
+**Arithmetic correction, applied above.** The original entry said "twelve
+fields, seven are fully mechanical." Counted directly against
+`evaluation.contract.v1.ts`, `SecurityEvaluation<M>` has **thirteen**
+fields, and the entry's own inline list enumerates **eight** mechanical
+ones. The list was right; both counts were off by one (8 mechanical + 1
+`evaluationId` + 4 then-blocked = 13). The same wrong count appeared in
+`packages/engine/orchestrator.ts`'s header and is corrected there too.
+
+**Per-field ruling:**
+
+☑ **`moduleVersion` — RESOLVED. Per-module tracking.** The shared
+engine-package-constant (option (a), the one this entry previously
+recommended "if forced to choose") was **REJECTED by the Architecture
+Owner**. Reason, on the record: the LDD's *per-row* placement of
+`module_version` is real evidence that independent per-module versioning
+was intended, and a single shared constant would defeat the field's actual
+purpose — audit and deterministic replay (§4.3, §17.2) need to show WHICH
+module version produced a given finding. Implemented as
+`packages/engine/module-versions.ts`'s `MODULE_VERSIONS: Record<ModuleId,
+string>`, all entries `'0.1.0'` today because no module has forked yet —
+the STRUCTURE is the point, not the current values. Drift against
+`packages/engine/package.json` is guarded by
+`module-versions.fixture.test.ts`, which also carries an explicit `FORKED`
+allowlist so the first genuine divergence must be recorded deliberately
+rather than silently quieting the check.
+
+☑ **`indicators` — RESOLVED. `[]`, unconditionally.** Mechanical, on the
+justification this entry already stated: the LDD's own schema default is
+`indicators | JSONB | No | '[]'`, so an empty list is a schema-sanctioned
+state, and "no indicators were derived" is a TRUE claim rather than a
+guess at content. The per-module indicator registry — which Findings
+fields become which named indicators — remains undesigned and is NOT
+resolved by this; only the honest empty state is.
+
+☑ **`summary` — RESOLVED WITH AN EXPLICIT PLACEHOLDER, not with content.**
+Value: ``[DEC-15 UNRESOLVED] No Evaluation Summary generation rule is
+specified for module "<moduleId>".`` Precedent is DEC-5's `ssl`/`dns`
+"conformant stubs" — correct shape, correct handling, deferred until a
+consumer exists. The string is deliberately not prose: it must be
+self-evidently NOT real Evaluation Summary content, and greppable. This
+entry's own open question ("operator-facing or eventually end-user-facing?")
+is NOT answered by this; the placeholder is an interim Phase-I position.
+Checked before applying: **no consumer of `SecurityEvaluation.summary`
+exists** anywhere in `packages/engine`, `apps/`, or `tools/`. D0.9's
+`ExplanationItem.summary` (`boundary.interfaces.v1.ts:152`) IS user-facing,
+but is a different field on a different type keyed by `ruleId`, with no
+implementor anywhere — the greppable prefix is what would catch a future
+implementer wiring one to the other.
+
+☐ **`consistency` — STILL OPEN. Deliberately NOT given a placeholder.**
+The Architecture Owner ruled against stamping `'indeterminate'`. Reason, on
+the record: the frozen contract defines it as
+`'indeterminate'  // insufficient evidence to assess coherence`
+(`evaluation.contract.v1.ts:76`) — a **substantive analytical claim**, not
+a neutral "not assessed" marker. Applying it to a fully-evidenced
+evaluation (the `url` module with all eleven fields present, say) would
+assert the evidence was insufficient when it plainly was not. That is a
+fabricated claim, the same failure shape as DEFECT-22 (`not()` fabricating
+a match), DEC-20 (a skeleton reported where none was distinct), and the
+E-6 violation (a rule reporting it found nothing when it was never
+tested) — three defects found and fixed on the same day this ruling was
+made. `summary` could take a placeholder only because `string` has room
+for a value that is obviously not real content; `ConsistencyAssessment`
+has exactly three values and no such room.
+
+**Consequence, accepted explicitly rather than worked around:**
+`assembleSecurityEvaluation` still throws, a real `SecurityEvaluation<M>`
+still cannot be constructed, and invariant **E-8** ("Exactly one evaluation
+per module per pass. Never zero, never two.",
+`evaluation.contract.v1.ts:307`) therefore remains **UNTESTABLE**. The
+Architecture Owner's ruling states this is the correct outcome, not a
+shortfall — tests assert one `ModuleDispatchResult` per module, the closest
+true statement available, and say so.
+
+The `consistency` design question is now tracked as **[[DEC-21]]**, its own
+entry rather than a DEC-15 sub-item: it is genuinely open work with its own
+scope (a coherence-assessment design, or a frozen-contract amendment), not
+a loose end of this decision.
+
+**Signed by:** _pending (Architecture Owner — `consistency` remains
+unruled; the three resolutions above are recorded per the 2026-08-27
+ruling)_
 
 ---
 
@@ -1638,4 +1725,110 @@ a known-brand registry). Neither Option A nor Option B addresses that.
 
 - **Status:** CANDIDATE — unsigned, open. Fixture correction applied and
   verified; the structural question is untouched and unruled.
+- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+
+---
+
+## DEC-21 (CANDIDATE — unsigned, open) — `SecurityEvaluation.consistency` has no coherence-assessment design, and no honest placeholder value exists
+
+**[R]** `SecurityEvaluation<M>.consistency: ConsistencyAssessment`
+(`evaluation.contract.v1.ts:280`) is non-optional in a FROZEN contract. It
+is the last of DEC-15's original five fields still unresolved — the other
+four were closed on 2026-08-26 (`evaluationId`) and 2026-08-27
+(`moduleVersion`, `indicators`, `summary`). While it is open,
+`assembleSecurityEvaluation` cannot return, and no real
+`SecurityEvaluation<M>` can be constructed anywhere in this codebase.
+
+**[R]** The contract constrains it hard, and gives all three values a
+meaning (§3, lines 64-76, verbatim):
+
+> ECE module specs require a Consistency Assessment in every Evaluation
+> Result. Domain Model §8.3.5 constrains it hard: it assesses coherence of
+> findings WITHIN the module's own domain ONLY. It is NOT confidence, NOT
+> probability, NOT a risk judgement.
+
+```ts
+export type ConsistencyAssessment =
+  | 'consistent'      // findings within this domain cohere
+  | 'inconsistent'    // findings within this domain conflict
+  | 'indeterminate';  // insufficient evidence to assess coherence
+```
+
+**[I] Why no placeholder is possible — the finding that distinguishes this
+from `summary`.** DEC-15 resolved `summary` with an explicitly-labelled
+interim string precisely because `string` has room for a value that is
+self-evidently not real content. `ConsistencyAssessment` has no such room:
+three values, each a substantive claim about the findings.
+
+`'indeterminate'` looks like a neutral "not assessed" marker and is not
+one. Its definition is **"insufficient evidence to assess coherence"** — a
+claim about the EVIDENCE. Stamping it unconditionally would assert, of the
+`url` module on `fixtures/clean-login.ts` (all eleven evidence fields
+`present`, module `evaluated`, ten findings produced), that the evidence
+was insufficient. That is simply false. The truthful statement is "no
+coherence assessment was performed", and **no value in this enum expresses
+it.**
+
+**[I] Searched, not assumed.** The LDD supplies the storage shape and
+nothing else: `CREATE TYPE skr.consistency_kind AS ENUM
+('consistent','inconsistent','indeterminate')`
+(`spec/Logical-Database-Design-Specification-v1_1.md:1454`) and
+`consistency | CONSISTENCY | No | —` (line 693) — note **no default**,
+unlike `indicators`'s `'[]'`; the database always demands an explicit
+value. Grepped every `spec/*.md` for "indeterminate": five hits total,
+all three LDD copies repeating the same enum/column lines, none defining
+the term. No heuristic, no per-module coherence rule, no worked example
+exists anywhere in the 46-file corpus.
+
+**[I] Not a hypothetical risk — this exact failure shape was found and
+fixed three times on 2026-08-27**, which is why the Architecture Owner
+ruled against the placeholder rather than accepting it as expedient:
+DEFECT-22 (`not()` over an unevaluable module fabricating a match),
+DEC-20 (a confusable skeleton emitted where none was distinct from the
+domain), and the E-6 violation (a rule reporting it "found nothing" when
+it was never tested). In all three, a value that looked safe asserted
+something untrue, and in two of the three the false value had already been
+hardcoded into passing tests as the expected result.
+
+**Two live paths, neither undertaken:**
+
+1. **Design a genuine coherence assessment.** Requires deciding, per
+   module, what "findings within this domain conflict" concretely means
+   for that module's Findings shape — e.g. does
+   `LoginFormFindings.forms` containing contradictory field kinds
+   constitute `'inconsistent'`? DEC-15 raised this and it remains
+   unanswered. This is analytical design work, the ECE module layer's own
+   contribution, not bookkeeping — and it is the option that makes the
+   field mean what the contract says it means.
+2. **Amend the contract to add a fourth value** distinct from
+   `'indeterminate'`'s substantive claim — something along the lines of
+   `'not_assessed'`, meaning "no coherence assessment was performed",
+   which is the honest statement today. **This is an amendment to the
+   FROZEN `packages/contracts/evaluation.contract.v1.ts`** — DEC-3-level
+   formality, hand-typed by Jayanth, never by Claude Code, and gated by
+   the `block-frozen.mjs` pre-tool-use hook. It would also require a
+   matching LDD enum change, since the database type is closed.
+
+**Question for architect ruling:** which path — and is the honest interim
+position to keep `assembleSecurityEvaluation` throwing (today's state,
+which leaves E-8 untestable), or to prioritise path 2 so the envelope
+becomes constructible and E-8 becomes testable, with the real coherence
+design (path 1) deferred behind an explicit `'not_assessed'`?
+
+**Consequence while this stays open, stated plainly so it is not
+rediscovered:** invariant **E-8** ("Exactly one evaluation per module per
+pass. Never zero, never two.", `evaluation.contract.v1.ts:307`) cannot be
+tested. `packages/engine/e2e.sso-flow.fixture.test.ts` and
+`orchestrator.fixture.test.ts` assert one `ModuleDispatchResult` per
+module — the closest true statement available — and both say so in
+comments pointing here. That is a deliberate, recorded limitation of the
+2026-08-27 ruling, not an oversight in those tests.
+
+**Related:** [[DEC-15]], which this entry carves out of; DEC-5, whose
+"conformant stub" precedent authorised `summary`'s placeholder and
+deliberately does NOT extend to this field.
+
+- **Status:** CANDIDATE — unsigned, open. No code change made; the field
+  remains unpopulated and `assembleSecurityEvaluation` continues to throw
+  `Stage1EnvelopeBlockedError` with `missingFields: ['consistency']`.
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*
