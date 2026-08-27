@@ -718,6 +718,117 @@ field arrive pre-resolved).
 
 ---
 
+## DEFECT-19 — `RedirectFindings` has two ungroundable fields; makes CRED-04 structurally unable to fire (found 2026-08-26)
+
+Finding: `RedirectEvidence` (evidence.contract.v1.ts:198-204) carries
+`initialUrl` and `finalUrl` as raw URL strings only — no field in this
+contract represents either as a registrable domain (every field that
+genuinely holds one says so explicitly in its name, e.g.
+`actionRegistrableDomain`, `downloadRegistrableDomain`; these two do
+not). `RedirectFindings.initialRegistrableDomain` and
+`.finalRegistrableDomain` (evaluation.contract.v1.ts:141-142) ask for
+exactly that, though. This is the same *shape* of gap as DEFECT-15's
+`pageRegistrableDomain` and DEFECT-18's two `JavaScriptFindings` fields
+— a Findings field with no groundable evidence source — not DEFECT-16's
+shape (a rule missing a module in `requiredModules`); both rules
+already correctly list `redirect` in `requiredModules`.
+
+Deriving a domain from a raw URL string would require PSL-equivalent
+registrable-domain extraction inside this module — exactly the class of
+logic §2.6 forbids a module from performing; that derivation belongs at
+Stage 1 in the evidence producer, never here (restated identically for
+`javascript.ts`'s equivalent gap, DEFECT-18).
+
+**Unlike DEFECT-15/16's fix, no cross-module substitute exists.**
+DEFECT-15 resolved by swapping the vacuous operand to
+`url.registrableDomain` — available because the comparison needed one
+*current-page* domain, which the `url` module already supplies
+independently. Here, CRED-04 and PM-01 both compare
+`redirect.finalRegistrableDomain` against
+`redirect.initialRegistrableDomain` — two values from this module's own
+category, describing two different points in the SAME redirect chain
+(before vs. after). No other module's Findings type carries "the page's
+registrable domain before this specific redirect chain started," so
+there is nothing to swap in for the `initial` side, and swapping only
+the `final` side would compare two operands sourced inconsistently
+(one genuinely grounded, one still structurally null) without actually
+restoring the comparison CRED-04's predicate expresses.
+
+Implemented as: both fields are unconditionally `null`
+(`packages/engine/modules/redirect.ts`, documented at the assignment
+and in the module's header comment). The module otherwise stays
+evaluable — `hopCount`, `mechanisms`, and `chainLength` are all
+genuinely derivable from `hopCount`/`chain` and are not withheld on
+account of this gap.
+
+**Worth noting for whichever fix path is chosen:**
+`RedirectEvidence.crossedRegistrableDomain` (evidence.contract.v1.ts:203)
+already exists as a producer-computed same-site verdict — a boolean,
+not the two domain strings `RedirectFindings` asks for. It is not read
+by this module and cannot be, today: `RedirectFindings` has no field
+shaped to receive a boolean same-site verdict, only the two domain
+strings. Whether a future fix threads `crossedRegistrableDomain`
+through as a new Findings field (a smaller contract change than adding
+two domain-string fields, but changes what the predicate can express —
+same-site vs. not, rather than the two domains themselves) or extracts
+real domains producer-side (mirroring DEFECT-18's suggested path) is an
+open question for whoever resolves this, not decided here.
+
+**Load-bearing consequence — confirmed directly against
+`rulesets/rules-v0.1.0.json`, not assumed:**
+- **CRED-04**'s predicate is a three-way `and`
+  (`redirect.hopCount ≥ redirect_hop_min` ∧
+  `notSameSite(redirect.finalRegistrableDomain, redirect.initialRegistrableDomain)`
+  ∧ `loginForm.credentialFormPresent`). With both operands of the
+  `notSameSite` conjunct permanently `null`, that conjunct can never
+  match — CRED-04 is structurally unable to fire, full stop, regardless
+  of hop count or credential-form presence.
+- **PM-01** is degraded, not disabled: its predicate's third conjunct is
+  an `or` between the same `notSameSite` comparison and
+  `permissionContext.pageAgeMs < page_age_max_ms`. The `notSameSite` arm
+  is permanently unsatisfiable for the same reason as CRED-04, but the
+  page-age arm does not depend on `redirect` at all — PM-01 can still
+  fire through it alone.
+
+Resolution does not belong in this module, for the same reason
+DEFECT-15/18's doesn't: narrowing scope further to "fix" this would
+violate §2.6 in the other direction. Two live paths, same shape as
+DEFECT-15/18: a future evidence-contract amendment adding
+registrable-domain (or same-site-boolean) fields to `RedirectEvidence`,
+or Stage 1 producer-side extraction computing them before evidence
+reaches this module.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. CRED-04 accepted as structurally non-functional and
+  PM-01 as degraded for the same reason DEC-14 accepted CRED-05/CRED-A1
+  — flagged here for the same Architecture Owner ruling, not
+  independently decided.
+
+---
+
+## DEFECT-20 — `PermissionContextFindings.requestingRegistrableDomain` is ungroundable (found 2026-08-26; not currently load-bearing)
+
+Finding: `PermissionContextEvidence.requestingOrigin`
+(evidence.contract.v1.ts:284) is a raw origin string; deriving a
+registrable domain from it requires the same PSL-equivalent extraction
+DEFECT-15/18/19 already establish a module must not perform. Same
+*shape* of gap as those three. Implemented as unconditionally `null`
+(`packages/engine/modules/permissionContext.ts`), `requestingOrigin`
+never read.
+
+**Unlike DEFECT-15/18/19, this is not currently load-bearing.** Grepped
+directly against `rulesets/rules-v0.1.0.json`:
+`requestingRegistrableDomain` appears nowhere outside its own contract
+declaration (evaluation.contract.v1.ts:229) — no rule, including PM-01
+(the only rule this module serves), reads it. Recorded for completeness
+and consistency with the other three occurrences of this exact gap
+shape, and in case a future rule version starts reading it.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, low priority — no live rule currently affected.
+
+---
+
 ## DEFECT-17 — G-8's rule-set validator has no integrity-digest check; verification exists but isn't wired in (follow-up, found 2026-08-25)
 
 Finding: `tools/ci/compute-ruleset-digest.mjs` (added 2026-08-25, alongside
@@ -774,3 +885,367 @@ corrupted.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** RESOLVED.
+
+---
+
+## DEFECT-21 — `RuleMatchResult` conflates an unevaluable required module with a genuine non-match (found 2026-08-26, while building Stage 3)
+
+Finding: `RuleDefinition.requiredModules`'s own doc comment (§15.2,
+`ruleset.format.v1.ts:176-183`) states the requirement directly: "if ANY
+required module is `unevaluable` for this pass, the rule outcome is
+`unevaluable` — NOT a non-match. A rule that could not be tested MUST NOT
+be recorded as a rule that found nothing." `RuleOutcome`
+(`passresult.contract.v1.ts:70-77`) is typed for exactly this: three
+variants, `matched` / `notMatched` / `unevaluable` (the last carrying a
+`reason` and `unevaluableModules`).
+
+`packages/engine/stage2.ts`'s `RuleMatchResult` does not make this
+distinction. It has three statuses too, but a different three:
+`'matched'` / `'unmatched'` / `'blocked'` (the last reserved for
+`priorFindingActive`, DL-01 only). A rule whose predicate could not be
+evaluated because a required module was genuinely `unevaluable`, and a
+rule whose predicate WAS fully evaluated and simply didn't match, both
+currently surface as `'unmatched'` — collapsing §15.2's required
+three-way distinction into two.
+
+Impact: does NOT corrupt `packages/engine/stage3.ts`'s
+`generateCorrelationFindings` output. `stage3.ts` only ever produces a
+`CorrelationFinding` for a `'matched'` `RuleMatchResult`, and `'matched'`
+can only occur when every conjunct the predicate actually needed was
+genuinely evaluated — §5.6 ("Where the evidence required by a predicate
+is absent, the predicate simply does not match") is implemented in
+`stage2.ts`'s `matchPredicate` so that any path resolving against an
+unevaluable module makes its containing check `false`, which can never
+produce a `true` result for a conjunct that depended on it. An
+unevaluable required module can therefore never cause a false
+`'matched'`; at worst it causes a `'matched'`-shaped rule to instead
+report `'unmatched'` when it should more precisely report
+`'unevaluable'` — a mislabeling of the REASON a rule produced no
+finding, never a fabricated finding.
+
+> **CORRECTION (2026-08-27) — the paragraph immediately above is WRONG and
+> is retained only so the error is legible, per this register's "record,
+> not a fix list" rule.** Its reasoning holds for a check read directly,
+> but not through `not()`. `matchPredicate` returned a two-state
+> `boolean`, so `is` collapsed the UNEVALUABLE sentinel to `false` before
+> `not` ever saw it, and `!false` fabricated a match. An unevaluable
+> required module therefore COULD cause a false `'matched'` and a real,
+> fabricated `CorrelationFinding` — demonstrated on all four committed
+> fixtures, where `DL-02` (`requiredModules: ['downloadContext']`) fired
+> with `downloadContext` unevaluable and no download evidence of any kind.
+> `CRED-06` was latently exposed the same way and is far more serious: a
+> PRIMARY at weight 40 that counts in the score, so a fabricated match
+> there corrupts the tier directly. Logged and fixed as **DEFECT-22**;
+> see that entry for the full analysis. What survives of DEFECT-21 is only
+> the `'unmatched'`-vs-`'unevaluable'` conflation described below, which
+> the DEFECT-22 fix deliberately did NOT close.
+
+DOES affect: the full three-state `RuleOutcome` cannot yet be built
+correctly from `stage2.ts`'s output alone — `'unmatched'` is ambiguous
+between "genuinely evaluated, no match" and "a required module was
+unevaluable, never actually tested." `RuleOutcome` is part of the
+broader `AnalysisPassResult` (`passresult.contract.v1.ts:236`,
+`ruleOutcomes: readonly RuleOutcome[]`) — a later, wider concern than
+Stage 3's `CorrelationFinding`, not yet scaffolded.
+
+Not yet resolved — logged only. Fixing it means `stage2.ts`'s
+`matchAllRules` (or a layer above it) checking each rule's
+`requiredModules` against the evaluation set's per-module
+`result.status` BEFORE attempting to evaluate the predicate, and
+reporting `'unevaluable'` (with which modules, per §15.2's
+`unevaluableModules` field) when any required module is `unevaluable` —
+distinct from, and checked before, the existing `'unmatched'` outcome of
+a fully-evaluated predicate. Full cross-reference:
+`packages/engine/stage3.ts`'s header comment points here rather than
+repeating this analysis.
+
+> **AMENDMENT (2026-08-27) — THE INVARIANT THIS VIOLATES, NOW IDENTIFIED.**
+> This entry was filed and analysed against §15.2 alone. It is in fact a
+> violation of a **frozen-contract invariant**, which the original entry
+> never cited: `packages/contracts/evaluation.contract.v1.ts:304`,
+> invariant **E-6** — "`unevaluable` is a produced evaluation, not a
+> missing one. **Stage 2 MUST distinguish it from
+> evaluated-with-negative-findings.**" That is normative contract text,
+> not a spec preference, and `packages/contracts/` is FROZEN. The same
+> requirement is restated at `passresult.contract.v1.ts:64-67` ("`unevaluable`
+> is an OUTCOME, not an absence — §15.2's whole mechanism depends on
+> distinguishing 'tested, no match' from 'could not test'") and at
+> `ruleset.format.v1.ts:176-183` (§15.2, "CRITICAL"). Filing this as a
+> §15.2 shortfall understated it: shipped code was violating a frozen
+> invariant, not merely missing a nicety.
+
+**FIX (2026-08-27) — `packages/engine/stage2.ts`.** Two changes at the
+reporting boundary, the collapse point DEFECT-22's fix deliberately left
+in place:
+
+1. **`RuleMatchResult` gained a first-class `'unevaluable'` variant**,
+   carrying `reason` and `unevaluableModules` — shaped to feed
+   `passresult.contract.v1.ts`'s `RuleOutcome.unevaluable` directly, whose
+   own fields are exactly `reason: UnevaluableReason` and
+   `unevaluableModules: readonly ModuleId[]`. The reason reported is the
+   FIRST unevaluable required module's own `Evaluability.reason`, not a
+   rule-level invention.
+2. **§15.2's `requiredModules` pre-check now runs BEFORE the predicate**,
+   as that section's text requires. Order is load-bearing, not incidental:
+   evaluating the predicate first would let `and`-short-circuiting report
+   `'unmatched'` for a rule that was never actually testable.
+
+`'blocked'` is deliberately NOT folded into `'unevaluable'`: it means the
+predicate reached `priorFindingActive`, i.e. a missing store DEPENDENCY,
+not an unevaluable module. Collapsing them would lose the distinction the
+error message carries. A residual case is also reported honestly rather
+than downgraded — if every declared required module was evaluable but the
+predicate still read an unevaluable one, the rule's `requiredModules`
+under-declares what it reads (DEFECT-16's shape); that surfaces as
+`unevaluable` with reason `'undeclared_required_module'` and an empty
+module list.
+
+**No score changed — verified, not assumed.** E-6 governs REPORTING, not
+weight: `stage3.ts` produces a `CorrelationFinding` only for `'matched'`,
+and nothing that previously reported `'matched'` now reports otherwise.
+Checked before implementing, by computing the pre-check against every rule
+on all four fixtures: the sole matched rule (`CRED-01` on
+`off-origin-post`) has all required modules evaluated. After the fix, all
+four fixtures produce byte-identical scores and tiers to the
+post-DEFECT-22/DEC-20 values: `clean-login` 0/Low, `no-credential` 0/Low,
+`off-origin-post` 45/Medium (CRED-01 alone), `sso-flow` 0/Low.
+
+**What changed is what the pass now SAYS.** On `sso-flow`, `CRED-02`
+(requires `authContext`) and `DL-01`/`DL-02` (require `downloadContext`)
+now report `'unevaluable'` naming the responsible module, where they
+previously claimed to have been tested and found nothing. On
+`no-credential`, seven rules move from `'unmatched'` to `'unevaluable'` —
+that fixture has no login form, so most rules genuinely could not be
+tested at all.
+
+**Three tests had encoded the violation as expected behaviour** and were
+corrected alongside the fix — the same pattern DEC-20 documents:
+`stage2.fixture.test.ts` asserted `'unmatched'` for a rule whose own
+inline comment already read "url module unevaluable in baseEvaluations()";
+its integration loop whitelisted only `matched|unmatched|blocked`; and its
+DEFECT-19 check asserted the literal status `'unmatched'` rather than the
+property DEFECT-19 actually established ("never MATCHED"), which is now
+asserted directly. `e2e.sso-flow.fixture.test.ts` gained assertions that
+each unevaluable outcome names its module and carries the module's reason.
+
+**No new defect number was opened for this fix, deliberately.** DEFECT-21's
+own heading already names this exact subject — "`RuleMatchResult` conflates
+an unevaluable required module with a genuine non-match" — so a new entry
+would duplicate it. This differs from DEFECT-22, which earned its own
+number because it was a distinct root cause (`not()` inverting a collapsed
+boolean) that this entry had explicitly claimed was impossible. Current
+highest defect number verified as 23 before deciding; no DEFECT-24 was
+created.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** **FIXED 2026-08-27** in `packages/engine/stage2.ts`. E-6 is
+  now satisfied at Stage 2's reporting surface. `RuleOutcome` /
+  `AnalysisPassResult` construction remains unstarted, but is no longer
+  BLOCKED by this defect — `matchAllRules` now emits everything
+  `RuleOutcome`'s three variants require.
+- **Amended 2026-08-27 (earlier, same day):** impact analysis corrected
+  (see the CORRECTION block above). The fabricated-match half became
+  DEFECT-22, FIXED. That amendment stated the remaining conflation was
+  still OPEN and listed what a fix would need — "the `requiredModules`
+  pre-check and the `RuleMatchResult`/`RuleOutcome` surface to report it
+  on." Both are now implemented; this entry is closed.
+
+---
+
+## DEFECT-22 — `not()` over an unevaluable module fabricates a match; §5.6 did not survive negation (found and FIXED 2026-08-27)
+
+Finding: `packages/engine/stage2.ts`'s `matchPredicate` returned a
+two-state `boolean`. `resolveFindingPath` correctly returns an
+`UNEVALUABLE` sentinel for any path into a module whose result is not
+`'evaluated'`, and every leaf operator correctly refused to match on it
+— but each did so by returning plain `false`, discarding the distinction
+between "evaluated, and the answer is no" and "could not evaluate."
+`not` then inverted that `false` into `true`:
+
+```ts
+case 'is': {
+  const value = resolveValuePath(predicate.path, evaluations, boundItem);
+  return value === true;          // UNEVALUABLE -> false
+}
+case 'not':
+  return !matchPredicate(predicate.operand, ...);   // !false -> TRUE
+```
+
+The file's own header asserted the invariant it then failed to hold:
+"any `ValuePath` that resolves against an `unevaluable` module ... makes
+the containing check false, not an error and not a guessed default."
+True of the containing CHECK; false of any `not()` wrapping it. §5.6
+("Where the evidence required by a predicate is absent, the predicate
+simply does not match") was therefore enforced everywhere except through
+negation — the one place it inverts into its opposite.
+
+**Load-bearing consequence — measured, not reasoned about.** All three
+`not()` nodes in `rulesets/rules-v0.1.0.json` were enumerated by walking
+every rule's predicate AST (including `exists.where` subtrees) and both
+suppression guard sets. Exactly three exist, each wrapping a bare `is`:
+
+| Rule | Negated path | Module | Exposed? |
+|---|---|---|---|
+| `CRED-06` (primary, w=40) | `url.isSecureScheme` | `url` | **YES — latent, severe** |
+| `DL-02` (aggravator, w=20) | `downloadContext.extensionMimeConsistent` | `downloadContext` | **YES — firing on every fixture** |
+| `PM-01` (primary, w=25) | `permissionContext.precededByUserGesture` | `permissionContext` | No — accidentally protected |
+
+- **`DL-02` fired on ALL FOUR committed fixtures**, none of which
+  contains any download evidence (`clean-login`, `no-credential`,
+  `off-origin-post`, `sso-flow` all carry `downloadContext` entirely
+  `notCollected('not_applicable')`, making the module `unevaluable`). A
+  real `CorrelationFinding` was minted asserting a download's extension
+  and MIME type disagreed, on pages where no download was ever observed.
+  It scored 0 only because its parent `DL-01` never fires
+  (`parentQualified` false, §9.3) — containment by accident, not design.
+- **`CRED-06` is the serious one.** It is a PRIMARY at weight 40 that
+  counts directly in `primarySum`. Any evidence set with an evaluable
+  `loginForm` and an unevaluable `url` module fabricated a 40-point
+  match — enough on its own to cross `threshold_medium` (30). Confirmed
+  by construction: setting `url.scheme` to `notCollected` on
+  `clean-login` produced `CRED-06: matched`. No committed fixture
+  triggers it, which is exactly why no test caught it.
+- **`PM-01` was protected only by conjunct ORDER** — its first conjunct
+  `neq(permissionContext.requestedPermission, null)` returns false on an
+  unevaluable module and short-circuits before the `not()` is reached.
+  Reordering the conjuncts would have exposed it. Not a structural
+  protection.
+
+**Why the existing tests all passed.** Every per-module and per-stage
+test built its own inputs and asserted its own unit; none ran a real
+fixture through dispatch → Stage 2 → Stage 3 → Stage 5/6 in one pass.
+`tools/ci/test-fixtures.ts`'s four "round-trip" checks (gate G-7) do not
+import the engine at all — they are JSON serialization identity checks
+(`JSON.stringify(f) === JSON.stringify(JSON.parse(JSON.stringify(f)))`)
+plus three Observation-state spot checks. The defect lived in the seam
+between units, where nothing was looking.
+
+**Fix, implemented 2026-08-27** (`packages/engine/stage2.ts`): a new
+internal three-state `PredicateResult` (`'match' | 'noMatch' |
+'unevaluable'`) and `evaluatePredicate`, which propagates `'unevaluable'`
+through every operator instead of collapsing it. `not('unevaluable')` is
+`'unevaluable'`, never `'match'`. `matchPredicate` is retained as a thin
+boolean wrapper (`evaluatePredicate(...) === 'match'`) so no caller
+changes — `stage4.ts`'s guard evaluation and every existing test keep
+their current signature, and an unevaluable guard now correctly declines
+to suppress rather than suppressing on unknown data.
+
+Two deliberate non-changes, both to keep the fix narrow:
+
+1. **Operand evaluation order is preserved exactly** (`and` stops at the
+   first non-`match`, `or` at the first `match`, mirroring the previous
+   `Array.every`/`Array.some`). This is not cosmetic:
+   `priorFindingActive` throws, and `DL-01`'s first conjunct reads the
+   unevaluable `downloadContext`. Evaluating operands the old code
+   short-circuited past would have converted `DL-01` from `'unmatched'`
+   to a thrown `PriorFindingActiveUnavailableError` on every fixture —
+   a behaviour change unrelated to this defect.
+2. **A genuine `null` Findings value still yields `'noMatch'`, never
+   `'unevaluable'`.** Only the UNEVALUABLE sentinel — an unevaluable
+   MODULE — produces `'unevaluable'`. DEFECT-19's settled semantics
+   (`notSameSite(null, null)` is not a match) are unchanged, as are
+   `permissionContext`'s nullable-field readings.
+
+**Verification** (`packages/engine/e2e.sso-flow.fixture.test.ts`, new):
+all three `not()` rules asserted on BOTH an evaluable and an unevaluable
+operand — `CRED-06` still fires on a genuinely `http` scheme and no
+longer fires when `url` is unevaluable; `DL-02` still fires on a
+genuinely inconsistent extension/MIME pair and no longer fires on any of
+the four fixtures; `PM-01` still fires on a real no-gesture permission
+request and is now asserted against the unevaluable case so conjunct
+reordering cannot silently expose it. Full suite green afterwards: `tsc
+-b` clean, 16/16 test files pass, `test:fixtures` 7/7,
+`validate:ruleset` CONFORMANT.
+
+**Relationship to DEFECT-21.** Distinct and more severe, not a
+duplicate. DEFECT-21 is about the `RuleMatchResult` SURFACE conflating
+`'unmatched'` with `'unevaluable'`; it explicitly claimed an unevaluable
+module "can never cause a false `'matched'`." That claim is what this
+entry disproves, and DEFECT-21 has been amended with a correction block
+pointing here. DEFECT-21's own subject — the missing `requiredModules`
+pre-check and the two-state `RuleMatchResult` — remains OPEN and
+untouched by this fix.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** FIXED 2026-08-27 in `packages/engine/stage2.ts`, with the
+  regression matrix in `packages/engine/e2e.sso-flow.fixture.test.ts`.
+  No rule-set change was required — the defect was in the evaluator, not
+  in any rule's predicate.
+
+---
+
+## DEFECT-23 — CRED-03 detects "has a distinct skeleton", not UTS-39 homograph attack; `tau_collision` is declared but unreferenced (found 2026-08-27)
+
+Finding: `tau_collision` is registered in `rulesets/rules-v0.1.0.json`'s
+`parameters` array with `value: 0.95`, and is referenced by **nothing**.
+Verified by parsing the rule set and searching the serialised `rules` and
+`suppressions` arrays directly (not by eyeballing the file): exactly one
+occurrence of the string in the whole document — its own declaration.
+No predicate, no guard, no `blockedBy`, no subsumption entry reads it.
+
+That dangling parameter is the visible symptom of a wider gap. CRED-03's
+first conjunct is:
+
+```json
+{ "op": "neq", "path": "homograph.confusableSkeleton", "value": null }
+```
+
+which asks only whether a confusable skeleton EXISTS. UTS-39's actual
+notion of a homograph attack is a **collision**: a domain is deceptive
+when `skeleton(suspect)` equals `skeleton(some legitimate brand)` — the
+suspect is confusable *with something specific*. "Has a skeleton
+distinct from itself" is a necessary precondition for that, not the
+attack itself. A domain can carry a distinct skeleton and collide with
+nothing at all (any single-script non-Latin domain, which CRED-03's own
+`knownLimitations` already flags: "Single-script non-Latin domains are
+legitimate and common").
+
+`tau_collision: 0.95` reads as the threshold for exactly the missing
+comparison — a similarity or collision score against a registry of
+protected brands — but no registry exists to compare against. The three
+`refinementSets` in the rule set are `executableTypes`,
+`sensitivePermissions`, and `identityProviders`; none is a protected-brand
+list, and `identityProviders` is an exact-match allowlist consumed by
+S-02, explicitly documented there as "by exact string equality only —
+never substring, suffix, or similarity."
+
+**Scope — this is NOT DEC-20's fixture bug.** DEC-20 records that the
+four fixtures emitted `confusableSkeleton` as `present(<the domain
+itself>)` instead of `absent()`, making CRED-03's `neq(..., null)`
+conjunct true for every domain; that was an evidence-production defect,
+fixed in the fixtures on 2026-08-27, and CRED-03 now behaves correctly
+*against its own stated predicate*. This entry is about that predicate
+being a weaker test than the rule's `rationale` claims ("Visual domain
+deception..."). The two are independent: DEC-20's fix was necessary and
+is complete on its own terms; neither it nor DEC-20's proposed Option B
+(a contract field enabling an explicit skeleton-vs-domain comparison)
+implements brand-collision detection. Option B would let CRED-03 ask
+"does the skeleton differ from THIS domain" — still not "does it collide
+with a KNOWN BRAND."
+
+**Not load-bearing today, and deliberately not fixed here.** With the
+fixtures corrected, CRED-03 fires only when a producer reports a
+genuinely distinct skeleton, which is a defensible (if over-broad)
+signal, and the rule additionally requires `loginForm.
+credentialFormPresent` as its second conjunct — so it cannot fire on a
+non-credential page regardless. The gap is that it will over-fire on
+legitimate non-Latin credential pages, exactly as its own
+`knownLimitations` predicts.
+
+Closing it needs, at minimum: a protected-brand registry (which
+`DECISIONS.md` DEC-12 — "Sanctioned constructors for the five brands",
+CANDIDATE, unsigned — is plausibly the beginning of, though that entry
+is about constructors rather than skeleton comparison and this is not
+asserted as its intent), a `RefinementSet` or new rule-set structure to
+hold it, and a predicate operator that can express a similarity or
+collision test against it — `tau_collision`'s threshold implies a
+similarity comparison, and no operator in `Predicate` (`ruleset.format.
+v1.ts`) currently performs one. That is a rule-set format concern, not
+an engine bug: `packages/engine` implements every operator the format
+defines, correctly.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, not a work item tonight. Recorded so `tau_collision`
+  is not mistaken for a live tunable, and so the distance between
+  CRED-03's `rationale` and its actual predicate is on the record before
+  anyone tunes the parameter expecting it to do something.

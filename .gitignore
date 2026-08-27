@@ -31,3 +31,5 @@ check_reconcile.py
 top-1m.csv
 tranco-top1m.zip
 tranco_top10k.csv
+# Editor config, not project source.
+.vscode/

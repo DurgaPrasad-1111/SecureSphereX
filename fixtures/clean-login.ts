@@ -20,11 +20,11 @@
 
 import type {
   SecurityEvidence, TargetResourceId, AnalysisSessionId, DayStamp,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 import {
   EVIDENCE_CONTRACT_VERSION,
   present, absent, notCollected,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 
 export const cleanLogin: SecurityEvidence = {
   targetResourceId: 'res_clean_login_0001' as TargetResourceId,
@@ -120,7 +120,12 @@ export const cleanLogin: SecurityEvidence = {
       containsNonAscii: present(false),
       scriptsUsed: present(['Latin']),
       isMixedScript: present(false),
-      confusableSkeleton: present('accounts.example.com'),
+      // absent(), not present(<the domain itself>): per homograph.ts's
+      // documented convention, `absent` means "this domain has no confusable
+      // skeleton DISTINCT from itself" and maps to a real `null` finding.
+      // Emitting the skeleton unconditionally made CRED-03's
+      // neq(confusableSkeleton, null) conjunct true for every domain.
+      confusableSkeleton: absent(),
     },
 
     downloadContext: {

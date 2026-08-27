@@ -13,11 +13,11 @@
 
 import type {
   SecurityEvidence, TargetResourceId, AnalysisSessionId, DayStamp,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 import {
   EVIDENCE_CONTRACT_VERSION,
   present, absent, notCollected,
-} from '../packages/contracts/evidence.contract.v1';
+} from '../packages/contracts/evidence.contract.v1.ts';
 
 export const offOriginPost: SecurityEvidence = {
   targetResourceId: 'res_off_origin_post_0001' as TargetResourceId,
@@ -115,7 +115,10 @@ export const offOriginPost: SecurityEvidence = {
       containsNonAscii: present(false),
       scriptsUsed: present(['Latin']),
       isMixedScript: present(false),
-      confusableSkeleton: present('accounts.example.com'),
+      // absent(), not present(<the domain itself>) — see clean-login.ts's
+      // note. `absent` is the documented encoding for "no skeleton distinct
+      // from the domain itself" (homograph.ts), and maps to `null`.
+      confusableSkeleton: absent(),
     },
 
     downloadContext: {
