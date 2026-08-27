@@ -1094,3 +1094,81 @@ untouched by this fix.
   regression matrix in `packages/engine/e2e.sso-flow.fixture.test.ts`.
   No rule-set change was required — the defect was in the evaluator, not
   in any rule's predicate.
+
+---
+
+## DEFECT-23 — CRED-03 detects "has a distinct skeleton", not UTS-39 homograph attack; `tau_collision` is declared but unreferenced (found 2026-08-27)
+
+Finding: `tau_collision` is registered in `rulesets/rules-v0.1.0.json`'s
+`parameters` array with `value: 0.95`, and is referenced by **nothing**.
+Verified by parsing the rule set and searching the serialised `rules` and
+`suppressions` arrays directly (not by eyeballing the file): exactly one
+occurrence of the string in the whole document — its own declaration.
+No predicate, no guard, no `blockedBy`, no subsumption entry reads it.
+
+That dangling parameter is the visible symptom of a wider gap. CRED-03's
+first conjunct is:
+
+```json
+{ "op": "neq", "path": "homograph.confusableSkeleton", "value": null }
+```
+
+which asks only whether a confusable skeleton EXISTS. UTS-39's actual
+notion of a homograph attack is a **collision**: a domain is deceptive
+when `skeleton(suspect)` equals `skeleton(some legitimate brand)` — the
+suspect is confusable *with something specific*. "Has a skeleton
+distinct from itself" is a necessary precondition for that, not the
+attack itself. A domain can carry a distinct skeleton and collide with
+nothing at all (any single-script non-Latin domain, which CRED-03's own
+`knownLimitations` already flags: "Single-script non-Latin domains are
+legitimate and common").
+
+`tau_collision: 0.95` reads as the threshold for exactly the missing
+comparison — a similarity or collision score against a registry of
+protected brands — but no registry exists to compare against. The three
+`refinementSets` in the rule set are `executableTypes`,
+`sensitivePermissions`, and `identityProviders`; none is a protected-brand
+list, and `identityProviders` is an exact-match allowlist consumed by
+S-02, explicitly documented there as "by exact string equality only —
+never substring, suffix, or similarity."
+
+**Scope — this is NOT DEC-20's fixture bug.** DEC-20 records that the
+four fixtures emitted `confusableSkeleton` as `present(<the domain
+itself>)` instead of `absent()`, making CRED-03's `neq(..., null)`
+conjunct true for every domain; that was an evidence-production defect,
+fixed in the fixtures on 2026-08-27, and CRED-03 now behaves correctly
+*against its own stated predicate*. This entry is about that predicate
+being a weaker test than the rule's `rationale` claims ("Visual domain
+deception..."). The two are independent: DEC-20's fix was necessary and
+is complete on its own terms; neither it nor DEC-20's proposed Option B
+(a contract field enabling an explicit skeleton-vs-domain comparison)
+implements brand-collision detection. Option B would let CRED-03 ask
+"does the skeleton differ from THIS domain" — still not "does it collide
+with a KNOWN BRAND."
+
+**Not load-bearing today, and deliberately not fixed here.** With the
+fixtures corrected, CRED-03 fires only when a producer reports a
+genuinely distinct skeleton, which is a defensible (if over-broad)
+signal, and the rule additionally requires `loginForm.
+credentialFormPresent` as its second conjunct — so it cannot fire on a
+non-credential page regardless. The gap is that it will over-fire on
+legitimate non-Latin credential pages, exactly as its own
+`knownLimitations` predicts.
+
+Closing it needs, at minimum: a protected-brand registry (which
+`DECISIONS.md` DEC-12 — "Sanctioned constructors for the five brands",
+CANDIDATE, unsigned — is plausibly the beginning of, though that entry
+is about constructors rather than skeleton comparison and this is not
+asserted as its intent), a `RefinementSet` or new rule-set structure to
+hold it, and a predicate operator that can express a similarity or
+collision test against it — `tau_collision`'s threshold implies a
+similarity comparison, and no operator in `Predicate` (`ruleset.format.
+v1.ts`) currently performs one. That is a rule-set format concern, not
+an engine bug: `packages/engine` implements every operator the format
+defines, correctly.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, not a work item tonight. Recorded so `tau_collision`
+  is not mistaken for a live tunable, and so the distance between
+  CRED-03's `rationale` and its actual predicate is on the record before
+  anyone tunes the parameter expecting it to do something.
