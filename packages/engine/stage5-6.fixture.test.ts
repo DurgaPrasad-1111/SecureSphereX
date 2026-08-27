@@ -224,11 +224,21 @@ const uncalledStoreReader: AuthStoreReader = {
 // fixtures per stage4.fixture.test.ts's own findings; DL-02's parent
 // DL-01 never fires, so DL-02 is never counted) and the real matched-rule
 // sets already confirmed empirically during Stage 4's work.
+// CORRECTED 2026-08-27. The previous table encoded two defects as expected
+// behaviour, both since fixed:
+//   - DEFECT-22: not() over the unevaluable downloadContext module fabricated
+//     a DL-02 match on all four fixtures (scored 0, so invisible here).
+//   - DEC-20: the fixtures emitted confusableSkeleton as present(<the domain
+//     itself>) instead of absent(), so CRED-03's neq(..., null) conjunct was
+//     true for every domain and the rule fired on 3 of 4 fixtures.
+// The old table therefore asserted that clean-login — the deliberately BENIGN
+// baseline fixture — scored 45/Medium, and that off-origin-post scored
+// 90/High on CRED-01 + a fabricated CRED-03. Both were false positives.
 const EXPECTED: Readonly<Record<string, { score: number; rawTier: 'Low' | 'Medium' | 'High' }>> = {
-  'clean-login': { score: 45, rawTier: 'Medium' },   // CRED-03 only
+  'clean-login': { score: 0, rawTier: 'Low' },        // benign baseline — nothing fires
   'no-credential': { score: 0, rawTier: 'Low' },      // no primary rule matches at all
-  'off-origin-post': { score: 90, rawTier: 'High' },  // CRED-01 + CRED-03
-  'sso-flow': { score: 45, rawTier: 'Medium' },       // CRED-03 only
+  'off-origin-post': { score: 45, rawTier: 'Medium' },// CRED-01 only (weight 45)
+  'sso-flow': { score: 0, rawTier: 'Low' },           // benign SSO — nothing fires
 };
 
 const FIXTURES = {

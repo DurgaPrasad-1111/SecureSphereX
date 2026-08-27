@@ -274,22 +274,28 @@ for (const [name, fixtureEvidence] of Object.entries(FIXTURES)) {
   }
 
   if (name === 'off-origin-post') {
-    // Empirically confirmed against the real pipeline: CRED-01 fires, and
-    // is targeted by both S-01 and S-02, neither of which applies —
-    // authContext is unevaluable (every fixture's fingerprint is
+    // CRED-01 fires, and is targeted by both S-01 and S-02, neither of which
+    // applies — authContext is unevaluable (every fixture's fingerprint is
     // notCollected) so S-01's guards can't hold, and evil-collect.example
-    // isn't a registered identity provider so S-02's guard can't hold
-    // either. S-02 is additionally blocked (CRED-03 also fires on this
-    // fixture), independent of its own guard already failing.
+    // isn't a registered identity provider so S-02's guard can't hold either.
+    //
+    // CORRECTED 2026-08-27: S-02's blockedByRuleId is now null, not
+    // 'CRED-03'. The previous expectation depended on CRED-03 firing on this
+    // fixture, which was itself the DEC-20 fixture defect (confusableSkeleton
+    // emitted as present(<the domain itself>) rather than absent(), making
+    // CRED-03's neq(..., null) conjunct true for every domain). With the
+    // fixtures corrected CRED-03 no longer fires here, so S-02's blockedBy
+    // list is not triggered. S-02 still does not apply — its own guard fails
+    // on its own merits, which is what this assertion now records.
     assert.equal(applications.length, 2, `${name}: S-01 x CRED-01 and S-02 x CRED-01`);
     const s01 = applications.find((a) => a.suppressionId === 'S-01');
     const s02 = applications.find((a) => a.suppressionId === 'S-02');
     assert.ok(s01 && !s01.applied && s01.blockedByRuleId === null);
-    assert.ok(s02 && !s02.applied && s02.blockedByRuleId === 'CRED-03');
+    assert.ok(s02 && !s02.applied && s02.blockedByRuleId === null);
   } else {
-    // clean-login, no-credential, sso-flow: whatever rules match (CRED-03,
-    // DL-02) are never suppression targets (S-01 explicitly excludes
-    // CRED-03; S-02 targets only CRED-01) — zero applications.
+    // clean-login, no-credential, sso-flow: nothing fires on any of them
+    // post-DEFECT-22/DEC-20, so there is no finding for S-01 or S-02 to be
+    // evaluated against — zero applications.
     assert.equal(applications.length, 0, `${name}: no matched rule here is an S-01/S-02 target`);
   }
 }

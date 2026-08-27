@@ -1521,3 +1521,121 @@ was not asked to build here. Not a gap in Stage 7; a correctly-scoped
 boundary. No DEC-15 fields are implicated either way — this check never
 needed to reach that question, since Stage 7 turned out to already be
 done.
+
+---
+
+## DEC-20 (CANDIDATE — unsigned, open) — `confusableSkeleton`'s absent-vs-present convention is enforced only by a module comment
+
+**[R]** `packages/engine/modules/homograph.ts`'s doc comment (lines
+50-56) states the convention CRED-03's correctness depends on, verbatim:
+
+> "confusableSkeleton is the one exception: HomographFindings types it
+> `string | null`, so `absent` (a domain genuinely has no confusable
+> skeleton distinct from itself) maps cleanly to `null` — a real,
+> positive finding, the same shape as url.ts's registrableDomain.
+> `notCollected` on confusableSkeleton still makes the whole evaluation
+> unevaluable."
+
+So `present` is intended to mean "this domain HAS a confusable skeleton
+**distinct from itself**", and `absent` to mean "it does not." CRED-03's
+first conjunct — `neq(homograph.confusableSkeleton, null)` — is correct
+if and only if a producer honours that reading.
+
+**[R]** Nothing in the contracts says so. `DomainRepresentationEvidence.
+confusableSkeleton` (`evidence.contract.v1.ts:265`) is typed
+`Observation<string>`, and `HomographFindings.confusableSkeleton`
+(`evaluation.contract.v1.ts:177`) is `string | null`. Neither carries a
+comment, a name, or a type distinction expressing "distinct from the
+domain itself." A producer implementer reading only the contracts would
+naturally emit the skeleton unconditionally — UTS-39 defines
+`skeleton(x)` as a total function, and for a plain ASCII domain it
+simply returns the domain.
+
+**[I]** That is exactly what happened, and it was not hypothetical.
+All four committed fixtures emitted `confusableSkeleton:
+present('<the domain itself>')`, identical to their own `host`,
+`unicodeDomain`, and `punycodeDomain` values. Consequence, measured
+against the real pipeline: CRED-03 (primary, **baseWeight 45**) fired on
+three of the four fixtures — including `clean-login`, whose own header
+comment designates it the deliberately benign baseline. The false
+positives were load-bearing: `stage5-6.fixture.test.ts`'s expectation
+table recorded `clean-login: 45/Medium` and `off-origin-post: 90/High`,
+and `stage4.fixture.test.ts` asserted S-02 was `blockedBy: 'CRED-03'` on
+`off-origin-post` — three separate tests had encoded the false positive
+as expected behaviour, each with a comment describing it as
+"empirically confirmed against the real pipeline."
+
+**Severity evidence — the bug's own propagation, not theory:** The bug's
+real-world severity is evidenced by its own propagation, not just by
+theory: stage4.fixture.test.ts and stage5-6.fixture.test.ts both had
+CRED-03's spurious output hardcoded as their EXPECTED value — including
+clean-login, the deliberately-benign baseline fixture, asserted to score
+45/Medium. stage5-6's expectation table carried a comment stating this
+was "empirically confirmed against the real pipeline." A wrong value,
+once encoded as a passing test's expected result with confidence-bearing
+language, does not remain visibly wrong — it becomes indistinguishable
+from ground truth to anyone who doesn't independently re-derive it by
+hand, which is exactly what this verification did. Both corrected as
+part of this fix.
+
+**[I]** `homograph.ts` itself is NOT at fault and was not changed. It is
+a pure field-for-field pass-through with no derivation logic; it
+faithfully reported what the producer supplied. Nor is CRED-03's
+predicate wrong as written — given the documented convention, it is
+correct. The defect was entirely in the evidence-production side.
+
+**Fixed for now in the fixtures (2026-08-27), the narrow correction:**
+all four now emit `confusableSkeleton: absent()`. Verified in both
+directions — CRED-03 no longer fires on any benign fixture, and still
+fires on a constructed deceptive IDN whose skeleton genuinely differs
+from its domain, including with `isIdn`/`containsNonAscii`/
+`isMixedScript` all forced false so the `neq(..., null)` arm is proven
+to carry the rule on its own (`e2e.sso-flow.fixture.test.ts`, section 8).
+
+**The fragility this entry exists to record, and the actual question:**
+the fixtures were corrected, but nothing PREVENTS the same mistake. The
+convention lives in one module's comment; the type says
+`Observation<string>`; no validator checks it; and the corpus capture
+pipeline (`tools/capture/`) will eventually produce this field for real,
+written by someone who may never read `homograph.ts`. The next producer
+implementer can reintroduce this defect exactly as the fixtures did, and
+the symptom — a benign page scoring Medium — is subtle enough that it
+survived three test files and a full CI gate run.
+
+**Option B, the structural fix, NOT undertaken here:** express the
+comparison explicitly rather than relying on a convention — either add
+`punycodeDomain` to `HomographFindings` so CRED-03 can compare via
+`notSameSite(homograph.confusableSkeleton, homograph.punycodeDomain)`,
+or add a derived boolean (e.g. `confusableSkeletonDiffersFromDomain`)
+computed in `homograph.ts` from a plain string comparison. Note
+`unicodeDomain` is NOT a viable operand for either: it is **NOT
+OBSERVABLE** (`docs/ProducerCapabilityManifest.md`, 0/6 — "no
+content-script API returns the decoded Unicode form"), so building the
+predicate on it would make CRED-03 permanently unevaluable in
+production. `punycodeDomain` is observable (6/6). Also note `eq`/`neq`
+compare a path against a LITERAL only — path-to-path comparison is
+expressible solely through `sameSite`/`notSameSite`, so there is no
+rule-set-only version of this fix.
+
+**Either form of Option B is an amendment to the FROZEN
+`packages/contracts/evaluation.contract.v1.ts`** — DEC-3-level
+formality, hand-typed by Jayanth, never by Claude Code, and gated by the
+pre-tool-use hook on `packages/contracts/`. Flagged explicitly rather
+than silently taking the fixture-only fix because it is easier: the
+fixture fix is correct and sufficient TODAY, and does not close the hole.
+
+**Question for architect ruling:** accept the convention as-is and rely
+on documentation (and possibly a new validator check) to defend it, or
+schedule the Option B contract amendment so the comparison is structural
+and a producer cannot get it wrong? No recommendation asserted — the
+trade-off is a contract amendment against a documented-but-unenforced
+invariant, and that is a scope call, not a technical one.
+
+**Related:** [[DEFECT-23]] records a separate and deeper gap in the same
+rule — that CRED-03 detects "has any distinct skeleton" rather than
+UTS-39's actual homograph-attack definition (skeleton collision against
+a known-brand registry). Neither Option A nor Option B addresses that.
+
+- **Status:** CANDIDATE — unsigned, open. Fixture correction applied and
+  verified; the structural question is untouched and unruled.
+- **Signed by:** *(unsigned — awaiting Architecture Owner)*

@@ -126,7 +126,10 @@ export const ssoFlow: SecurityEvidence = {
       containsNonAscii: present(false),
       scriptsUsed: present(['Latin']),
       isMixedScript: present(false),
-      confusableSkeleton: present('login.idp-example.com'),
+      // absent(), not present(<the domain itself>) — see clean-login.ts's
+      // note. `absent` is the documented encoding for "no skeleton distinct
+      // from the domain itself" (homograph.ts), and maps to `null`.
+      confusableSkeleton: absent(),
     },
 
     downloadContext: {

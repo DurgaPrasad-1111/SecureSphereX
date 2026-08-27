@@ -152,9 +152,12 @@ const statusOf = (ruleId: string): string => {
 //  CRED-02 unmatched — authContext is unevaluable, so `eq
 //          authContext.originPresent false` resolves to the UNEVALUABLE
 //          sentinel and returns false (stage2.ts's eq/neq branch).
-//  CRED-03 MATCHED  — homograph.confusableSkeleton is present(
-//          'login.idp-example.com'), i.e. non-null, satisfying `neq(...,null)`;
-//          loginForm.credentialFormPresent is true. Both conjuncts hold.
+//  CRED-03 unmatched — homograph.confusableSkeleton is absent() -> null, so
+//          `neq(..., null)` is false; isIdn/containsNonAscii/isMixedScript are
+//          all present(false). The whole first `or` fails. (Before the
+//          fixtures were corrected this fired on 3 of 4 fixtures, because
+//          they emitted present(<the domain itself>) rather than absent() —
+//          see DEC-20 and the deceptive-IDN control in section 8.)
 //  CRED-04 unmatched — hopCount 1 < redirect_hop_min 2 (and DEFECT-19's two
 //          null domains independently make the notSameSite conjunct false).
 //  CRED-05 unmatched — javascript.listenerOnCredentialField is present(false).
@@ -179,7 +182,7 @@ const statusOf = (ruleId: string): string => {
 //          `neq(..., null)` is false.
 assert.equal(statusOf('CRED-01'), 'unmatched');
 assert.equal(statusOf('CRED-02'), 'unmatched');
-assert.equal(statusOf('CRED-03'), 'matched');
+assert.equal(statusOf('CRED-03'), 'unmatched');
 assert.equal(statusOf('CRED-06'), 'unmatched');
 assert.equal(statusOf('CRED-07'), 'unmatched');
 assert.equal(statusOf('DL-01'), 'unmatched');
@@ -217,7 +220,7 @@ const findings = generateCorrelationFindings(ssoFlow, evaluations, matchResults,
 const firedRuleIds = findings.map((f) => f.ruleId).sort();
 
 // One finding per matched rule; blocked and unmatched produce none.
-assert.deepEqual(firedRuleIds, ['CRED-03'], 'unexpected set of fired rules');
+assert.deepEqual(firedRuleIds, [], 'sso-flow is a BENIGN fixture — no rule should fire on it');
 assert.equal(new Set(findings.map((f) => f.findingId)).size, findings.length, 'findingIds are not distinct');
 for (const finding of findings) {
   assert.equal(finding.targetResourceId, ssoFlow.targetResourceId);
@@ -240,39 +243,36 @@ const { scoring, aggregation } = computeScoringAndAggregation(findings, suppress
 // 6. Final score and tier — the hand-computed value
 // ---------------------------------------------------------------------------
 //
-//   CRED-03  primary,    baseWeight 45, no suppression -> effectiveWeight 45,
-//            not subsumed (subsumption table is empty) -> counted.
-//              primarySum = 45
-//   DL-02    does not fire at all post-DEFECT-22 — downloadContext is
-//            unevaluable, so its `not(is(...))` operand is unevaluable rather
-//            than a fabricated match.
-//              aggravatorSum = 0
-//   score = 45 + 0 = 45
-//   thresholds: medium 30, high 60  ->  30 <= 45 < 60  ->  Medium
+//   NO rule fires on sso-flow. It is the benign cross-domain-SSO fixture:
+//   the redirect crossing is real but expected, the login form is same-site
+//   to the IdP, the domain is plain ASCII with no distinct skeleton, and no
+//   download or permission request occurs.
+//     primarySum = 0, aggravatorSum = 0, score = 0
+//     thresholds: medium 30, high 60  ->  0 < 30  ->  Low
+//
+// Two rules that DID fire here earlier were both defects, now fixed:
+//   DL-02   fabricated by DEFECT-22 (not() over unevaluable downloadContext)
+//   CRED-03 fabricated by the fixture bug in DEC-20 (skeleton emitted as
+//           present(<the domain>) instead of absent())
 //
 // Note this is NOT the "CRED-02 alone = 50" case: CRED-02 cannot fire on this
 // fixture at all, because authContext is unevaluable without a fingerprint.
 
-const cred03 = scoring.find((s) => s.ruleId === 'CRED-03');
-assert.ok(cred03 !== undefined, 'no scoring entry for CRED-03');
-assert.equal(cred03.ruleType, 'primary');
-assert.equal(cred03.baseWeight, 45);
-assert.equal(cred03.maxReduction, 0);
-assert.equal(cred03.effectiveWeight, 45);
-assert.equal(cred03.subsumed, false);
-assert.equal(cred03.countedInScore, true);
-
-assert.equal(scoring.length, 1, 'exactly one scoring entry — only CRED-03 fired');
+assert.equal(scoring.length, 0, 'no scoring entries — nothing fired on the benign fixture');
 assert.equal(
   scoring.find((s) => s.ruleId === 'DL-02'), undefined,
   'DL-02 must produce no scoring entry: downloadContext is unevaluable (DEFECT-22)',
 );
+assert.equal(
+  scoring.find((s) => s.ruleId === 'CRED-03'), undefined,
+  'CRED-03 must produce no scoring entry: skeleton is null on a plain ASCII domain (DEC-20)',
+);
 
-assert.equal(aggregation.primarySum, 45, 'primarySum');
+assert.equal(aggregation.primarySum, 0, 'primarySum');
 assert.equal(aggregation.aggravatorSum, 0, 'aggravatorSum');
-assert.equal(aggregation.score, 45, 'score');
+assert.equal(aggregation.score, 0, 'score');
 assert.deepEqual(aggregation.thresholds, { medium: 30, high: 60 });
-assert.equal(aggregation.rawTier, 'Medium', 'rawTier for sso-flow');
+assert.equal(aggregation.rawTier, 'Low', 'rawTier for sso-flow — a benign page must score Low');
 assert.equal(aggregation.subsumptionApplied.length, 0, 'subsumption table is empty at this rule-set version');
 
 // ---------------------------------------------------------------------------
@@ -366,6 +366,53 @@ const pcBlind = structuredClone(ssoFlow);
   .evidence.permissionContext.requestedPermission = { state: 'notCollected', reason: 'api_unavailable' };
 assert.equal(statusIn(await statusesFor(pcBlind), 'PM-01'), 'unmatched',
   'PM-01 must not fabricate a match when permissionContext is unevaluable');
+
+// ---------------------------------------------------------------------------
+// 8. DEC-20 regression control — CRED-03 on a genuinely deceptive domain.
+//
+//    The fixture correction (skeleton present(<domain>) -> absent()) stopped
+//    CRED-03 firing on benign pages. That is only half the requirement: the
+//    rule must still fire when a domain IS deceptive. Both directions are
+//    asserted here, the same way section 7 does for the not() rules.
+// ---------------------------------------------------------------------------
+
+// A punycode IDN whose confusable skeleton collides with a different, real
+// brand — 'xn--accunts-h1a.example.com' skeletonises to 'accounts.example.com'.
+// The skeleton is genuinely DISTINCT from the domain, so present() is correct
+// here (unlike the four benign fixtures, where absent() is correct).
+const deceptiveIdn = structuredClone(ssoFlow);
+(deceptiveIdn as unknown as { evidence: { domainRepresentation: Record<string, unknown> } })
+  .evidence.domainRepresentation = {
+    unicodeDomain: { state: 'present', value: 'ассounts.example.com' },
+    punycodeDomain: { state: 'present', value: 'xn--accunts-h1a.example.com' },
+    isIdn: { state: 'present', value: true },
+    containsNonAscii: { state: 'present', value: true },
+    scriptsUsed: { state: 'present', value: ['Latin', 'Cyrillic'] },
+    isMixedScript: { state: 'present', value: true },
+    confusableSkeleton: { state: 'present', value: 'accounts.example.com' },
+  };
+
+const deceptiveStatuses = await statusesFor(deceptiveIdn);
+assert.equal(statusIn(deceptiveStatuses, 'CRED-03'), 'matched',
+  'CRED-03 must still fire on a genuinely deceptive IDN — the fixture fix must not disable the rule');
+
+// And the benign direction, on the corrected fixture as committed.
+assert.equal(statusOf('CRED-03'), 'unmatched',
+  'CRED-03 must not fire on a plain ASCII domain with no distinct skeleton (DEC-20)');
+
+// Isolate the skeleton conjunct specifically: with the mixed-script and IDN
+// signals forced false, a genuinely distinct skeleton must STILL carry the
+// rule on its own — proving the neq(..., null) arm is doing real work rather
+// than riding on isIdn/containsNonAscii.
+const skeletonOnly = structuredClone(deceptiveIdn);
+(skeletonOnly as unknown as { evidence: { domainRepresentation: Record<string, { state: string; value: unknown }> } })
+  .evidence.domainRepresentation.isIdn = { state: 'present', value: false };
+(skeletonOnly as unknown as { evidence: { domainRepresentation: Record<string, { state: string; value: unknown }> } })
+  .evidence.domainRepresentation.containsNonAscii = { state: 'present', value: false };
+(skeletonOnly as unknown as { evidence: { domainRepresentation: Record<string, { state: string; value: unknown }> } })
+  .evidence.domainRepresentation.isMixedScript = { state: 'present', value: false };
+assert.equal(statusIn(await statusesFor(skeletonOnly), 'CRED-03'), 'matched',
+  'CRED-03 must fire on a distinct skeleton alone, with every other homograph signal false');
 
 console.log('all sso-flow end-to-end pipeline assertions passed');
 console.log(
