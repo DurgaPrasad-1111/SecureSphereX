@@ -1828,7 +1828,87 @@ comments pointing here. That is a deliberate, recorded limitation of the
 "conformant stub" precedent authorised `summary`'s placeholder and
 deliberately does NOT extend to this field.
 
-- **Status:** CANDIDATE — unsigned, open. No code change made; the field
-  remains unpopulated and `assembleSecurityEvaluation` continues to throw
-  `Stage1EnvelopeBlockedError` with `missingFields: ['consistency']`.
+---
+
+### Resolution — 2026-08-28 — per-module internal-coherence relations
+
+**Path 1 taken** (design a genuine coherence assessment), not path 2 (a
+frozen-contract amendment). `packages/contracts/` is untouched.
+
+**`indeterminate`'s home, ruled:** `result.status === 'unevaluable'` →
+`'indeterminate'`, unconditionally. This is the one place the contract's own
+definition — "insufficient evidence to assess coherence" — is *literally
+true*: no findings exist to assess. It is not a placeholder, and it is
+unreachable for an `evaluated` result, which is correct.
+
+**The ten relations, implemented in `packages/engine/consistency.ts`.**
+Every one is INTERNAL to a single module's own Findings object; none reads
+another module's evaluation (E-2, §8.4.3). Because nearly every Findings
+field is a producer pass-through, these are in practice checks on the
+PRODUCER contradicting itself.
+
+| Module | Relation → `inconsistent` |
+|---|---|
+| `url` | `isIpLiteral && registrableDomain !== null` |
+| `ssl` | `!httpsEstablished` with any certificate fact non-null; or `daysUntilExpiry < 0` with `certificateCurrentlyValid === true` |
+| `dns` | `!resolves && (aRecordCount > 0 \|\| aaaaRecordCount > 0)` |
+| `redirect` | `hopCount !== chainLength` |
+| `loginForm` | `credentialFormPresent && forms.length === 0` |
+| `javascript` | **none — always `consistent`** |
+| `homograph` | `isMixedScript && scriptsUsed.length === 0` |
+| `authContext` | five clauses: the type's own documented origin-present/absent shape, plus `!storeAvailable` |
+| `downloadContext` | `!referrerPresent && referrerRegistrableDomain !== null`; or `hasCompoundExtension && declaredExtension === null` |
+| `permissionContext` | `requestedPermission === null && precededByUserGesture !== null` |
+
+**`javascript` has no relation, and that is the finding — not an omission.**
+Each pairing among its four live fields was checked and rejected with a
+reason (transmission without a listener is ordinary; an inline script can
+inject a credential interface with `dynamicScriptLoadCount: 0`;
+`dynamicScriptLoadCount` relates to nothing else). Two relations exist in
+principle but are unreachable while DEFECT-18 pins
+`transmissionEndpointDomains` to `[]` and `injectingScriptOriginDomain` to
+`null`.
+
+**Relations deliberately REJECTED, each recorded at its predicate:**
+`chainTrusted` with `chainComplete: false` (AIA fetching makes
+trusted-but-incomplete legitimate); `resolves: true` with zero addresses
+(`resolves` is undefined anywhere in the corpus — [[DEFECT-25]]);
+anything involving `cnamePresent` or `nameServerCount`;
+`mechanisms.length === chainLength` (checks this package's own arithmetic,
+not the producer); `loginForm`'s converse (product ambiguity, ruled out of
+scope); `scriptsUsed.length === 1` with `isMixedScript` ([[DEFECT-24]]);
+`isIdn` implying `containsNonAscii` (punycode form is ASCII);
+`extensionMimeConsistent` against its inputs (already enforced in-module);
+`pageAgeMs` in the permission relation (an ordinary page has an age);
+`pageAgeMs < 0` (range validation, not coherence between findings).
+
+**Consequences, all verified:**
+- `assembleSecurityEvaluation` now RETURNS a complete, type-conformant
+  `SecurityEvaluation<M>` and no longer throws. All thirteen fields are
+  genuinely constructed.
+- A new `assembleEvaluationSet` produces the `EvaluationSet` — one
+  evaluation per module per pass.
+- **Invariant E-8 is testable for the first time** and is now tested
+  directly, on real `SecurityEvaluation` objects, across all four fixtures
+  (`orchestrator.fixture.test.ts` Part 3c, `e2e.sso-flow.fixture.test.ts`
+  section 2b). Every prior version could only assert the weaker "one
+  `ModuleDispatchResult` per module".
+- `Stage1EnvelopeBlockedError` was **DELETED**. It existed only to report the
+  blocked field; with no remaining construction path it was dead code in the
+  same sense DEFECT-18 uses the term, and a retained-but-unreachable error
+  class is a future false safety net. Removed on the Architecture Owner's
+  2026-08-28 instruction. `MechanicalEnvelopeFields` is retained — it is live,
+  used by `buildEvaluation`.
+- No score or tier changed on any fixture: `clean-login` 0/Low,
+  `no-credential` 0/Low, `off-origin-post` 45/Medium, `sso-flow` 0/Low.
+
+**Verification:** adversarial tests seed the ACTUAL violation for every
+module, not just the happy path — a suite that only exercised coherent
+inputs would pass identically against `return false`. Boundary cases are
+covered explicitly (`daysUntilExpiry: 0` is valid, `-5` is not) as are the
+deliberate non-violations. `tsc -b` clean; 18/18 test files pass;
+`test:fixtures` 7/7; `validate:ruleset` CONFORMANT.
+
+- **Status:** RESOLVED in implementation, **unsigned**. Ready for
+  Architecture Owner signature.
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*

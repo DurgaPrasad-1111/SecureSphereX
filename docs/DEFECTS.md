@@ -1249,3 +1249,112 @@ defines, correctly.
   is not mistaken for a live tunable, and so the distance between
   CRED-03's `rationale` and its actual predicate is on the record before
   anyone tunes the parameter expecting it to do something.
+
+---
+
+## DEFECT-24 — `homograph.ts`'s `scriptsUsed` doc comment contradicts all four fixtures' actual usage (found 2026-08-28)
+
+Finding: two incompatible readings of `HomographFindings.scriptsUsed` are
+live in the repository at once, and nothing reconciles them.
+
+**The module's own header comment** (`packages/engine/modules/homograph.ts`,
+lines 44-47) says the array lists only NON-DEFAULT scripts — verbatim:
+
+> "This applies equally to scriptsUsed even though it is an array:
+> `scriptsUsed: present([])` is the correct way for a producer to report
+> 'observed, zero non-default scripts'; `absent()` is not an unstated
+> synonym for that"
+
+Under that reading, `[]` is the correct value for a plain ASCII domain, and
+a Latin+Cyrillic domain would report a single entry, `['Cyrillic']`.
+
+**All four committed fixtures do the opposite** — they list EVERY script,
+including the default one:
+
+```
+fixtures/clean-login.ts:121:      scriptsUsed: present(['Latin']),
+fixtures/no-credential.ts:106:    scriptsUsed: present(['Latin']),
+fixtures/off-origin-post.ts:116:  scriptsUsed: present(['Latin']),
+fixtures/sso-flow.ts:127:        scriptsUsed: present(['Latin']),
+```
+
+Every one of those domains is pure ASCII (`accounts.example.com`,
+`blog.example.com`, `login.idp-example.com`), so under the module's own
+stated convention each should be `present([])`. Under the fixtures'
+convention, `[]` would instead mean "a domain using no scripts at all",
+which no domain can be.
+
+**The contract does not settle it.** `DomainRepresentationEvidence.scriptsUsed`
+is `Observation<readonly string[]>` with the sole comment
+`// Unicode script names` (`evidence.contract.v1.ts:263`).
+`HomographFindings.scriptsUsed` is `readonly string[]` with no comment at
+all. Neither says whether the default/ASCII script is included.
+
+**Load-bearing consequence — this blocked a real check.** DEC-21's
+`homograph` coherence relation would naturally be "`isMixedScript` requires
+at least two scripts", which is definitionally true under the fixtures'
+reading and FALSE under the module comment's reading (one non-default script
+alongside an unlisted default IS mixed script). Because the ambiguity is
+unresolved, `consistency.ts` encodes only the weaker
+`isMixedScript && scriptsUsed.length === 0`, which holds under both
+readings, and `consistency.fixture.test.ts` asserts explicitly that
+`scriptsUsed: ['Cyrillic']` with `isMixedScript: true` is NOT flagged. The
+stronger check is available the moment this is decided.
+
+Not resolved here — deciding it is a producer-semantics call, and the
+producer (`tools/capture/`) does not yet emit this field for real
+(`docs/ProducerCapabilityManifest.md` marks `scriptsUsed` **NOT OBSERVABLE**,
+0/6, a bundled-Unicode-tables gap). Whichever reading is chosen, the other
+site must change to match: either the four fixtures become `present([])`,
+or `homograph.ts`'s comment is corrected.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Not currently load-bearing on any rule — CRED-03 reads
+  `isMixedScript` and `confusableSkeleton`, never `scriptsUsed` itself
+  (confirmed against `rulesets/rules-v0.1.0.json`). It IS load-bearing on
+  the strength of DEC-21's homograph relation, as above.
+
+---
+
+## DEFECT-25 — `DnsFindings.resolves` has no definition anywhere in the corpus (found 2026-08-28)
+
+Finding: `resolves` is the gating field of the `dns` module and nothing,
+anywhere, says what it means.
+
+Exhaustive search, all negative:
+- `evidence.contract.v1.ts:179` — `readonly resolves: Observation<boolean>;`
+  — no comment.
+- `evaluation.contract.v1.ts` — `readonly resolves: boolean;` inside
+  `DnsFindings` — no comment.
+- `packages/engine/modules/dns.ts` — reads it as a bare pass-through
+  (`resolves: evidence.resolves.value`), and its header does not gloss it.
+- All four fixtures carry `resolves: notCollected('api_unavailable')`, so
+  there is no empirical example of a real value anywhere in the repository
+  either. (`docs/ProducerCapabilityManifest.md` marks the whole `dns.*`
+  category PRODUCER_EXCLUSIVE — no content-script producer exists, so no
+  captured value exists to inspect.)
+
+**The two readings differ materially:**
+1. "The name resolves to an ADDRESS" — then `resolves: true` with
+   `aRecordCount: 0` and `aaaaRecordCount: 0` is a contradiction.
+2. "The name EXISTS / the query returned NOERROR" — then a name with only
+   MX records legitimately resolves while having no address at all, and the
+   same combination is perfectly coherent.
+
+**Load-bearing consequence.** DEC-21's `dns` coherence relation encodes only
+the direction that holds under BOTH readings — `!resolves &&
+(aRecordCount > 0 || aaaaRecordCount > 0)`, since address records prove the
+name resolves however "resolves" is defined. The converse is deliberately
+NOT encoded, and `consistency.fixture.test.ts` asserts that
+`resolves: true` with zero addresses is not flagged, citing this entry. If
+reading (1) is confirmed, that check should be added.
+
+Not currently load-bearing on any rule: no predicate in
+`rulesets/rules-v0.1.0.json` reads any `dns.*` path (the `dns` module is a
+DEC-5 conformant stub for exactly that reason). This is a
+definition gap to close before `dns` findings are first consumed, not a
+live defect.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, low priority. Blocks the stronger half of DEC-21's `dns`
+  relation; blocks nothing else today.
