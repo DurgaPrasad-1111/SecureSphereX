@@ -36,8 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { ssoFlow } from '../../fixtures/sso-flow.ts';
 import {
   evaluateAllModules,
-  assembleSecurityEvaluation,
-  Stage1EnvelopeBlockedError,
+  assembleEvaluationSet,
 } from './orchestrator.ts';
 import { matchAllRules, matchRule } from './stage2.ts';
 import { generateCorrelationFindings } from './stage3.ts';
@@ -117,45 +116,66 @@ for (const moduleId of ALL_MODULE_IDS) {
   );
 }
 
-// WHY THIS TEST STILL ASSERTS AGAINST ModuleDispatchResult, NOT
-// SecurityEvaluation<M> — deliberate, one field deferred, not an oversight.
+// ---------------------------------------------------------------------------
+// 2b. The FULL SecurityEvaluation<M> envelope — constructible as of
+//     2026-08-28, and with it invariant E-8 testable for the first time.
 //
-// The Architecture Owner's 2026-08-27 ruling resolved three of DEC-15's four
-// remaining fields (moduleVersion, indicators, summary). `consistency` was
-// deliberately NOT resolved: its nearest enum value, 'indeterminate', is
-// defined in the frozen contract as "insufficient evidence to assess
-// coherence" — a substantive analytical claim that would be FALSE on an
-// evaluation with complete evidence. Stamping it as a placeholder would be
-// the same fabrication shape as DEFECT-22, DEC-20, and the E-6 violation.
-//
-// So `assembleSecurityEvaluation` is still typed Promise<never> and still
-// throws, and a real SecurityEvaluation<M> still cannot be constructed. The
-// consequence worth naming: invariant E-8 ("Exactly one evaluation per
-// module per pass. Never zero, never two.", evaluation.contract.v1.ts:307)
-// remains UNTESTABLE — what section 2 above asserts is one
-// ModuleDispatchResult per module, which is the closest true statement
-// available, not E-8 itself. That is the correct outcome of the ruling, not
-// a shortfall in this test. See DEC-21.
-//
-// Asserted rather than skipped, so the day DEC-21 is resolved this fails
-// loudly and gets updated instead of silently continuing to describe a
-// pipeline that has changed shape.
-await assert.rejects(
-  () => assembleSecurityEvaluation(ssoFlow, 'url', uncalledStoreReader),
-  (err: unknown) => {
-    assert.ok(err instanceof Stage1EnvelopeBlockedError, 'expected Stage1EnvelopeBlockedError');
-    // NARROWED 2026-08-27: was all four fields; only `consistency` remains.
-    assert.deepEqual(err.missingFields, ['consistency']);
-    // The three resolved fields must be genuinely present on the payload —
-    // proving they were computed, not merely removed from the missing list.
-    assert.equal(err.mechanicalFields.moduleVersion, '0.1.0', 'moduleVersion resolved per-module');
-    assert.deepEqual(err.mechanicalFields.indicators, [], 'indicators resolved to the schema default');
-    assert.match(err.mechanicalFields.summary, /^\[DEC-15 UNRESOLVED\]/,
-      'summary is an explicitly-labelled placeholder, not prose that could pass as real content');
-    assert.ok(err.mechanicalFields.summary.includes('"url"'), 'summary names its module');
-    return true;
-  },
-  'assembleSecurityEvaluation should still be blocked by DEC-21 (consistency)',
+// Every earlier version of this file asserted that assembleSecurityEvaluation
+// THREW: DEC-15 left envelope fields unresolved, so no real
+// SecurityEvaluation could exist and E-8 ("Exactly one evaluation per module
+// per pass. Never zero, never two.", evaluation.contract.v1.ts:307) could
+// only be approximated by counting ModuleDispatchResults. `consistency` was
+// the last blocked field, resolved via consistency.ts's per-module
+// internal-coherence relations (DEC-21).
+// ---------------------------------------------------------------------------
+
+const evaluationSet = await assembleEvaluationSet(ssoFlow, uncalledStoreReader);
+
+// E-8, asserted directly on real SecurityEvaluation objects.
+assert.equal(Object.keys(evaluationSet).length, 10, 'E-8: exactly ten evaluations, never zero, never two');
+assert.deepEqual([...Object.keys(evaluationSet)].sort(), [...ALL_MODULE_IDS].sort(),
+  'E-8: exactly one evaluation per ModuleId');
+assert.equal(new Set(ALL_MODULE_IDS.map((m) => evaluationSet[m].evaluationId)).size, 10,
+  'E-8: ten evaluations must carry ten distinct evaluationIds');
+
+for (const moduleId of ALL_MODULE_IDS) {
+  const evaluation = evaluationSet[moduleId];
+  // E-1: one evaluation originates from exactly one module.
+  assert.equal(evaluation.moduleId, moduleId, `${moduleId}: E-1 — filed under the wrong module`);
+  assert.equal(evaluation.contractVersion, '1.1.0', `${moduleId}: contractVersion`);
+  assert.equal(evaluation.targetResourceId, ssoFlow.targetResourceId, `${moduleId}`);
+  assert.equal(evaluation.analysisSessionId, ssoFlow.analysisSessionId, `${moduleId}`);
+  assert.equal(evaluation.passOrdinal, ssoFlow.collectionContext.passOrdinal, `${moduleId}`);
+  assert.equal(evaluation.moduleVersion, '0.1.0', `${moduleId}: per-module version`);
+  assert.equal(evaluation.evidenceRefs.length, 1, `${moduleId}: E-5 — references its evidence`);
+  assert.deepEqual(evaluation.indicators, [], `${moduleId}: indicators`);
+  assert.match(evaluation.summary, /^\[DEC-15 UNRESOLVED\]/, `${moduleId}: summary placeholder`);
+  assert.deepEqual(evaluation.collectionContext, ssoFlow.collectionContext, `${moduleId}`);
+
+  // E-6 / DEC-21: the evaluability status and the consistency verdict must
+  // agree — unevaluable is exactly the indeterminate case, and nothing else.
+  assert.equal(evaluation.result.status, EXPECTED_STATUS[moduleId], `${moduleId}: evaluability`);
+  if (evaluation.result.status === 'unevaluable') {
+    assert.equal(evaluation.consistency, 'indeterminate',
+      `${moduleId}: unevaluable must be indeterminate`);
+  } else {
+    assert.equal(evaluation.consistency, 'consistent',
+      `${moduleId}: sso-flow's evidence is internally coherent, so every evaluated module must be consistent`);
+  }
+}
+
+// sso-flow is a well-formed fixture: no module may report an internal
+// contradiction. Stated as its own assertion so a future fixture edit that
+// introduces one fails here rather than passing silently.
+assert.equal(
+  ALL_MODULE_IDS.filter((m) => evaluationSet[m].consistency === 'inconsistent').length, 0,
+  'sso-flow: no module may be internally inconsistent',
+);
+// The four unevaluable modules are exactly the indeterminate ones.
+assert.deepEqual(
+  ALL_MODULE_IDS.filter((m) => evaluationSet[m].consistency === 'indeterminate').sort(),
+  ['authContext', 'dns', 'downloadContext', 'ssl'],
+  'sso-flow: indeterminate is exactly the unevaluable set',
 );
 
 // ---------------------------------------------------------------------------
