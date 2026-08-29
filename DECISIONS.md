@@ -1729,7 +1729,7 @@ a known-brand registry). Neither Option A nor Option B addresses that.
 
 ---
 
-## DEC-21 (CANDIDATE — unsigned, open) — `SecurityEvaluation.consistency` has no coherence-assessment design, and no honest placeholder value exists
+## DEC-21 — `SecurityEvaluation.consistency`: per-module internal-coherence assessment (ten modules; path 1, no contract amendment)
 
 **[R]** `SecurityEvaluation<M>.consistency: ConsistencyAssessment`
 (`evaluation.contract.v1.ts:280`) is non-optional in a FROZEN contract. It
@@ -1917,6 +1917,6 @@ covered explicitly (`daysUntilExpiry: 0` is valid, `-5` is not) as are the
 deliberate non-violations. `tsc -b` clean; 18/18 test files pass;
 `test:fixtures` 7/7; `validate:ruleset` CONFORMANT.
 
-- **Status:** RESOLVED in implementation, **unsigned**. Ready for
-  Architecture Owner signature.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Status:** RESOLVED and SIGNED 2026-08-29. Implemented in
+  `packages/engine/consistency.ts`.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
