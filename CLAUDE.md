@@ -67,8 +67,10 @@ G-4 dependency-cruiser enforces the matrix above · G-5 store reachable only via
 G-6 transmission audit (§20.2 never-transmit) · G-7 fixture round-trip · G-8 rule-set static
 validator · G-9 property tests (Stage 1b) · G-10 deterministic replay (Stage 6).
 
-**Two corrections to §3:** G-8 runs **thirteen** static checks V-1..V-13, not twelve
-(`ruleset_format_v1.ts` defines V-13). The contract-conformance check is a separate gate,
+**Two corrections to §3:** G-8 runs **fifteen** static checks V-1..V-15, not twelve.
+V-1..V-13 come from `ruleset_format_v1.ts`; V-14 verifies `integrityDigest` (DEFECT-17)
+and V-15 gates `pslVersion` reconciliation (DEC-27) — neither is in the contract, both
+are in `validate-ruleset.py`. The contract-conformance check is a separate gate,
 **G-11**, not G-8 (`DECISIONS.md` DEC-4) — G-8 is the rule-set validator only.
 
 **Three different things share `G-` names — always say which:**

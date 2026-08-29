@@ -236,8 +236,9 @@ It must state:
 - The CI gate list from §3 — one line each. Note two corrections:
     * G-8 is the RULE-SET validator. The contract-conformance check is G-11
       (DECISIONS.md DEC-4).
-    * G-8 runs THIRTEEN static checks V-1..V-13, not twelve. §3 still says
-      twelve; ruleset_format_v1.ts defines V-13.
+    * G-8 runs FIFTEEN static checks V-1..V-15, not twelve. §3 still says
+      twelve; ruleset_format_v1.ts defines V-1..V-13, V-14 verifies
+      integrityDigest (DEFECT-17), V-15 gates pslVersion (DEC-27).
 - IMPORTANT — three different things share G- names. Always say which:
     * CI gates G-1..G-10 and G-11 (Stage0-Completion-Pack §3, ci.yml)
     * Store poisoning guards G-01..G-05 (Specification §20.6) — two digits
@@ -250,7 +251,7 @@ It must state:
 Do NOT paste large spec files into CLAUDE.md. Reference them.
 ```
 
-**Check:** under 100 lines · names the engine-is-browser-free rule · warns about the three `G-` namespaces · says `V-1..V-13` and `G-11`.
+**Check:** under 100 lines · names the engine-is-browser-free rule · warns about the three `G-` namespaces · says `V-1..V-15` and `G-11`.
 
 ---
 
@@ -615,14 +616,17 @@ EVERY RULE NEEDS ALL ELEVEN §18.1 METADATA FIELDS or static check V-10 fails:
   rejects an empty one, and a generic one is worse than none.
 
 Then implement the validate:ruleset npm script (stubbed in Step 5) checking
-V-1 through V-13 from ruleset.format.v1.ts. There are THIRTEEN — V-13 was
-added later and Stage0-Completion-Pack §3 still says twelve. V-9 checks the
-subsumption table; V-10 checks the metadata above; V-6 is the layered-security
-invariant and must be machine-checked, not eyeballed.
+V-1 through V-13 from ruleset.format.v1.ts. There are THIRTEEN there — V-13
+was added later and Stage0-Completion-Pack §3 still says twelve. Two more were
+added afterwards and are NOT in the contract: V-14 verifies integrityDigest
+(DEFECT-17) and V-15 gates pslVersion reconciliation (DEC-27), so the validator
+now runs FIFTEEN. V-9 checks the subsumption table; V-10 checks the metadata
+above; V-6 is the layered-security invariant and must be machine-checked, not
+eyeballed.
 ```
 
 **Check:**
-- [ ] `npm run validate:ruleset` passes **all thirteen** — a real validator, not a reading
+- [ ] `npm run validate:ruleset` passes **all fifteen** — a real validator, not a reading
 - [ ] Jayanth approves (`B0.2`), confirming **V-6 was machine-verified**
 
 ---
