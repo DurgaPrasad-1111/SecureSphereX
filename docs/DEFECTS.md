@@ -1611,3 +1611,72 @@ later.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** RESOLVED 2026-08-29 in `.github/workflows/ci.yml`.
+
+---
+
+## DEFECT-30 — `runAnalysisPass` dispatches Stage 1 twice, minting two sets of `evaluationId`s for one logical pass (found 2026-08-29; OPEN, deferred deliberately)
+
+Finding: `packages/engine/pass.ts` calls both Stage 1 entry points:
+
+```ts
+const evaluations = await assembleEvaluationSet(evidence, storeReader);
+const dispatch    = await evaluateAllModules(evidence, storeReader);
+```
+
+Each runs the full ten-module dispatch independently, and `evaluateModule`
+mints a fresh `evaluationId` per call (`packages/engine/id.ts` —
+`randomUUID()`, DEC-15's resolution). So a single logical pass produces **two
+distinct sets of ten `evaluationId`s** for the same ten module evaluations.
+
+**Why both calls exist.** They return different things, and both are needed:
+
+- `assembleEvaluationSet` produces the ten complete `SecurityEvaluation`
+  envelopes — E-8's unit ("Exactly one evaluation per module per pass"), and
+  what a persisted `AnalysisPassResult` references.
+- `evaluateAllModules` produces `ModuleDispatchResult`s, which is what Stages
+  2–4 actually consume. DEC-15's Stage 2 dependency check established this
+  directly: `FindingPath` "MUST resolve against D0.2's FindingsByModule",
+  never the surrounding envelope, so predicate matching needs only
+  `moduleId` + `result`.
+
+**Currently harmless — stated precisely, not hand-waved.** Nothing downstream
+compares an envelope's `evaluationId` against anything else.
+`CorrelationFinding.evaluationRefs` is built in `stage3.ts` from the DISPATCH
+results (`evaluations[moduleId].evaluationId`), consistently, so findings
+reference a coherent set. The envelopes' ids are simply never read by Stages
+2–8. All four fixtures produce identical scores and tiers with the duplication
+in place.
+
+**The real risk, precisely:**
+
+1. **Cross-reference breakage.** The moment anything correlates a persisted
+   `SecurityEvaluation.evaluationId` with a `CorrelationFinding.evaluationRefs`
+   entry — which is exactly what
+   `spec/Logical-Database-Design-Specification-v1_1.md`'s
+   `finding_evaluation: (finding_id, evaluation_id)` join table exists to do —
+   the two will not match. Findings would reference evaluationIds that appear
+   nowhere in the pass's own persisted evaluations. That is a referential
+   integrity failure at the storage layer, not a cosmetic one.
+2. **Wasted computation, at minimum.** Every module runs twice per pass. Today
+   that is ten extra pure function calls; once `authContext` has a real store
+   behind it (A1.3), it is a second store round-trip per pass — against
+   §13.4's Tier 2 latency budget (≤200 ms local, ≤1000 ms p95 with backend).
+3. **P-13/G-10 exposure is NOT claimed here.** Replay compares a persisted
+   Pass Result against a recomputation; since `evaluationId` is a random
+   UUIDv4 by design (DEC-15), it can never be reproduced by replay regardless
+   of this defect. This entry does not assert a G-10 impact — that is a
+   separate, already-known consequence of non-deterministic ids.
+
+**Fix, deliberately OUT OF SCOPE for the commit that introduced this.** The
+correct shape is to dispatch once and thread the results into envelope
+assembly — `assembleSecurityEvaluation` would take a `ModuleDispatchResult`
+rather than re-dispatching internally. That changes `orchestrator.ts`'s public
+signature, which is a change to an existing, tested boundary and belongs in
+its own commit with its own verification, not folded into the first wiring of
+the pipeline. Recorded here at the moment it was introduced rather than
+discovered later.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Not urgent — no current consumer, no behavioural
+  difference on any fixture — but real, and it becomes a correctness issue the
+  moment evaluations are persisted and joined against findings.
