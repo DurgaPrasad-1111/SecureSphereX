@@ -245,6 +245,98 @@ const testRuleSet: RuleSet = {
   assert.equal(maxAppliedReduction('finding-1', applications), 0);
 }
 
+// --- B1.2-X: a NEGATED guard over a single unevaluable module declines ---
+//
+// This is the DEFECT-22 shape applied to Stage 4. Before that fix,
+// `matchPredicate` collapsed the UNEVALUABLE sentinel to `false` inside
+// `is`, so `not(is(<unevaluable>))` inverted to TRUE — a guard would have
+// HELD on data the module never produced, and the suppression would have
+// applied, silently weakening a finding on the strength of nothing.
+//
+// UNREACHABLE IN THE LIVE RULE SET — a record, not a live bug, the same
+// framing DEFECT-19 uses. No suppression guard in rulesets/rules-v0.1.0.json
+// uses `not()`: S-01's guards are `is` + `eq`, S-02's is `exists`. Confirmed
+// by direct inspection of the shipped rule set, not assumed. The relation is
+// asserted here anyway because the rule set is data — a future revision can
+// add a negated guard without touching this engine, and this test is what
+// would catch a regression at that point.
+//
+// ISOLATION IS THE POINT. The existing `maxAppliedReduction is 0` case above
+// uses baseEvaluations(), where ALL TEN modules are unevaluable — so it
+// cannot distinguish "declined because the module was unevaluable" from
+// "declined because the whole evaluation set was broken". Here BOTH
+// suppressions run against the SAME evaluation set in a single call: one
+// guard reads an EVALUATED module and applies, the other reads a single
+// unevaluable module and declines. The only difference between them is that
+// module's evaluability.
+
+{
+  const evaluations = {
+    ...baseEvaluations(),          // everything unevaluable...
+    url: {                          // ...except url, which is healthy
+      moduleId: 'url' as const,
+      evaluationId: 'eval-url-live',
+      result: {
+        status: 'evaluated' as const,
+        findings: {
+          scheme: 'http', isSecureScheme: false, registrableDomain: 'example.com',
+          subdomainDepth: 0, isIpLiteral: false, totalLength: 20,
+          suspiciousKeywordCount: 0, percentEncodedSegmentCount: 0, specialCharacterDensity: 0,
+        },
+      },
+    },
+  };
+
+  const negatedGuardRuleSet: RuleSet = {
+    ...testRuleSet,
+    suppressions: [
+      {
+        // Control: negated guard over an EVALUATED module whose value is
+        // genuinely false -> not(false) holds -> this one DOES apply.
+        id: 'TEST-NEG-EVALUABLE', mechanism: 'exemption', purpose: 'test',
+        guards: [{ op: 'not', operand: { op: 'is', path: 'url.isSecureScheme' } }],
+        blockedBy: [], targets: [{ ruleId: 'CRED-01', reduction: 0.5 }],
+        neverApplies: [], rationale: 'test', introducedIn: '0.1.0', lastModifiedIn: '0.1.0',
+      },
+      {
+        // Subject: negated guard over a single UNEVALUABLE module (dns).
+        // Must NOT hold — "could not look" is not "looked and found false".
+        id: 'TEST-NEG-UNEVALUABLE', mechanism: 'exemption', purpose: 'test',
+        guards: [{ op: 'not', operand: { op: 'is', path: 'dns.resolves' } }],
+        blockedBy: [], targets: [{ ruleId: 'CRED-01', reduction: 0.9 }],
+        neverApplies: [], rationale: 'test', introducedIn: '0.1.0', lastModifiedIn: '0.1.0',
+      },
+    ],
+  };
+
+  const applications = generateSuppressionApplications([fakeFinding()], evaluations, negatedGuardRuleSet);
+  assert.equal(applications.length, 2, 'both suppressions target CRED-01, so both are evaluated pairs');
+
+  const evaluable = applications.find((a) => a.suppressionId === 'TEST-NEG-EVALUABLE')!;
+  const unevaluable = applications.find((a) => a.suppressionId === 'TEST-NEG-UNEVALUABLE')!;
+
+  assert.equal(evaluable.guardEvaluations[0]?.held, true,
+    'control: a negated guard over an evaluated-false value must still hold');
+  assert.equal(evaluable.applied, true, 'control: the fix must not disable legitimate negated guards');
+
+  assert.equal(unevaluable.guardEvaluations[0]?.held, false,
+    'subject: a negated guard over an unevaluable module must NOT hold (DEFECT-22)');
+  assert.equal(unevaluable.applied, false,
+    'subject: suppression must decline on unknown data, never suppress on it');
+
+  // §6.1 non-destructive: the declining suppression is still RECORDED.
+  assert.equal(unevaluable.declaredReduction, 0.9,
+    'the declined suppression is still recorded with its declared reduction');
+  assert.equal(unevaluable.blockedByRuleId, null,
+    'declined by its own guard, not by a blockedBy rule — the distinction must survive');
+
+  // The net effect: only the legitimate 0.5 counts. Had the unevaluable
+  // guard wrongly held, max would be 0.9 — a strictly larger reduction
+  // sourced from data that was never observed.
+  assert.equal(maxAppliedReduction('finding-1', applications), 0.5,
+    'only the genuinely-held guard contributes; 0.9 from unknown data must not');
+}
+
 // --- Integration: real rules-v0.1.0.json + real 4 fixtures, through the
 // real Stage 1 -> 2 -> 3 -> 4 pipeline end to end ---------------------------
 

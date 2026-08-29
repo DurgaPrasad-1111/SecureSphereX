@@ -151,10 +151,51 @@ export function computeScoringAndAggregation(
   for (const finding of findings) {
     const rule = ruleDefinitionFor(finding.ruleId);
     const maxReduction = maxAppliedReduction(finding.findingId, suppressionApplications);
+    const effectiveWeight = rule.baseWeight * (1 - maxReduction);
+
+    // INDEPENDENT RANGE CHECK — deliberately NOT trusting V-7 alone.
+    //
+    // §6.1's whole premise is that suppression only ever REDUCES: with
+    // `reduction` in (0, 1] (V-7, validate-ruleset.py), effectiveWeight is
+    // necessarily within [0, baseWeight]. But V-7 is a single point of
+    // enforcement in a DIFFERENT tool, on a different execution path, and
+    // this engine is handed a `RuleSet` object by its caller — nothing at
+    // this boundary re-establishes that the rule set ever passed G-8.
+    //
+    // DEFECT-17 is this project's own precedent for exactly that mistake:
+    // `compute-ruleset-digest.mjs` could verify a rule set's
+    // `integrityDigest`, but `validate-ruleset.py` never called it, so a
+    // hand-edited digest passed G-8 CONFORMANT regardless. Verification that
+    // exists somewhere is not verification that runs on the path that
+    // matters. V-14 was added to close it; this check is the same reasoning
+    // applied to `reduction`.
+    //
+    // THROW rather than degrade, for three reasons: it matches the two
+    // existing defensive throws in this function (unknown ruleId, missing
+    // thresholds); §12.2/§15.3 require integrity failures to be FAIL-CLOSED;
+    // and P-11 states "A partially aggregated score SHALL NEVER reach
+    // CurrentSecurityState" — emitting a corrupted-but-plausible score is
+    // precisely the outcome that invariant forbids. A silently inflated
+    // score is a false High tier, i.e. a wrong security verdict.
+    //
+    // Both directions are checked: `> baseWeight` catches a negative
+    // reduction (suppression INCREASING weight, the property B1.2-2 names);
+    // `< 0` catches a reduction above 1. Both are the same defect — a
+    // `reduction` outside V-7's (0, 1] — and catching only one direction
+    // would leave the other silently corrupting the sum.
+    if (effectiveWeight > rule.baseWeight || effectiveWeight < 0) {
+      throw new Error(
+        `Suppression may only reduce weight (§6.1): rule "${finding.ruleId}" has baseWeight ` +
+        `${rule.baseWeight} and maxReduction ${maxReduction}, giving effectiveWeight ` +
+        `${effectiveWeight}, outside [0, ${rule.baseWeight}]. The reduction is outside V-7's ` +
+        `permitted (0, 1] range — this rule set did not pass, or was modified after, G-8.`,
+      );
+    }
+
     weights.set(finding.findingId, {
       baseWeight: rule.baseWeight,
       maxReduction,
-      effectiveWeight: rule.baseWeight * (1 - maxReduction),
+      effectiveWeight,
     });
   }
 
