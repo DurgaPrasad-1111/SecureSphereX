@@ -157,23 +157,27 @@ export function javascriptIsInconsistent(_f: JavaScriptFindings): boolean {
 }
 
 /**
- * Mixed-script requires at least one script to have been recorded.
+ * Mixed script requires at least TWO scripts to have been recorded.
  *
- * NOT checked: `scriptsUsed.length === 1` with `isMixedScript: true`. That is
- * contradictory only if `scriptsUsed` lists ALL scripts used;
- * `homograph.ts`'s header instead glosses `[]` as "zero non-default scripts",
- * under which a Latin+Cyrillic domain reporting `['Cyrillic']` is correct.
- * The four fixtures contradict that gloss (all emit `['Latin']` for
- * pure-ASCII domains). Unresolved — see DEFECT-24. The `length === 0` form
- * above holds under BOTH readings, which is why it is the one encoded.
+ * STRENGTHENED 2026-08-29 when DEFECT-24 was resolved. This previously
+ * encoded only the weaker `scriptsUsed.length === 0`, because two
+ * incompatible readings of `scriptsUsed` were live at once and only the
+ * weaker form held under both. DEFECT-24 adopted the fixtures' reading —
+ * `scriptsUsed` lists EVERY Unicode script present, including the default
+ * one — under which "mixed script" is definitionally "two or more scripts",
+ * so `length >= 2` is now the exact relation rather than a safe subset.
+ *
+ * `length >= 2` subsumes the old check: `isMixedScript` with `length === 0`
+ * is still inconsistent, and `length === 1` — a domain claiming mixed script
+ * while reporting a single script — is now caught too.
  *
  * ALSO not checked: `isIdn: true` implying `containsNonAscii: true` — an
  * IDN's punycode form (`xn--…`) is pure ASCII while its Unicode form is not,
  * and the contract never says which representation `containsNonAscii`
- * measures.
+ * measures. That ambiguity is untouched by DEFECT-24 and remains open.
  */
 export function homographIsInconsistent(f: HomographFindings): boolean {
-  return f.isMixedScript && f.scriptsUsed.length === 0;
+  return f.isMixedScript && f.scriptsUsed.length < 2;
 }
 
 /**

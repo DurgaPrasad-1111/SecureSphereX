@@ -179,10 +179,21 @@ assert.equal(
 // VIOLATION: mixed-script asserted with no scripts recorded at all.
 assert.equal(homographIsInconsistent({ ...homographOk, isMixedScript: true, scriptsUsed: [] }), true,
   'homograph: isMixedScript true with an empty scriptsUsed must be inconsistent');
-// Deliberately NOT a violation — depends on the unresolved scriptsUsed
-// semantics (DEFECT-24), so only the length-0 form is encoded.
-assert.equal(homographIsInconsistent({ ...homographOk, isMixedScript: true, scriptsUsed: ['Cyrillic'] }), false,
-  'homograph: single-entry scriptsUsed is NOT encoded as a violation while DEFECT-24 is open');
+// DEFECT-24 RESOLVED 2026-08-29 — this assertion is INVERTED from what it was.
+// It previously asserted `false` ("not encoded as a violation while DEFECT-24
+// is open"), which was correct only while `scriptsUsed` had two live readings.
+// Under the adopted reading — scriptsUsed lists EVERY script, including the
+// default — a domain claiming mixed script while reporting ONE script is a
+// genuine self-contradiction, so it must now be flagged.
+assert.equal(homographIsInconsistent({ ...homographOk, isMixedScript: true, scriptsUsed: ['Cyrillic'] }), true,
+  'homograph: isMixedScript true with a SINGLE recorded script is inconsistent (DEFECT-24 resolved)');
+// The boundary the strengthened relation must NOT overshoot: two scripts with
+// isMixedScript true is the coherent case, already asserted above, and two
+// scripts with isMixedScript FALSE is a separate question the relation
+// deliberately does not judge — a producer may record scripts without
+// asserting mixedness.
+assert.equal(homographIsInconsistent({ ...homographOk, isMixedScript: false, scriptsUsed: ['Latin', 'Cyrillic'] }), false,
+  'homograph: two scripts without an isMixedScript claim is not judged by this relation');
 
 // --- authContext ----------------------------------------------------------
 

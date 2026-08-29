@@ -1,12 +1,19 @@
-# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-14).
+# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-15).
 #
-# Fourteen checks, not thirteen: V-1 … V-13 come from ruleset.format.v1.ts's
+# Fifteen checks, not thirteen: V-1 … V-13 come from ruleset.format.v1.ts's
 # §8 (itself thirteen, not the twelve Stage0-Completion-Pack.md §3 still
 # says — that document is spec/, frozen, not updated here). V-14 is not in
 # ruleset.format.v1.ts at all — it closes DEFECT-17 (docs/DEFECTS.md):
 # integrityDigest had a documented algorithm (tools/ci/compute-ruleset-digest.mjs)
 # but nothing verified it as part of this gate, so a stale or hand-edited
 # digest passed CONFORMANT regardless. V-14 wires that verification in.
+#
+# FIFTEEN now: V-15 is likewise not in ruleset.format.v1.ts. It implements
+# DEC-27 ruling 3(a) — pslVersion was declared, contractually meaningful
+# ("recorded for G-10 replay") and enforced by NOTHING, the same shape of gap
+# V-14 closed for integrityDigest. See check_psl_version for why it gates
+# reconciliation staleness rather than comparing two incomparable version
+# strings.
 #
 # Closed enums (ModuleId, ParameterId, RefinementSetId) are extracted from
 # packages/contracts/*.ts at run time, not hardcoded — so this validator
@@ -225,6 +232,97 @@ def check_integrity_digest(ruleset_path):
     return []
 
 
+def check_psl_version(rs):
+    """V-15: the declared pslVersion and the extractor's bundled PSL are both
+    pinned, and the PAIRING has been explicitly reconciled. Implements DEC-27
+    ruling 3(a).
+
+    WHAT THIS DOES NOT DO, AND WHY. The rule set declares
+    `tldextract==5.3.0 (bundled snapshot sha256:b693...)`; the extractor bundles
+    `tldts@7.4.11`. These are DIFFERENT LIBRARIES with different version lines
+    and different PSL snapshot identities. They are not comparable strings and
+    no normalization makes them so. A check that compared them directly would
+    either fail permanently or, if fudged into passing, assert nothing.
+
+    Comparing them is also not the risk worth gating. The real risk is DRIFT:
+    one side changes and nobody re-verifies that the two PSLs still agree on
+    registrable-domain boundaries — which silently changes `registrableDomain`,
+    the field CRED-01 and CRED-07 both key on.
+
+    So the reconciliation is EMPIRICAL, in
+    apps/harness/extract/psl-conformance.fixture.test.ts, which runs both
+    libraries over a fixed boundary set and requires agreement. V-15 gates the
+    two ways that reconciliation can silently go stale:
+
+      (1) BUNDLED_PSL != the tldts actually installed  -> dependency moved
+      (2) PSL_RECONCILED_AGAINST != the rule set's pslVersion -> ruleset moved
+
+    Either means conformance was last verified against something that is no
+    longer what is in use. Both are exact string comparisons between values
+    that ARE comparable, unlike the two library versions themselves.
+    """
+    out = []
+    declared = rs.get('pslVersion')
+    if not isinstance(declared, str) or not declared.strip():
+        return ["pslVersion is missing or empty in the rule set"]
+
+    version_ts = os.path.join(REPO_ROOT, 'apps', 'harness', 'extract', 'version.ts')
+    if not os.path.isfile(version_ts):
+        # FAIL, not skip. This was written as `return []` first, and a negative
+        # control caught it: deleting version.ts made V-15 print OK — a green
+        # check that had verified nothing. That is precisely the vacuous-gate
+        # shape DEFECT-29 closed for G-9's `--if-present` and DEFECT-17 closed
+        # for the integrity digest.
+        #
+        # V-15's entire job is cross-checking the rule set against the
+        # extractor. If the extractor is absent the check CANNOT be performed,
+        # and a check that cannot be performed must say so loudly rather than
+        # report success. The extractor is committed to this repository, so its
+        # absence is an anomaly worth failing on, never a normal condition.
+        return [f"cannot verify PSL reconciliation: {os.path.relpath(version_ts, REPO_ROOT)} "
+                "is missing. V-15 cross-checks the rule set against the extractor; "
+                "with the extractor absent this check cannot run, and reporting OK "
+                "would be a vacuous pass."]
+    src = open(version_ts, encoding='utf-8').read()
+
+    def const_of(name):
+        m = re.search(r'export const ' + re.escape(name) + r'\s*(?::[^=]+)?=\s*\n?\s*[\'"](.*?)[\'"]\s*as const', src, re.S)
+        return m.group(1) if m else None
+
+    bundled = const_of('BUNDLED_PSL')
+    reconciled = const_of('PSL_RECONCILED_AGAINST')
+    if bundled is None:
+        out.append("could not read BUNDLED_PSL from apps/harness/extract/version.ts")
+    if reconciled is None:
+        out.append("could not read PSL_RECONCILED_AGAINST from apps/harness/extract/version.ts")
+    if out:
+        return out
+
+    # (2) the rule set side
+    if reconciled != declared:
+        out.append(
+            "PSL reconciliation is STALE: the rule set declares pslVersion "
+            f"{declared!r}, but the extractor was last conformance-tested against "
+            f"{reconciled!r}. Re-run `npm run test:psl`, then update "
+            "PSL_RECONCILED_AGAINST in apps/harness/extract/version.ts."
+        )
+
+    # (1) the extractor side
+    pkg = os.path.join(REPO_ROOT, 'node_modules', 'tldts', 'package.json')
+    if os.path.isfile(pkg):
+        installed = json.load(open(pkg, encoding='utf-8')).get('version')
+        expected = 'tldts@%s' % installed
+        if bundled != expected:
+            out.append(
+                f"bundled PSL drifted: version.ts declares BUNDLED_PSL={bundled!r} "
+                f"but node_modules holds {expected!r}. Re-run `npm run test:psl` "
+                "to re-verify boundary agreement, then update BUNDLED_PSL."
+            )
+    # node_modules absent (fresh clone, no install) is not a violation: there is
+    # nothing to have drifted from. Silence here is correct, not a masked pass.
+    return out
+
+
 REQUIRED_18_1_FIELDS = [
     'id', 'name', 'owner', 'introducedIn', 'lastModifiedIn', 'lifecycleState',
     'rationale', 'empiricalConfidence', 'knownFalsePositiveRisks', 'cweMappings', 'capecMappings',
@@ -234,7 +332,7 @@ MAX_PREDICATE_DEPTH = 12
 
 
 def validate(rs, ruleset_path):
-    findings = {f'V-{i}': [] for i in range(1, 15)}
+    findings = {f'V-{i}': [] for i in range(1, 16)}
 
     rules_by_id = {r['id']: r for r in rs['rules']}
     param_ids_used = set()
@@ -323,6 +421,9 @@ def validate(rs, ruleset_path):
     # V-14 — integrityDigest matches a fresh recomputation (DEFECT-17)
     findings['V-14'].extend(check_integrity_digest(ruleset_path))
 
+    # V-15 — pslVersion pinned and reconciled with the extractor (DEC-27 3a)
+    findings['V-15'].extend(check_psl_version(rs))
+
     return findings
 
 
@@ -336,7 +437,7 @@ def main():
     print(f"{'CHECK':<8} {'STATUS':<8} DETAIL")
     print("-" * 78)
     any_fail = False
-    for i in range(1, 15):
+    for i in range(1, 16):
         key = f'V-{i}'
         viols = findings[key]
         if viols:

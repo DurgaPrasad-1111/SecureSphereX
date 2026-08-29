@@ -193,6 +193,33 @@ export interface RawMaterial {
   /** Optional. Storage-expensive; enables perceptual-hash re-derivation
    *  when the fingerprint algorithm version changes (§20.11). */
   readonly screenshotRef: string | null;
+    /** DEC-29 Tier 1. Passive network observation at capture time
+   *  (page.on("request"), context-level). PRODUCER_EXCLUSIVE: no extension
+   *  can supply this.
+   *
+   *  `null` for every snapshot captured before this field existed — which is
+   *  the entire corpus as of 2026-08-29. Extractors MUST map null to
+   *  `notCollected`, never `absent` (S-7): the network was not observed, so
+   *  nothing was established about it.
+   *
+   *  Both arrays are sorted and de-duplicated by the producer at
+   *  serialisation. Request ARRIVAL ORDER is a property of the network and
+   *  the page's scheduler and is not reproducible across captures; the SET is
+   *  what CRED-05 consumes. Sorting is what makes S-6 hold for this field.
+   *
+   *  `dynamicScript*` counts requests observed after DOMContentLoaded, NOT
+   *  after `load`: Playwright delivers its load event after the page's own
+   *  window.load handlers have already issued their requests, so a load-gated
+   *  flag is structurally always false for exactly the activity this field
+   *  exists to record. Known imprecision: async/defer scripts declared in the
+   *  original HTML may also land after DCL and are counted as dynamic. */
+  readonly scriptRuntimeObservations: {
+    readonly transmissionEndpoints: readonly string[];
+    readonly dynamicScriptOrigins: readonly string[];
+    readonly dynamicScriptLoadCount: number;
+    readonly postRequestCount: number;
+    readonly postAfterDclCount: number;
+  } | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

@@ -13,6 +13,12 @@
     "typecheck": "tsc -b",
     "test:fixtures": "node --experimental-strip-types tools/ci/test-fixtures.ts",
     "test:properties": "node --experimental-strip-types packages/engine/b1-5.properties.test.ts",
+    "check:conformance-config": "node tools/ci/check-conformance-config.mjs",
+    "test:psl": "node --experimental-strip-types apps/harness/extract/psl-conformance.fixture.test.ts",
+    "test:determinism": "node --experimental-strip-types apps/harness/extract/s6-determinism.test.ts",
+    "test:readboundary": "node --experimental-strip-types apps/harness/extract/read-boundary.test.ts",
+    "test:tier1e2e": "node --experimental-strip-types apps/harness/extract/tier1-e2e.test.ts",
+    "metrics:confusion": "node --experimental-strip-types apps/harness/metrics/confusion.ts",
     "validate:ruleset": "node tools/ci/run-python.mjs tools/ci/validate-ruleset.py",
     "digest:ruleset": "node tools/ci/compute-ruleset-digest.mjs"
   },
@@ -24,5 +30,9 @@
     "globals": "^17.11.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.68.0"
+  },
+  "dependencies": {
+    "parse5": "^8.0.1",
+    "tldts": "^7.4.11"
   }
 }

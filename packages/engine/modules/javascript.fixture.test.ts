@@ -19,6 +19,9 @@ const exfiltration: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(true),
   clientSideTransmissionObserved: present(true),
   transmissionEndpoints: present(['https://exfil.evil.tld/collect']),
+  // Producer-derived eTLD+1 of the endpoint above. Pre-extracted per the
+  // Amendment B contract: the module MUST NOT derive this itself (§2.6, E-4).
+  transmissionEndpointDomains: present(['evil.tld']),
   dynamicScriptLoadCount: present(3),
   dynamicScriptOrigins: present(['https://cdn.example.com']),
   credentialInterfaceInjected: present(false),
@@ -56,6 +59,9 @@ const adversarialInjection: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(false),
   clientSideTransmissionObserved: present(false),
   transmissionEndpoints: present([]),
+  // Observed, and empty — present([]) not absent(), the same I-2 distinction
+  // homograph.ts's header draws for scriptsUsed.
+  transmissionEndpointDomains: present([]),
   dynamicScriptLoadCount: present(1),
   // A single, unambiguous-looking origin — the case most likely to tempt a
   // "just use dynamicScriptOrigins[0]" shortcut.
@@ -78,6 +84,9 @@ const noLoadCount: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(true),
   clientSideTransmissionObserved: present(true),
   transmissionEndpoints: present(['https://exfil.evil.tld/collect']),
+  // Producer-derived eTLD+1 of the endpoint above. Pre-extracted per the
+  // Amendment B contract: the module MUST NOT derive this itself (§2.6, E-4).
+  transmissionEndpointDomains: present(['evil.tld']),
   dynamicScriptLoadCount: notCollected('tier_not_reached'),
   dynamicScriptOrigins: present([]),
   credentialInterfaceInjected: present(false),
@@ -101,6 +110,8 @@ const bothAbsent: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(false),
   clientSideTransmissionObserved: present(false),
   transmissionEndpoints: absent(),
+  // Mirrors the sibling: no endpoints observed, so no domains to derive.
+  transmissionEndpointDomains: absent(),
   dynamicScriptLoadCount: present(0),
   dynamicScriptOrigins: absent(),
   credentialInterfaceInjected: present(false),
@@ -131,6 +142,9 @@ const gatedFieldAbsent: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(true),
   clientSideTransmissionObserved: absent(),
   transmissionEndpoints: present(['https://exfil.evil.tld/collect']),
+  // Producer-derived eTLD+1 of the endpoint above. Pre-extracted per the
+  // Amendment B contract: the module MUST NOT derive this itself (§2.6, E-4).
+  transmissionEndpointDomains: present(['evil.tld']),
   dynamicScriptLoadCount: present(2),
   dynamicScriptOrigins: present([]),
   credentialInterfaceInjected: present(false),
@@ -170,6 +184,9 @@ const cred_A1_scenario: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(false),
   clientSideTransmissionObserved: present(false),
   transmissionEndpoints: present([]),
+  // Observed, and empty — present([]) not absent(), the same I-2 distinction
+  // homograph.ts's header draws for scriptsUsed.
+  transmissionEndpointDomains: present([]),
   dynamicScriptLoadCount: present(1),
   dynamicScriptOrigins: present(['https://cdn.attacker.tld']),
   credentialInterfaceInjected: present(true),
