@@ -194,5 +194,5 @@ pure functions rest on example-based tests only.
 
 ---
 
-**Decision:** ☐ CP-1 declared met — engine and ten modules integrated
+**Decision:** ☑ CP-1 declared met — engine and ten modules integrated
 **Signed by:** Jayanth (Architecture Owner, Integrator)  **Date:** 2026-08-29
