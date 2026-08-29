@@ -2744,8 +2744,17 @@ Real reuse, narrower than "write it once."
 decisive.** `rulesets/rules-v0.1.0.json:6` already pins the PSL authority:
 
 ```json
-"pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)"
+"pslVersion": "tldextract==5.3.0 include_psl_private_domains=true (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)"
 ```
+
+⚠️ **The string shown above was SUPERSEDED after this entry was drafted.** When
+DEC-27 was written it read `"tldextract==5.3.0 (bundled snapshot sha256:b693…)"`
+— library, version and digest, with no configuration. [[DEFECT-34]] showed that
+omission was load-bearing (the same library and snapshot resolve differently
+depending on one flag), and [[DEC-31]] added the configuration, applied in
+`409171d`. The current value is quoted here so this entry's argument is read
+against the artifact as it actually stands. **The argument itself is unchanged
+and was not weakened by the correction — if anything DEFECT-34 confirmed it.**
 
 and `tools/capture/capture.py:224` already computes `split_key =
 registrable_domain(url)` with that same library — so **the corpus split keys
@@ -2817,17 +2826,50 @@ mismatch fails the gate. This makes an invisible divergence a build failure,
 exactly as V-14 did for the integrity digest.
 
 **(b) A PSL conformance fixture** proving `tldts` and `tldextract` agree on
-registrable-domain boundaries for at least:
+registrable-domain boundaries.
 
-| Domain | Exercises |
-|---|---|
-| `example.co.uk` | multi-label ICANN suffix |
-| `user.github.io` | private-section suffix (PSL !ICANN) |
-| `bucket.s3.amazonaws.com` | deep private suffix |
-| `school.pvt.k12.ma.us` | four-label ICANN suffix |
+⚠️ **THE FIXTURE THIS SECTION ORIGINALLY SPECIFIED WAS DEFECTIVE, and the
+defect was in the specification, not the implementation.** Recorded here rather
+than quietly overwritten, because the failure is instructive.
 
-Disagreement on any of these blocks adoption. These four are a floor, not a
-ceiling — the list should grow when a divergence is found in the wild.
+As drafted, this section named four boundary domains and reported that the
+fixture confirmed agreement on all five cases. That was true and worthless.
+Both sides ran at their LIBRARY DEFAULTS — `psl-reference.py` called
+`tldextract.extract()`, `psl.ts` called `tldts` unconfigured — while
+`capture.py:86-92` runs with `include_psl_private_domains=True`. The fixture
+confirmed two defaults agreed **with each other** while neither matched the
+producer, and passed green while the two PSLs actually in use disagreed on
+**32.5% of phishing snapshots**. The `user.github.io -> github.io` expectation
+in the original table is precisely the wrong answer: the producer returns
+`evil1.github.io`.
+
+[[DEFECT-34]] names the shape — *a verification mechanism confirms internal
+consistency between two things that both happen to be wrong the same way,
+rather than confirming either one matches the actual authoritative
+configuration* — and records the standing principle that a conformance check
+MUST verify against the producer's actual runtime configuration.
+
+**The corrected fixture**, in force since `ce05ded`, runs **seven** cases, of
+which **four are PSL-PRIVATE and chosen because they fail if either side
+reverts to a default**:
+
+| Domain | Expected (producer config) | Exercises |
+|---|---|---|
+| `user.github.io` | `user.github.io` | PSL PRIVATE — ICANN-only yields `github.io` |
+| `cancelcardiffbahora.vercel.app` | `cancelcardiffbahora.vercel.app` | PSL PRIVATE — real live-feed phishing host |
+| `qg77.chris-x.workers.dev` | `chris-x.workers.dev` | PSL PRIVATE — ICANN-only yields `workers.dev` |
+| `bucket.s3.amazonaws.com` | `bucket.s3.amazonaws.com` | deep PSL PRIVATE suffix |
+| `example.co.uk` | `example.co.uk` | multi-label ICANN — control, identical under both |
+| `school.pvt.k12.ma.us` | `school.pvt.k12.ma.us` | four-label ICANN — control |
+| `accounts.example.com` | `example.com` | plain two-label control |
+
+The fixture additionally asserts the ORACLE'S CONFIGURATION
+(`ref.includePrivateDomains === true`), so a default-configured oracle now
+fails rather than silently verifying the wrong question. [[DEC-32]] removes the
+duplication entirely by single-sourcing the flag in `tools/ci/psl-config.json`.
+
+Disagreement on any of these blocks adoption. Seven is a floor, not a ceiling —
+the list should grow when a divergence is found in the wild.
 
 ---
 
@@ -2900,8 +2942,10 @@ introduced, A-6), [[DEC-22]] (dependency diligence standard), [[DEC-26]]
 ### Ruling 3 — BUILT 2026-08-29. How the incomparable-string problem was resolved.
 
 **The two version strings cannot be compared, and V-15 does not pretend
-otherwise.** The rule set declares `tldextract==5.3.0 (bundled snapshot
-sha256:b693…)`; the extractor bundles `tldts@7.4.11`. Different projects,
+otherwise.** The rule set declares `tldextract==5.3.0
+include_psl_private_domains=true (bundled snapshot sha256:b693…)` — the
+configuration clause added by [[DEC-31]] in `409171d`, after this entry was
+drafted; the extractor bundles `tldts@7.4.11`. Different projects,
 different version lines, different PSL snapshot identities. No normalisation
 makes them comparable, and a check that compared them would either fail
 permanently or, if fudged into passing, assert nothing.
@@ -3488,11 +3532,24 @@ no-inference rule actually fire.
 
 ---
 
-### PART 2 — ⚠️ TIER 2 IS BLOCKED. Two frozen-contract amendments are required, and only the Architecture Owner can write them.
+### PART 2 — Tier 2 required two frozen-contract amendments. ✅ BOTH LANDED in `ce05ded`.
 
-This is the honest state, not a partial delivery. **Tier 2 cannot be completed
-by tooling**, per `CLAUDE.md`: "Amendments are made by hand, never by Claude
-Code — a pre-tool-use hook blocks writes under `packages/contracts/`."
+**Status of this section as of `ce05ded`: RESOLVED.** Amendments A and B were
+hand-typed into `packages/contracts/` by Jayanth (Architecture Owner) per
+[[DEC-7]] and shipped in `ce05ded`. `ScriptRuntimeEvidence.transmissionEndpointDomains`
+now exists and is derived producer-side by
+`apps/harness/extract/scriptRuntime.ts` through the V-15-gated `psl.ts` path;
+`RawMaterial.scriptRuntimeObservations` now exists and `capture.py` populates
+it. Tier 2 is BUILT.
+
+*The section below is preserved as written, because it records why the block
+was real and what was required to lift it. Read it as history, not as current
+state.*
+
+This was the honest state at drafting, not a partial delivery. **Tier 2 could
+not be completed by tooling**, per `CLAUDE.md`: "Amendments are made by hand,
+never by Claude Code — a pre-tool-use hook blocks writes under
+`packages/contracts/`."
 
 **Amendment A — `RawMaterial` has nowhere to store network observations.**
 `snapshot.format.v1.ts:177-197` has no such field. `capture.py` currently
@@ -3531,7 +3588,24 @@ That reasoning is correct and should NOT be worked around. Proposed:
 ```
 
 **Until both land, CRED-05 still cannot fire.** Tier 1's data reaches
-`ScriptRuntimeEvidence` but stops there. ⚠️ **DEC-29's Tier 1/2 effort
+`ScriptRuntimeEvidence` but stops there.
+
+⚠️ **CORRECTION as of `ce05ded` — the conclusion survives, the reason does
+not.** Both amendments have landed, and **CRED-05 still cannot fire — but the
+blocker is now CAPTURE, not CONTRACT.** Every snapshot in every existing corpus
+was captured before Tier 1's network observation existed, so
+`raw.scriptRuntimeObservations` is absent on all of them,
+`ScriptRuntimeEvidence` is `notCollected` throughout, and the `javascript`
+module returns `unevaluable` before CRED-05's predicate is reached. The
+extraction path is complete and proven end to end on a real `capture.py`
+output; what is missing is captured data, which only a re-capture produces.
+
+Stated explicitly so this sentence is not read as "CRED-05 fires once the
+amendments land" — it does not, and no amount of extraction work will change
+that. See [[DEC-29]]'s re-capture cost note: `scriptRuntime` is observable only
+at capture time, so every pre-Tier-1 snapshot is permanently blind to it.
+
+⚠️ **DEC-29's Tier 1/2 effort
 estimate (1–2 and 2–3 days) costed the CODE and omitted that the gating item
 is a hand amendment nobody can schedule around. That estimate was incomplete
 and is corrected here.**
@@ -3682,18 +3756,23 @@ the DCL bug), [[DEC-14]] (Amendment B is its deferred amendment, unchanged),
 [[DEFECT-32]] (the over-classification reasoning Part 3 applies).
 
 - **Status:** CANDIDATE — unsigned, open. **Tier 1 BUILT, validated, S-6
-  proven. Tier 2 BLOCKED on two hand-written contract amendments (Part 2) —
-  CRED-05 still cannot fire until they land. Tier 3 DESIGNED, not built.
+  proven. Tier 2 BUILT — both contract amendments landed in `ce05ded`
+  (Part 2, corrected in place); `transmissionEndpointDomains` is derived
+  producer-side and proven end to end against a real `capture.py` output.
+  CRED-05 still cannot fire, but the blocker is now CAPTURE rather than
+  CONTRACT: every existing snapshot predates Tier 1's network observation, so
+  `scriptRuntime` is `notCollected` corpus-wide and the `javascript` module is
+  `unevaluable` before the predicate is reached. Tier 3 DESIGNED, not built.
   Tier 4 answered; its ruling recommended deferred until Tier 1 yields the
   beacon-on-load fraction.** No corpus-wide re-capture performed or
-  recommended yet.
+  recommended yet — which is exactly why CRED-05 remains dark.
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*
 
 ---
 
-## DEC-31 (CANDIDATE — unsigned, open) — `pslVersion` does not record WHICH PSL configuration it was authored against; drafted correction
+## DEC-31 (unsigned) — `pslVersion` amended to record PSL configuration (applied `409171d`)
 
-**[R] The current declaration, `rulesets/rules-v0.1.0.json:6`, verbatim:**
+**[R] The declaration AS IT STOOD when this entry was written**, `rulesets/rules-v0.1.0.json:6`, verbatim *(superseded by this entry's own correction, applied in `409171d` — see the AFTER block and Status below)*:
 
 ```
 "pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)"
@@ -3786,10 +3865,20 @@ meaningful the moment the declaration is complete.
 `pslVersion` as amendment A-6), [[DEFECT-17]] (V-14, the digest check that
 constrains how this is applied).
 
-- **Status:** CANDIDATE — unsigned, open. **DRAFT ONLY — `rulesets/` is frozen
-  and nothing was applied.** The code-side divergence is already FIXED
-  (DEFECT-34); this entry concerns only the DECLARATION, which remains
-  incomplete.
+- **Status:** **APPLIED in `409171d`** — no longer a candidate; the change is in
+  the artifact. Still UNSIGNED: applying a correction and RATIFYING the decision
+  are separate acts, and only the Architecture Owner performs the second. The drafted
+  correction above was hand-typed into the frozen `rulesets/` path by Jayanth
+  (Architecture Owner) per [[DEC-7]] — both lines: `pslVersion` gains
+  `include_psl_private_domains=true`, and `integrityDigest` becomes
+  `sha256:f691cbdad18140a3f77e2047916a03dc9f0c40ff794f2f262e59ada0060f55da`,
+  recomputed with `tools/ci/compute-ruleset-digest.mjs` and confirmed by its
+  `--verify` mode. **V-14 passes** against the new digest, and V-15 now gates
+  the configuration string as this entry predicted. The code-side divergence
+  was already FIXED separately ([[DEFECT-34]]).
+  *(This Status previously read "DRAFT ONLY — `rulesets/` is frozen and nothing
+  was applied", which was true when written and false from `409171d` onward.
+  Corrected rather than left standing; the reasoning above is unchanged.)*
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*
 
 ---

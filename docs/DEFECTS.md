@@ -2468,9 +2468,17 @@ than findings, which no metric would have revealed.
 - **Status:** FIXED 2026-08-29 in `apps/harness/extract/psl.ts`,
   `tools/ci/psl-reference.py` and
   `apps/harness/extract/psl-conformance.fixture.test.ts`, with three negative
-  controls. ⚠️ **`rulesets/rules-v0.1.0.json`'s `pslVersion` string still does
-  NOT record WHICH configuration it was authored against** — a drafted
-  correction is in [[DEC-31]]; the file is frozen, so it is drafted only.
+  controls. ✅ **`rulesets/rules-v0.1.0.json`'s `pslVersion` string NOW RECORDS
+  the configuration**, as of `409171d`: it reads `tldextract==5.3.0
+  include_psl_private_domains=true (bundled snapshot sha256:b693…)`. [[DEC-31]]
+  drafted that correction and it was hand-typed into the frozen path by Jayanth
+  (Architecture Owner) per [[DEC-7]], with `integrityDigest` recomputed and
+  V-14 verified. V-15 gates the configuration clause for free, as DEC-31
+  predicted, because it already compares the declaration against the
+  extractor's `PSL_RECONCILED_AGAINST` for exact equality.
+  *(This line previously read "still does NOT record WHICH configuration … the
+  file is frozen, so it is drafted only" — true when written, false from
+  `409171d` onward. Corrected rather than left standing.)*
 - **Related:** [[DEFECT-17]], [[DEFECT-29]], [[DEFECT-33]] (same pattern
   family), [[DEC-27]] (V-15 and the conformance fixture this corrects),
   [[DEC-28]] (why CRED-01 still does not fire).
