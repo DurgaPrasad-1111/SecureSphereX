@@ -2405,7 +2405,7 @@ made DEFECT-27 findable); [[DEC-24]] (B1.6 scope, unsigned).
 
 ---
 
-## DEC-26 (CANDIDATE — unsigned, open) — Extraction has never been built; minimal scope for it, given how few rules the corpus can validate at all
+## DEC-26 — Extraction has never been built; minimal scope for it, given how few rules the corpus can validate at all
 
 **[R] The pipeline was always a three-stage design, and only two stages
 exist.** `packages/contracts/snapshot.format.v1.ts`'s `ExtractionRecord`
@@ -2700,16 +2700,16 @@ non-functional), [[DEC-20]] (`confusableSkeleton` convention),
 [[DEFECT-19]] (CRED-04 engine-side), [[DEFECT-23]]/[[DEFECT-24]] (homograph
 gaps bearing on CRED-03).
 
-- **Status:** CANDIDATE — unsigned, open. This entry sets SCOPE. Its
+- **Status:** SIGNED 2026-08-29. This entry sets SCOPE. Its
   `transport`/`dns` scope was narrowed by the amendment above on 2026-08-29;
   its language question is resolved by [[DEC-27]], under which
   implementation of `url`, `domainRepresentation` and the `isHttps`-only
   `transport` slice has begun.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-27 (CANDIDATE — unsigned, open) — Extraction toolchain: TypeScript, `tldts`, `parse5`; PSL divergence gated by a new V-15
+## DEC-27 — Extraction toolchain: TypeScript, `tldts`, `parse5`; PSL divergence gated by a new V-15
 
 Consolidates the toolchain decisions for the extractor whose scope
 [[DEC-26]] sets. Three separable rulings plus two scoping facts recorded so
@@ -3023,15 +3023,14 @@ closed for G-9's `--if-present` and [[DEFECT-17]] closed for the integrity
 digest. It now FAILS on a missing extractor. Caught only because the negative
 control tested the missing-file path rather than just the mismatch paths.
 
-- **Status:** CANDIDATE — unsigned, open. **Rulings 1, 2 and 3 are all now
+- **Status:** SIGNED 2026-08-29. **Rulings 1, 2 and 3 are all now
   implemented** (V-15 green as one of fifteen G-8 checks; conformance fixture
-  wired into `ci.yml` with no `--if-present`). The entry itself remains
-  unsigned and awaits Architecture Owner ratification.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+  wired into `ci.yml` with no `--if-present`).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-28 (CANDIDATE — unsigned, open) — CRED-01 and CRED-07 verified UNFIRABLE on real 2026 phishing: the form-action threat model is superseded, and it was the assumption [[DEC-14]] rested on
+## DEC-28 — CRED-01 and CRED-07 verified UNFIRABLE on real 2026 phishing: the form-action threat model is superseded, and it was the assumption [[DEC-14]] rested on
 
 **[R] Measured, not inferred.** The full pipeline was run end to end against a
 real corpus for the first time — 617 snapshots (200 benign, 417 phishing),
@@ -3235,16 +3234,16 @@ observation), [[DEC-27]] §4 (the n=80 denominator), [[DEFECT-31]] (CRED-07's
 masked `hidden` limitation), [[DEFECT-32]] (`credentialFormPresent`
 classification error, still unmeasured in the under-classification arm).
 
-- **Status:** CANDIDATE — unsigned. The DIRECTION is ruled (see the Direction
+- **Status:** SIGNED 2026-08-29. The DIRECTION is ruled (see the Direction
   section above: C resolved as fact, A's design started, B rejected); the
-  ENTRY awaits Architecture Owner signature. **No fix implemented and none
+  ENTRY is now signed. **No fix implemented and none
   prototyped** — the design task below is design only. The measurement is
   reproducible via `SSX_CORPUS_STORE=… npm run metrics:confusion`.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-29 (CANDIDATE — unsigned, open) — Capture-observability DESIGN for `scriptRuntime`: what `capture.py` must observe to make CRED-05 and CRED-A1 real
+## DEC-29 — Capture-observability DESIGN for `scriptRuntime`: what `capture.py` must observe to make CRED-05 and CRED-A1 real
 
 **This is [[DEC-28]]'s Option A design task. DESIGN ONLY — no `capture.py`
 change is proposed for tonight, and none was written.** It exists so that
@@ -3441,15 +3440,15 @@ dependency), [[DEC-26]] (gap kind 2 — recorded `scriptRuntime` as impossible
 from a STATIC snapshot, which remains true; this changes capture, not
 extraction), [[DEFECT-18]] (the structural dead-rule finding behind DEC-14).
 
-- **Status:** CANDIDATE — unsigned, open. **DESIGN ONLY.** No `capture.py`
+- **Status:** SIGNED 2026-08-29. **DESIGN ONLY.** No `capture.py`
   change written or proposed for immediate execution. Playwright capabilities
   verified against 1.60.0 by direct API introspection; `injectingScriptOrigin`
   attribution explicitly UNVERIFIED and flagged as such.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-30 (CANDIDATE — unsigned, open) — Tier 1 BUILT and validated; Tier 3 design (CDP-ONLY, monkey-patching FORBIDDEN); Tier 4 answered empirically
+## DEC-30 — Tier 1 BUILT and validated; Tier 3 design (CDP-ONLY, monkey-patching FORBIDDEN); Tier 4 answered empirically
 
 Records the build, validation and design work following [[DEC-29]]. Three
 parts: what Tier 1 does now, what Tier 3 must and must not do, and what Tier 4
@@ -3755,7 +3754,7 @@ corrected in Part 2), [[DEC-28]] (design-before-implementation, vindicated by
 the DCL bug), [[DEC-14]] (Amendment B is its deferred amendment, unchanged),
 [[DEFECT-32]] (the over-classification reasoning Part 3 applies).
 
-- **Status:** CANDIDATE — unsigned, open. **Tier 1 BUILT, validated, S-6
+- **Status:** SIGNED 2026-08-29. **Tier 1 BUILT, validated, S-6
   proven. Tier 2 BUILT — both contract amendments landed in `ce05ded`
   (Part 2, corrected in place); `transmissionEndpointDomains` is derived
   producer-side and proven end to end against a real `capture.py` output.
@@ -3766,11 +3765,11 @@ the DCL bug), [[DEC-14]] (Amendment B is its deferred amendment, unchanged),
   Tier 4 answered; its ruling recommended deferred until Tier 1 yields the
   beacon-on-load fraction.** No corpus-wide re-capture performed or
   recommended yet — which is exactly why CRED-05 remains dark.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-31 (unsigned) — `pslVersion` amended to record PSL configuration (applied `409171d`)
+## DEC-31 — `pslVersion` amended to record PSL configuration (applied `409171d`)
 
 **[R] The declaration AS IT STOOD when this entry was written**, `rulesets/rules-v0.1.0.json:6`, verbatim *(superseded by this entry's own correction, applied in `409171d` — see the AFTER block and Status below)*:
 
@@ -3865,9 +3864,8 @@ meaningful the moment the declaration is complete.
 `pslVersion` as amendment A-6), [[DEFECT-17]] (V-14, the digest check that
 constrains how this is applied).
 
-- **Status:** **APPLIED in `409171d`** — no longer a candidate; the change is in
-  the artifact. Still UNSIGNED: applying a correction and RATIFYING the decision
-  are separate acts, and only the Architecture Owner performs the second. The drafted
+- **Status:** **APPLIED in `409171d`, SIGNED 2026-08-29.** No longer a candidate:
+  the change is in the artifact and the decision is ratified. The drafted
   correction above was hand-typed into the frozen `rulesets/` path by Jayanth
   (Architecture Owner) per [[DEC-7]] — both lines: `pslVersion` gains
   `include_psl_private_domains=true`, and `integrityDigest` becomes
@@ -3879,11 +3877,11 @@ constrains how this is applied).
   *(This Status previously read "DRAFT ONLY — `rulesets/` is frozen and nothing
   was applied", which was true when written and false from `409171d` onward.
   Corrected rather than left standing; the reasoning above is unchanged.)*
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
 
 ---
 
-## DEC-32 (CANDIDATE — unsigned, open) — Single-source the PSL configuration, and add a config-echo check for the [[DEFECT-34]] class
+## DEC-32 — Single-source the PSL configuration, and add a config-echo check for the [[DEFECT-34]] class
 
 [[DEFECT-34]] named a recurring shape: *a verification mechanism confirms
 internal consistency between two things that both happen to be wrong the same
@@ -3969,6 +3967,6 @@ library-specific, and largely redundant once the config is single-sourced.
 [[DEC-27]] (V-15 and the conformance fixture), [[DEC-31]] (`pslVersion` now
 records the configuration, so V-15 gates it).
 
-- **Status:** CANDIDATE — unsigned, open. Manifest and check are BUILT, wired
+- **Status:** SIGNED 2026-08-29. Manifest and check are BUILT, wired
   into `ci.yml`, and seed-tested.
-- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
