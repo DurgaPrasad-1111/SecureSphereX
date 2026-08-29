@@ -84,6 +84,7 @@
  */
 
 import { maxAppliedReduction } from './stage4.ts';
+import { computeRawTier, thresholdsFrom } from './stage7-8.ts';
 import type { CorrelationFinding, SuppressionApplication, ScoringEntry } from '../contracts/passresult.contract.v1';
 import type { RiskTier } from '../contracts/passresult.contract.v1';
 import type { RuleSet, RuleId } from '../contracts/ruleset.format.v1';
@@ -259,16 +260,13 @@ export function computeScoringAndAggregation(
 
   const score = primarySum + aggravatorSum;
 
-  const thresholdMedium = ruleSet.parameters.find((p) => p.id === 'threshold_medium')?.value;
-  const thresholdHigh = ruleSet.parameters.find((p) => p.id === 'threshold_high')?.value;
-  if (thresholdMedium === undefined || thresholdHigh === undefined) {
-    // Defensive only — V-4 (validate-ruleset.py) already guarantees both
-    // parameters are registered in a real rule set.
-    throw new Error('threshold_medium/threshold_high must both be registered in the rule set (V-4 should have caught this).');
-  }
-
-  // §9.4: Low < medium; Medium in [medium, high); High >= high.
-  const rawTier: RiskTier = score >= thresholdHigh ? 'High' : score >= thresholdMedium ? 'Medium' : 'Low';
+  // §9.4's score->tier mapping is STAGE 7 (Threshold Evaluation), a separate
+  // stage per docs/pipeline-design-note.md's table — extracted to
+  // stage7-8.ts rather than duplicated here. Called from this function only
+  // because AggregationRecord carries `rawTier`; the mapping itself is not
+  // Stage 6's.
+  const thresholds = thresholdsFrom(ruleSet);
+  const rawTier: RiskTier = computeRawTier(score, thresholds);
 
   const subsumptionApplied = ruleSet.subsumption
     .filter((entry) => firedRuleIds.has(entry.composite))
@@ -282,7 +280,7 @@ export function computeScoringAndAggregation(
       primarySum,
       aggravatorSum,
       score,
-      thresholds: { medium: thresholdMedium, high: thresholdHigh },
+      thresholds,
       rawTier,
     },
   };
