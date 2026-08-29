@@ -129,7 +129,8 @@ for (const moduleId of ALL_MODULE_IDS) {
 // internal-coherence relations (DEC-21).
 // ---------------------------------------------------------------------------
 
-const evaluationSet = await assembleEvaluationSet(ssoFlow, uncalledStoreReader);
+const evaluationDispatch = await evaluateAllModules(ssoFlow, uncalledStoreReader);
+const evaluationSet = assembleEvaluationSet(ssoFlow, evaluationDispatch);
 
 // E-8, asserted directly on real SecurityEvaluation objects.
 assert.equal(Object.keys(evaluationSet).length, 10, 'E-8: exactly ten evaluations, never zero, never two');

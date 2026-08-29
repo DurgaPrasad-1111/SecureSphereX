@@ -97,23 +97,29 @@ export async function runAnalysisPass(
   prior: PriorPassState | null,
 ): Promise<AnalysisPassOutcome> {
   // ── Stage 1 — Module Evaluation ────────────────────────────────────────
-  // Two calls, deliberately. `assembleEvaluationSet` builds the ten full
-  // SecurityEvaluation envelopes (E-8's unit, and what a persisted
-  // AnalysisPassResult references). Stage 2 does NOT consume those: DEC-15's
-  // Stage 2 dependency check established that predicate matching reads only
-  // `Evaluability<FindingsByModule[M]>` — `FindingPath` "MUST resolve against
-  // D0.2's FindingsByModule", never the surrounding envelope — which is
-  // exactly `ModuleDispatchResult`.
+  // ONE dispatch, threaded into everything downstream (DEFECT-30, resolved).
   //
-  // The cost is that modules dispatch twice, and the two runs mint different
-  // `evaluationId`s. That is accepted for now rather than papered over: the
-  // alternative is threading dispatch results into envelope assembly, which
-  // changes `orchestrator.ts`'s public shape and belongs in its own change,
-  // not smuggled into the first wiring. Nothing downstream compares the two
-  // sets of ids — `evaluationRefs` is built from the dispatch results below,
-  // consistently — but it IS a real seam, recorded here rather than hidden.
-  const evaluations = await assembleEvaluationSet(evidence, storeReader);
+  // This previously ran Stage 1 twice — `assembleEvaluationSet` dispatched
+  // internally for the envelopes, and `evaluateAllModules` dispatched again
+  // for Stages 2-4 — minting two disjoint sets of ten `evaluationId`s for one
+  // logical pass. Now the dispatch happens exactly once and both consumers
+  // read the same results.
+  //
+  // Both are still needed, for different things: Stages 2-4 consume
+  // `ModuleDispatchResult` (DEC-15's Stage 2 dependency check — `FindingPath`
+  // "MUST resolve against D0.2's FindingsByModule", never the surrounding
+  // envelope), while the envelopes are E-8's unit and what a persisted
+  // AnalysisPassResult references. The difference is that they are now two
+  // VIEWS of one dispatch rather than two dispatches.
+  //
+  // E-8 ("Exactly one evaluation per module per pass. Never zero, never two.")
+  // is therefore satisfied BY CONSTRUCTION here, not by coincidence: a single
+  // `evaluateAllModules` call produces exactly one `ModuleDispatchResult` per
+  // ModuleId, and `assembleEvaluationSet` maps over those one-to-one. There is
+  // no code path in this function that could produce a second evaluation for
+  // any module.
   const dispatch = await evaluateAllModules(evidence, storeReader);
+  const evaluations = assembleEvaluationSet(evidence, dispatch);
 
   // ── Stage 2 — Predicate Matching ───────────────────────────────────────
   const ruleOutcomes = matchAllRules(dispatch, ruleSet);

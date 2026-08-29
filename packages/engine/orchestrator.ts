@@ -283,21 +283,21 @@ function buildEvaluation<M extends ModuleId>(
  * Origin was built from (see `evaluateModule`) is a separate, narrower open
  * question this file does not decide.
  */
-export async function assembleSecurityEvaluation(
+export function assembleSecurityEvaluation(
   evidence: SecurityEvidence,
-  moduleId: ModuleId,
-  storeReader: AuthStoreReader,
-): Promise<AnySecurityEvaluation> {
-  const dispatch = await evaluateModule(evidence, moduleId, storeReader);
+  dispatch: ModuleDispatchResult,
+): AnySecurityEvaluation {
+  const moduleId = dispatch.moduleId;
   const consistency = assessConsistency(dispatch);
 
   const common = {
     contractVersion: EVALUATION_CONTRACT_VERSION,
-    // The SAME evaluationId evaluateModule already minted for this
-    // dispatch — not a second, independent one. Two different IDs for
-    // the same module's evaluation in the same pass would make
-    // evaluationRefs (Stage 3) and this envelope disagree about what
-    // they're both supposedly referencing.
+    // The evaluationId of the dispatch this envelope was built FROM —
+    // now genuinely the same one Stages 2-4 consumed, because the caller
+    // threads a single dispatch through both (DEFECT-30). Before that fix
+    // this function re-dispatched internally, so the id matched its OWN
+    // hidden dispatch rather than the pass's — the comment here previously
+    // claimed sameness that was true locally and false for the pass.
     evaluationId: dispatch.evaluationId,
     targetResourceId: evidence.targetResourceId,
     analysisSessionId: evidence.analysisSessionId,
@@ -335,14 +335,12 @@ export async function assembleSecurityEvaluation(
  * and therefore testable — only when `consistency` was resolved on
  * 2026-08-28.
  */
-export async function assembleEvaluationSet(
+export function assembleEvaluationSet(
   evidence: SecurityEvidence,
-  storeReader: AuthStoreReader,
-): Promise<EvaluationSet> {
+  dispatch: Readonly<Record<ModuleId, ModuleDispatchResult>>,
+): EvaluationSet {
   const moduleIds = Object.keys(EVIDENCE_CATEGORY_BY_MODULE) as readonly ModuleId[];
-  const entries = await Promise.all(
-    moduleIds.map(async (moduleId) =>
-      [moduleId, await assembleSecurityEvaluation(evidence, moduleId, storeReader)] as const),
-  );
+  const entries = moduleIds.map((moduleId) =>
+    [moduleId, assembleSecurityEvaluation(evidence, dispatch[moduleId])] as const);
   return Object.fromEntries(entries) as EvaluationSet;
 }

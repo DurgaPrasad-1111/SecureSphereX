@@ -107,7 +107,36 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
   assert.deepEqual(agg.thresholds, { medium: 30, high: 60 }, `${name}: thresholds from the rule set (§13.2)`);
   assert.equal(agg.primarySum + agg.aggravatorSum, agg.score, `${name}: score is the sum of its parts`);
 
-  // E-8 through the NEW entry point: exactly one evaluation per module.
+  // ── DEFECT-30's positive proof: ONE dispatch per module per pass ───────
+  //
+  // Asserted DIRECTLY, not inferred from the fixtures still scoring the same.
+  // Each module's envelope must carry the SAME evaluationId that the dispatch
+  // feeding Stages 2-4 used for that module — which is only possible if Stage
+  // 1 ran once and was threaded, not run twice.
+  //
+  // The cross-check is `findings[].evaluationRefs`: stage3.ts builds those
+  // from the DISPATCH results, while `outcome.evaluations` are the ENVELOPES.
+  // Before the fix these came from two independent dispatches and could never
+  // match; every ref below matching an envelope id is the duplication being
+  // gone, observed rather than assumed.
+  const envelopeIds = new Set(ALL_MODULE_IDS.map((m) => outcome.evaluations[m].evaluationId));
+  for (const finding of outcome.findings) {
+    for (const ref of finding.evaluationRefs) {
+      assert.ok(
+        envelopeIds.has(ref),
+        `${name}: finding ${finding.ruleId} references evaluationId ${ref}, which is in NO envelope — ` +
+        'Stage 1 dispatched more than once (DEFECT-30)',
+      );
+    }
+  }
+
+  // E-8 through the NEW entry point. NOW TRUE BY CONSTRUCTION, not merely
+  // empirically: runAnalysisPass makes exactly one `evaluateAllModules` call,
+  // which yields exactly one ModuleDispatchResult per ModuleId, and
+  // `assembleEvaluationSet` maps those one-to-one. No code path in the pass
+  // can produce a second evaluation for any module. Asserted anyway — a
+  // structural guarantee that nothing checks is one refactor from being
+  // untrue.
   assert.equal(Object.keys(outcome.evaluations).length, 10, `${name}: E-8 — ten evaluations, never zero, never two`);
   assert.deepEqual([...Object.keys(outcome.evaluations)].sort(), [...ALL_MODULE_IDS].sort(),
     `${name}: E-8 — exactly one per ModuleId`);

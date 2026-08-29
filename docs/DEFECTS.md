@@ -1676,7 +1676,72 @@ its own commit with its own verification, not folded into the first wiring of
 the pipeline. Recorded here at the moment it was introduced rather than
 discovered later.
 
+**FIX, 2026-08-29 — the architectural change named above, not a relabelling.**
+Stage 1 now runs **exactly once per pass**, threaded rather than duplicated.
+
+Mechanism, precisely:
+
+- `assembleSecurityEvaluation(evidence, dispatch: ModuleDispatchResult)` — no
+  longer takes `moduleId` or `storeReader`, and no longer calls
+  `evaluateModule` internally. `moduleId` comes from `dispatch.moduleId`.
+- `assembleEvaluationSet(evidence, dispatch: Readonly<Record<ModuleId,
+  ModuleDispatchResult>>)` — maps over the supplied dispatch one-to-one
+  instead of re-dispatching per module.
+- **Both became SYNCHRONOUS.** With dispatch threaded in, neither function
+  touches the store, so neither needs to be `async` — the signature now states
+  what the function actually does rather than carrying a vestigial `Promise`.
+- `pass.ts` calls `evaluateAllModules` ONCE and feeds that single result set
+  into both envelope assembly and Stages 2-4.
+
+Dispatch count per pass: **20 → 10.**
+
+**POSITIVE PROOF, asserted directly rather than inferred from tests still
+passing** (`packages/engine/pass.fixture.test.ts`, all four fixtures): every
+`CorrelationFinding.evaluationRefs` entry must be found among the ten
+`SecurityEvaluation.evaluationId`s in the same pass's envelopes. Those two
+come from opposite ends of the pipeline — `stage3.ts` builds refs from the
+DISPATCH results, while the envelopes are built by `assembleEvaluationSet` —
+so before this fix they were drawn from two independent dispatches and could
+never intersect. Their agreement now IS the duplication being gone, observed
+rather than assumed.
+
+The proof was verified to actually fire: reintroducing a second dispatch makes
+it fail with
+`off-origin-post: finding CRED-01 references evaluationId 67a5192d-…, which is
+in NO envelope — Stage 1 dispatched more than once (DEFECT-30)`. Restored and
+re-verified green.
+
+A second, narrower assertion covers the single-module level in
+`orchestrator.fixture.test.ts`: an envelope's `evaluationId` equals that of the
+dispatch it was built from.
+
+**E-8 is now satisfied BY CONSTRUCTION, not empirically.** A single
+`evaluateAllModules` call yields exactly one `ModuleDispatchResult` per
+`ModuleId`, and `assembleEvaluationSet` maps those one-to-one — no code path in
+`runAnalysisPass` can produce a second evaluation for any module. Stated in a
+comment at the E-8 assertion, which is retained regardless: a structural
+guarantee nothing checks is one refactor away from being untrue.
+
+**All six call sites updated**, none left on the old signature:
+`orchestrator.ts` (inside `assembleEvaluationSet`),
+`orchestrator.fixture.test.ts` ×4, `e2e.sso-flow.fixture.test.ts` ×1,
+`pass.ts` ×1.
+
+One test assertion was RELOCATED rather than deleted, and the distinction
+matters: `orchestrator.fixture.test.ts` asserted that two envelope assemblies
+produce different `evaluationId`s. Envelope assembly no longer mints ids —
+`evaluateModule` does — so the same property is now asserted against two
+`evaluateModule` calls, where the behaviour actually lives. Its original
+intent, that an id is generated fresh per dispatch and never derived from the
+evidence, is intact; two further assertions were added confirming each
+envelope faithfully carries its own dispatch's id.
+
+**Zero behaviour change.** All four fixtures unchanged: `clean-login` 0/Low,
+`no-credential` 0/Low, `off-origin-post` 45/Medium, `sso-flow` 0/Low. Full
+suite green — `tsc -b`, 10/10 module tests, 10/10 engine tests, G-7 7/7, G-8
+CONFORMANT, G-9 property tests green.
+
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. Not urgent — no current consumer, no behavioural
-  difference on any fixture — but real, and it becomes a correctness issue the
-  moment evaluations are persisted and joined against findings.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/orchestrator.ts` and
+  `packages/engine/pass.ts`, with the positive proof in
+  `packages/engine/pass.fixture.test.ts`.

@@ -151,7 +151,11 @@ assert.equal(lookupCalledWithOrigin, 'https://accounts.example.com');
 // so it returns a real, type-conformant SecurityEvaluation<M>.
 
 for (const moduleId of ALL_MODULE_IDS) {
-  const evaluation = await assembleSecurityEvaluation(cleanLogin, moduleId, uncalledStoreReader);
+  // DEFECT-30: envelope assembly now takes an already-computed dispatch
+  // rather than re-dispatching internally, so the caller controls how many
+  // times Stage 1 runs.
+  const dispatchForModule = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
+  const evaluation = assembleSecurityEvaluation(cleanLogin, dispatchForModule);
 
   // All thirteen fields present and correct — asserted field by field, so
   // "constructs for real" means populated, not merely type-checked.
@@ -181,9 +185,15 @@ for (const moduleId of ALL_MODULE_IDS) {
   // The consistency verdict must agree with the standalone assessor run
   // against a fresh dispatch of the same evidence — i.e. it was genuinely
   // computed from this module's findings, not stamped.
-  const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
-  assert.equal(evaluation.consistency, assessConsistency(directDispatch),
+  // The envelope's consistency must equal the assessor's verdict on the very
+  // dispatch it was built from — now the SAME object, not an equivalent one.
+  assert.equal(evaluation.consistency, assessConsistency(dispatchForModule),
     `${moduleId}: envelope consistency must match the assessor's own verdict`);
+  // DEFECT-30's core claim, at the single-module level: the envelope carries
+  // the id of the dispatch it was built from, not a second one.
+  assert.equal(evaluation.evaluationId, dispatchForModule.evaluationId,
+    `${moduleId}: envelope evaluationId IS the dispatch's — one id per module per pass`);
+  const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
 
   // unevaluable => indeterminate, unconditionally (the 2026-08-28 ruling).
   if (evaluation.result.status === 'unevaluable') {
@@ -204,13 +214,24 @@ for (const moduleId of ALL_MODULE_IDS) {
 
 // --- Part 3b: evaluationId is freshly generated per call, not cached/fixed
 
-const firstCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader);
-const secondCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader);
+// RELOCATED, not weakened (DEFECT-30). This asserted that two envelope
+// assemblies produce different evaluationIds. Envelope assembly no longer
+// mints ids at all — `evaluateModule` does — so the same property is asserted
+// where the behaviour now lives. The original intent is intact: an
+// evaluationId is generated fresh per dispatch, never fixed or derived from
+// the evidence.
+const firstDispatch = await evaluateModule(cleanLogin, 'url', uncalledStoreReader);
+const secondDispatch = await evaluateModule(cleanLogin, 'url', uncalledStoreReader);
 assert.notEqual(
-  firstCall.evaluationId,
-  secondCall.evaluationId,
-  'evaluationId must be generated fresh per envelope assembly, not fixed or derived from the evidence',
+  firstDispatch.evaluationId,
+  secondDispatch.evaluationId,
+  'evaluationId must be generated fresh per dispatch, not fixed or derived from the evidence',
 );
+// And each envelope faithfully carries its own dispatch's id — two assemblies
+// over two dispatches stay distinct, while an assembly over ONE dispatch
+// reuses it (asserted in Part 3c below).
+assert.equal(assembleSecurityEvaluation(cleanLogin, firstDispatch).evaluationId, firstDispatch.evaluationId);
+assert.equal(assembleSecurityEvaluation(cleanLogin, secondDispatch).evaluationId, secondDispatch.evaluationId);
 
 // --- Part 3c: E-8 — "Exactly one evaluation per module per pass.
 //     Never zero, never two." (evaluation.contract.v1.ts:307)
@@ -221,7 +242,8 @@ assert.notEqual(
 // "one ModuleDispatchResult per module".
 
 for (const [fixtureName, evidence] of Object.entries(FIXTURES)) {
-  const set = await assembleEvaluationSet(evidence, uncalledStoreReader);
+  const dispatchSet = await evaluateAllModules(evidence, uncalledStoreReader);
+  const set = assembleEvaluationSet(evidence, dispatchSet);
   const keys = Object.keys(set);
 
   // Never zero, never two: exactly ten keys, one per ModuleId, no duplicates.
@@ -258,7 +280,8 @@ for (const [moduleId, expectedCategory] of [
   ['downloadContext', 'downloadContext'],
   ['permissionContext', 'permissionContext'],
 ] as const) {
-  const evaluation = await assembleSecurityEvaluation(cleanLogin, moduleId, uncalledStoreReader);
+  const catDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
+  const evaluation = assembleSecurityEvaluation(cleanLogin, catDispatch);
   assert.equal(evaluation.evidenceRefs[0]?.category, expectedCategory,
     `${moduleId}: evidenceRefs.category must be the EVIDENCE category, not the moduleId`);
 }
