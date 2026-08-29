@@ -2189,8 +2189,10 @@ The three options as they stood when the ruling was made:
   `credentialFormPresent`'s error rate is unknown in both directions, and any
   CP-2 figure downstream of it carries that unquantified uncertainty. Distinct
   from [[DEFECT-31]], whose one-directional errors at least yield a publishable
-  bound. **The over-classification arm is now MEASURED (22% of positives) and
-  awaiting a ruling on the three options above; the under-classification arm
+  bound. **The over-classification arm was measured and then RULED ON — see the
+  RULED block above: option 2 adopted and applied, `credentialFormPresent`
+  now benign 14 / phishing 66, with zero email- or username-only positives
+  remaining. The under-classification arm
   remains unmeasured** and needs the hand-labelling task, since it is invisible
   from the classifier's own output.
 - **Related:** [[DEFECT-31]] (`STATIC_EXTRACTION_RECALL_FLOOR`, one-directional
