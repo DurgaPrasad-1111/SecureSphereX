@@ -1740,12 +1740,20 @@ four were closed on 2026-08-26 (`evaluationId`) and 2026-08-27
 `SecurityEvaluation<M>` can be constructed anywhere in this codebase.
 
 **[R]** The contract constrains it hard, and gives all three values a
-meaning (§3, lines 64-76, verbatim):
+meaning (`packages/contracts/evaluation.contract.v1.ts:64-76`, verbatim):
 
 > ECE module specs require a Consistency Assessment in every Evaluation
 > Result. Domain Model §8.3.5 constrains it hard: it assesses coherence of
 > findings WITHIN the module's own domain ONLY. It is NOT confidence, NOT
 > probability, NOT a risk judgement.
+
+This is the frozen contract's own text — DEC-11 established it as the
+authoritative source in place of the missing "ECE Internal Module
+Specifications" document. The contract's own §8.3.5 reference points at the
+Domain Model, which DEC-15 already records as absent from the 46-file
+corpus — a pre-existing, separately logged gap this entry does not depend
+on, since every relation below derives from the enum's own inline comments
+and the live Findings types.
 
 ```ts
 export type ConsistencyAssessment =
