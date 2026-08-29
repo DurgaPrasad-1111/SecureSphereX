@@ -2199,6 +2199,28 @@ did not pre-empt it.
   immediately, lapsing when a second person is confirmed active.
 - **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
 
+**Amendment — 2026-08-29:** a fifth condition, added to the four above. This
+documents an ADDITION to a signed decision, not a revision of it — the
+original four conditions and the 2026-08-29 signature stand unchanged.
+
+5. **Before any `git commit --amend`:** confirm `git log origin/main..HEAD`
+   includes the target commit (i.e. it is still local-only, not yet pushed)
+   before amending. If it is already on `origin`, do not amend — correct via
+   a follow-up commit instead.
+
+Grounded in a real incident, not a hypothetical: on 2026-08-29 an amend of
+`737668a` was requested to widen an understated commit message. The stated
+safety checks — HEAD is the tip, tree clean — both passed, but `737668a` had
+already been pushed (`git ls-remote` confirmed it at `refs/heads/main`), so
+amending would have required a force-push, rewriting history two other
+remotes could already hold. The amend was declined and the correction landed
+as `a588c79` instead. Under single-person availability there is no second
+reviewer to catch this before it reaches `origin`, which is why it belongs in
+this list rather than in ordinary git hygiene.
+
+**Decision:** ☑ Approved — DEC-23 amended as above
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
 ---
 
 ## DEC-24 (CANDIDATE — unsigned, open) — B1.6: extend property-test coverage to B1.4 and the consistency relations
