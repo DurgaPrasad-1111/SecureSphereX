@@ -120,8 +120,15 @@ jobs:
       # aggravator neutralisation on parent suppression. Randomised over
       # generated finding sets, because these are the properties §4.3's
       # determinism guarantee actually rests on.
+      # NO --if-present (DEFECT-29). The flag makes `npm run` exit 0 when the
+      # script is absent, so G-9 would pass vacuously if `test:properties`
+      # were ever removed from package.json — a gate that cannot fail is not
+      # a gate (DEFECT-1's shape; DEFECT-17/V-14's principle). The script now
+      # exists and is required to exist; its absence SHALL fail the build.
+      # Contrast the "Unit tests" step above, whose --if-present is
+      # deliberate and load-bearing: no `test` script exists yet by design.
       - name: 'G-9  Property tests'
-        run: npm run test:properties --if-present
+        run: npm run test:properties
 
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never

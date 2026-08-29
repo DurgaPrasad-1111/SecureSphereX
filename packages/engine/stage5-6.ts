@@ -204,16 +204,22 @@ export function computeScoringAndAggregation(
   // ScoringEntry — needs pass 1's effectiveWeight values (for a parent
   // lookup) to already exist for every finding, regardless of order.
   const scoring: ScoringEntry[] = [];
-  let primarySum = 0;
-  let aggravatorSum = 0;
 
   for (const finding of findings) {
     const rule = ruleDefinitionFor(finding.ruleId);
     const { baseWeight, maxReduction, effectiveWeight } = weights.get(finding.findingId)!;
     const subsumed = isSubsumed(finding.ruleId);
+    // DEFECT-26: sorted, not left in input-array order. This list is a SET of
+    // suppression IDs — its order carries no meaning — but an unsorted
+    // projection of `suppressionApplications` inherits that array's order,
+    // so the same pass reordered on the way in produced a different-but-
+    // equivalent record. P-13 requires replay to reproduce IDENTICAL scoring,
+    // which is a byte comparison. SuppressionIds are unique within a rule set
+    // (V-4), so lexicographic order is total — no tie-breaker needed.
     const suppressionsApplied = suppressionApplications
       .filter((a) => a.targetFindingId === finding.findingId && a.applied)
-      .map((a) => a.suppressionId);
+      .map((a) => a.suppressionId)
+      .sort();
 
     let parentQualified: boolean | null = null;
     let countedInScore: boolean;
@@ -231,16 +237,8 @@ export function computeScoringAndAggregation(
         && parentWeights !== undefined
         && parentWeights.effectiveWeight > 0;
       countedInScore = parentQualified;
-      if (countedInScore) {
-        // §9.2: aggravator_weight(a) — the RAW baseWeight, not this
-        // aggravator's own effectiveWeight. See the header comment.
-        aggravatorSum += baseWeight;
-      }
     } else {
       countedInScore = !subsumed;
-      if (countedInScore) {
-        primarySum += effectiveWeight;
-      }
     }
 
     scoring.push({
@@ -256,6 +254,39 @@ export function computeScoringAndAggregation(
       parentQualified,
       countedInScore,
     });
+  }
+
+  // Pass 3 — the SUMS, accumulated in a canonical order (DEFECT-27).
+  //
+  // §9.1 requires "a pure function over the complete finding set". Summing
+  // inside pass 2 accumulated in INPUT order, and IEEE-754 addition is not
+  // associative: the same finding set permuted produced scores differing in
+  // the final bits (139.93345381530986 vs 139.93345381530983 on the
+  // counterexample that found this). That is a determinism failure, not a
+  // rounding curiosity — P-13 requires replay to reproduce identical scoring,
+  // and G-10's replay gate compares Pass Results.
+  //
+  // Sorted by `findingId`, NOT by weight: ties in effectiveWeight are real
+  // and common (two findings of the same rule with no suppression), so a
+  // weight sort would silently fall back to input order for exactly those
+  // entries and reintroduce the bug. `findingId` is a UUIDv4 minted per
+  // finding (`id.ts`) and the PRIMARY KEY of `skr.correlation_finding`
+  // (LDD §5.17) — genuinely unique, so the order is total and needs no
+  // tie-breaker.
+  const canonicallyOrdered = [...scoring].sort((a, b) =>
+    a.findingId < b.findingId ? -1 : a.findingId > b.findingId ? 1 : 0);
+
+  let primarySum = 0;
+  let aggravatorSum = 0;
+  for (const entry of canonicallyOrdered) {
+    if (!entry.countedInScore) continue;
+    if (entry.ruleType === 'aggravator') {
+      // §9.2: aggravator_weight(a) — the RAW baseWeight, not this
+      // aggravator's own effectiveWeight. See the header comment.
+      aggravatorSum += entry.baseWeight;
+    } else {
+      primarySum += entry.effectiveWeight;
+    }
   }
 
   const score = primarySum + aggravatorSum;

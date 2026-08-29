@@ -1358,3 +1358,256 @@ live defect.
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** OPEN, low priority. Blocks the stronger half of DEC-21's `dns`
   relation; blocks nothing else today.
+
+---
+
+## DEFECT-26 — `ScoringEntry.suppressionsApplied` order followed the input array, not a canonical order (found and FIXED 2026-08-29)
+
+Finding: `packages/engine/stage5-6.ts` built each entry's
+`suppressionsApplied` by filtering and mapping `suppressionApplications`
+directly, inheriting that array's order:
+
+```ts
+const suppressionsApplied = suppressionApplications
+  .filter((a) => a.targetFindingId === finding.findingId && a.applied)
+  .map((a) => a.suppressionId);
+```
+
+The same pass, with its applications reordered on the way in, therefore
+produced a different — though semantically equivalent — record. Minimal
+reproduction, one finding and two applied suppressions:
+
+```
+order A  suppressionsApplied: ["S-01","S-02"]
+order B  suppressionsApplied: ["S-02","S-01"]
+score identical?       true (20)
+effectiveWeight ident? true
+FULL OUTPUT identical? false
+```
+
+**Severity: low. Record-stability only.** No score, no `effectiveWeight`, no
+`rawTier` is affected — confirmed in the reproduction above. The list is a SET
+of suppression IDs whose order carries no meaning. What it does affect is
+byte-comparison: `passresult.contract.v1.ts` P-13 requires replay to reproduce
+"identical scoring", which is a byte comparison, and a Pass Result whose
+`suppressionsApplied` ordering varies is not byte-identical.
+
+**How it was found — worth recording.** Not by inspection. It was the first
+failure of the B1.5 property test on its first run, before any deliberate
+sabotage. Every example-based test in this package passed against it, because
+each supplies applications in one fixed order.
+
+**Fix:** `.sort()` appended to the projection. SuppressionIds are unique within
+a rule set (V-4), so lexicographic order is total and needs no tie-breaker.
+
+**Verified by negative control**, not by the fix passing once: reverting the
+`.sort()` makes the property fail, shrunk over 43 steps to the minimal case —
+ONE finding with TWO applied suppressions (`S-01`, `S-02`, both
+`declaredReduction: 0.0001`), failing on "per-finding scoring entries must be
+permutation-invariant". Restored; byte-identical to the fixed file; green.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/stage5-6.ts`, with the
+  regression property in `packages/engine/b1-5.properties.test.ts`.
+
+---
+
+## DEFECT-27 — score/`primarySum` were order-dependent through floating-point summation (found and FIXED 2026-08-29)
+
+Finding: `computeScoringAndAggregation` accumulated `primarySum` and
+`aggravatorSum` inside its per-finding loop, i.e. **in input order**. IEEE-754
+addition is not associative, so the same finding set permuted produced a
+different score in the final bits. Measured on the generated counterexample:
+
+```
+primarySum   base=139.93345381530986   permuted=139.93345381530983
+score        base=169.93345381530986   permuted=169.93345381530983
+rawTier      High                      High
+```
+
+**Severity: higher than DEFECT-26 — this is a determinism failure, and the
+mechanism it undermines is the verification mechanism itself.**
+
+§9.1 requires aggregation to be "a pure function over the complete finding
+set... SHALL NOT be implemented as an incremental accumulator". P-13 requires
+replay to reproduce identical scoring. **Gate G-10 is the deterministic-replay
+gate.** The consequence is specific and worth stating plainly: a rule set that
+has not changed at all, replayed against the same evaluations, could FAIL
+replay purely because the findings or applications were reordered in
+persistence, serialisation, or any future parallel or streaming
+implementation. The failure would not indicate a wrong score — it would
+indicate nothing at all, while looking exactly like a genuine replay
+divergence. That corrupts confidence in G-10 rather than merely producing a
+wrong number, which is why this is filed above DEFECT-26.
+
+**Tier-flip: possible in principle, NOT demonstrated.** The observed
+divergence is ~3e-14 on a score of ~170. Flipping `rawTier` would require the
+score to fall within that distance of `threshold_medium` (30) or
+`threshold_high` (60). With integer thresholds and real-valued reductions this
+is not impossible, but no such case was constructed and none is claimed.
+
+**Reachability today: latent, not live.** `stage3.ts` emits findings in
+rule-set order and `stage4.ts` emits applications from a deterministic nested
+loop, so within a single pipeline run the order is stable and the four
+committed fixtures are unaffected. It becomes live wherever order can vary
+between the original pass and its replay.
+
+**How it was found.** Generated input, not inspection — and notably, a
+hand-built reproduction attempt FAILED to expose it: five weights across all
+120 orderings produced one distinct sum, spread 0. It took `fast-check`'s
+generated values to surface. This is the concrete justification for DEC-22's
+argument that shrinking and seeding, not popularity, were the reasons to
+adopt a property-testing library.
+
+**Fix:** summation moved out of the per-finding loop into a separate pass over
+a `findingId`-sorted copy of the scoring entries. Sorted by `findingId`
+specifically, NOT by `effectiveWeight`: ties in weight are real and common
+(two findings of the same rule, unsuppressed), so a weight sort would fall
+back to input order for exactly those entries and silently reintroduce the
+bug. `findingId` is a UUIDv4 minted per finding (`packages/engine/id.ts`) and
+the PRIMARY KEY of `skr.correlation_finding` in the Logical Database Design
+Specification §5.17 — genuinely unique, so the order is total with no
+tie-breaker.
+
+**Verified by negative control:** reverting to input-order summation makes the
+property fail, shrunk over 39 steps, on "§9.1: aggregation is a pure function
+over the SET — order must not matter", with the diff
+`primarySum: 104.99315299414123` vs `104.99315299414124`. Restored; green.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/stage5-6.ts`, with the
+  regression property in `packages/engine/b1-5.properties.test.ts`.
+
+---
+
+## DEFECT-28 — §9.3's aggravator parent-qualification is ambiguous when several findings share the parent rule (found 2026-08-29; UNREACHABLE today, deliberately OPEN)
+
+Finding: `packages/engine/stage5-6.ts` resolves an aggravator's parent with
+
+```ts
+const parentFinding = findings.find((f) => f.ruleId === parentRuleId);
+```
+
+`Array.prototype.find` returns the FIRST match in input order. Where two
+findings share the parent rule and differ in qualification, the aggravator's
+`parentQualified` — and therefore the score — depends on which one appears
+first. Minimal reproduction, one aggravator (weight 15) and two findings of
+its parent rule, one suppressed to zero and one healthy:
+
+```
+suppressed-parent FIRST : parentQualified = false  aggravatorSum = 0   score = 40
+healthy-parent    FIRST : parentQualified = true   aggravatorSum = 15  score = 55
+
+SCORE DIFFERS BY : 15   — a whole aggravator weight, not floating-point noise
+```
+
+**This is a different root cause from DEFECT-26/27 and is NOT fixed by their
+fixes.** Those were ordering/canonicalisation defects with a single correct
+answer. This is a CARDINALITY ambiguity: §9.3 states an aggravator contributes
+"only where its parent is present, unsubsumed, and has non-zero effective
+weight", and says nothing about which parent applies when several exist.
+Choosing one silently would be inventing aggregation semantics the
+specification does not state.
+
+**UNREACHABLE today — established by construction, not by "seems unlikely":**
+
+- `packages/engine/stage2.ts`'s `matchAllRules` returns
+  `ruleSet.rules.map(...)` — exactly one `RuleMatchResult` per rule in the
+  rule set, never two.
+- `packages/engine/stage3.ts`'s `generateCorrelationFindings` iterates those
+  results and emits at most ONE `CorrelationFinding` per MATCHED result.
+- Therefore a finding set containing two findings of the same rule cannot be
+  produced by the pipeline at all.
+- Confirmed empirically as well as by reading: `clean-login` yields `[]`;
+  `off-origin-post` yields `[CRED-01]`. Both distinct.
+
+The defect was surfaced only because the B1.5 property generator initially
+produced finding sets with duplicate `ruleId`s — input the pipeline cannot
+emit. That generator has since been constrained to unique `ruleId` per
+finding, matching Stage 3's real contract, with a comment pointing here so the
+constraint is not mistaken for concealment.
+
+**Two readings, NEITHER chosen here:**
+
+- **(a) Existential** — any qualifying parent finding suffices; implemented as
+  `.some(...)` over all findings of the parent rule. Order-independent by
+  construction.
+- **(b) Canonical selection** — pick a specific parent deterministically, e.g.
+  the lowest `findingId`. Deterministic, but the choice among genuinely
+  different parents is arbitrary and carries no real-world meaning.
+
+**LEANING TOWARD (a), LABELLED EXPLICITLY AS A LEANING FOR A FUTURE RULING,
+NOT A DECISION MADE HERE.** The rationale: this rule set already expresses
+"does any member satisfy this" existentially elsewhere — `ruleset.format.v1.ts`'s
+`exists` operator, used by CRED-01, CRED-07 and S-02's guard, quantifies over
+a collection and matches when ANY item qualifies. Reading §9.3's "parent is
+present" the same way is consistent with the format's own established idiom,
+where (b) would introduce a selection rule that appears nowhere else. This is
+an argument for a ruling, not the ruling.
+
+**What would make this live:** per-instance findings — one finding per login
+form, or per download, rather than one per matched rule. Nothing in the
+current design does that, and nothing in scope proposes it. If it is ever
+introduced, this becomes a live score-correctness defect immediately, which is
+why it is recorded now rather than left for rediscovery.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, deliberately unresolved. Not a work item unless and until
+  per-instance findings make it reachable. Requires an Architecture Owner
+  ruling on §9.3's meaning, not a code fix chosen by an implementer.
+
+---
+
+## DEFECT-29 — G-9's `--if-present` made the gate pass vacuously if `test:properties` were removed (found and FIXED 2026-08-29)
+
+Finding: `.github/workflows/ci.yml`'s G-9 step invoked
+`npm run test:properties --if-present`. That flag makes `npm run` exit 0 when
+the named script does not exist. So deleting `test:properties` from
+`package.json` — by accident, by a bad merge, or by someone removing a script
+they thought was still the old stub — would leave G-9 **green while running
+nothing at all**.
+
+Measured, not assumed:
+
+```
+npm run <missing-script>                 -> exit 1   (build fails, correct)
+npm run <missing-script> --if-present    -> exit 0   (silent pass, the defect)
+```
+
+**This is DEFECT-1's shape.** That entry recorded G-1 as "wired into CI,
+always green, verifying nothing"; the pre-Step-8 G-7 was the same, and
+DEFECT-17 was the same principle at the validator level — `compute-ruleset-digest.mjs`
+could verify an `integrityDigest`, but nothing on the CI path called it, so
+G-8 reported CONFORMANT regardless. V-14 closed that by making the check run
+where it matters. The principle each of those converges on: **a check that
+cannot fail is not a check.** `--if-present` is that failure mode expressed as
+a CLI flag.
+
+**Severity: latent, and specifically a gate-integrity defect rather than an
+engine defect.** No score, tier, or finding is affected. What is affected is
+the trustworthiness of G-9's green — the same category of harm DEFECT-27
+records for G-10, one layer up: the signal stops meaning what a reader takes
+it to mean.
+
+**Found during B1.5 closure**, while confirming the G-9 wiring ran the real
+`test:properties` script rather than the stub it replaced. It was noticed
+precisely because the stub had just been replaced — the flag had been harmless
+for as long as the script was a no-op `echo`, and became a hole the moment the
+script started carrying a real gate.
+
+**Fix:** `--if-present` removed from the G-9 step only. The script now exists
+and is REQUIRED to exist; its absence fails the build.
+
+**Deliberately NOT changed — the other `--if-present` in this file.** The
+"Unit tests" step (`npm test --if-present -- --coverage`) relies on the
+silent-skip genuinely: no `test` script exists in `package.json`, and that
+step's own comment records the omission as intentional ("No unit-test suite
+exists yet — that's Stage 1b scope... Placeholder that no-ops honestly rather
+than failing on a script never meant to exist yet"). Removing the flag there
+would fail every build immediately. Verified before editing: `package.json`
+has no `test` script, and G-9's step is the only other use. The distinction is
+recorded inline in `ci.yml` so the two are not "tidied" into consistency
+later.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `.github/workflows/ci.yml`.

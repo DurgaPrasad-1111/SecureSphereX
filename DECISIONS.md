@@ -2310,3 +2310,95 @@ distinguishing constraint.
 - **Status:** CANDIDATE — unsigned, open. A real schedule commitment on top
   of work already in flight; deliberately not bundled into DEC-22's yes.
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*
+
+---
+
+## DEC-25 (CANDIDATE — unsigned, open) — Output canonicalisation as a class: is order-independence an engine-wide requirement, or established case by case?
+
+**[R]** Determinism is not a quality goal in this project, it is a contracted
+property. §4.3: given identical Security Evaluations and an identical
+rule-set version, stages 2–7 produce an identical score and tier, "no
+dependency on wall-clock time or any iteration/evaluation order".
+`passresult.contract.v1.ts` P-13 requires replay to reproduce "identical
+scoring, identical findings, and an identical effectiveTier", and **G-10 is
+the CI gate that checks it**. §9.1 states the aggregation form directly: "a
+pure function over the complete finding set... SHALL NOT be implemented as an
+incremental accumulator".
+
+**[I] Two defects of the same class were found on the same day, in the same
+file, by the first property test this project has ever run.** Both violated
+§9.1/P-13; neither was visible to any example-based test.
+
+| | Mechanism | Impact |
+|---|---|---|
+| [[DEFECT-26]] | `suppressionsApplied` projected in input-array order | record byte-instability; no score effect |
+| [[DEFECT-27]] | `primarySum` accumulated in input order; IEEE-754 addition is not associative | score differs in final bits; G-10 replay implication |
+
+Both are now FIXED. That is not what this entry is about.
+
+**[I] The pattern, stated as the actual finding:** wherever the engine
+projects a collection or accumulates a number, the OUTPUT inherits the INPUT's
+order unless something is done about it. Nothing in the codebase currently
+requires an author to think about that, and nothing checks it. Two instances
+in one function is weak evidence of a systemic problem and strong evidence
+that the property is not being designed for — DEFECT-27 in particular was
+invisible to a deliberate hand-built reproduction attempt (five weights, all
+120 orderings, one distinct sum, spread 0) and surfaced only under generated
+input.
+
+**[I] Deliberately NOT folded in: [[DEFECT-28]].** It was found in the same
+run and in the same file, and it is a DIFFERENT root cause — a cardinality
+ambiguity in §9.3 (which parent applies when several findings share the parent
+rule), not an ordering or floating-point issue. It has no canonicalisation
+answer; it needs a ruling on what §9.3 means. Merging it into this entry would
+blur a specification gap into an implementation-hygiene question, and the two
+need different remedies.
+
+**[I] Where the pattern could still be hiding — and where it demonstrably
+could not be.** `packages/engine/stage7-8.ts` and
+`packages/engine/consistency.ts` have **no property-test coverage at all**;
+their exit criteria are B1.6, tracked as [[DEC-24]], which is UNSIGNED. Both
+contain pure functions over collections:
+
+- `consistency.ts` — ten predicates reading array fields (`scriptsUsed`,
+  `mechanisms`, `forms`, `transmissionEndpointDomains`).
+- `stage7-8.ts` — `recordIntervention` is a running maximum, and `Math.max`
+  over a set is associative and commutative in IEEE-754 for non-NaN values,
+  so the FP-accumulation half of this pattern is unlikely to bite there.
+
+Stated precisely rather than as blanket suspicion: the FLOATING-POINT half of
+this pattern is specific to summation, and neither file sums anything today.
+The ORDERING half — a projection inheriting input order — is plausible in
+either and unverified in both. §9.3's cardinality ambiguity is specific to the
+aggravator mechanism and does not generalise to either file.
+
+**Questions for architect ruling:**
+
+1. Is order-independence an engine-wide REQUIREMENT to be asserted for every
+   pure function producing a collection or a sum, or a property established
+   case by case where it matters?
+2. If engine-wide: what enforces it? Options include extending B1.5/B1.6's
+   property suite to every such function, a review checklist item under
+   [[DEC-23]]'s verification pass, or a lint-style architectural gate. None is
+   proposed here as preferred.
+3. Should the two remaining untested files be brought under property test
+   BEFORE more engine code is written on top of them, or does that wait for
+   [[DEC-24]]'s scheduling ruling regardless?
+
+**Cost note, so the answer is not free-seeming:** extending property coverage
+to `stage7-8.ts` and `consistency.ts` is exactly the [[DEC-24]] scope already
+quantified there (~8 additional properties plus generators for the ten
+`*Findings` shapes). This entry does not re-argue that cost; it observes that
+two real defects of this class were found the moment property testing was
+first applied, which is evidence bearing on DEC-24's open question rather than
+a separate proposal.
+
+**Related:** [[DEFECT-26]], [[DEFECT-27]] (the two instances, both fixed);
+[[DEFECT-28]] (same run, different root cause, deliberately separate);
+[[DEC-22]] (`fast-check` approved — its shrinking/seeding argument is what
+made DEFECT-27 findable); [[DEC-24]] (B1.6 scope, unsigned).
+
+- **Status:** CANDIDATE — unsigned, open. No code change proposed; both
+  instances are already fixed. This entry asks whether the class needs
+  systematic treatment, which is a scope question, not an implementation one.
+- **Signed by:** *(unsigned — awaiting Architecture Owner)*
