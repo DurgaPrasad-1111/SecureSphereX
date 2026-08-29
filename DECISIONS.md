@@ -277,13 +277,96 @@ PATCH. This decision also gates Step 6 (A-6) and Step 11.
 
 ---
 
-## DEC-9 — `B1.5` (property test) ownership — deliberately open
+## DEC-9 — `B1.5` ownership: superseded by DEC-7 (resolved)
 
 Per the guide, not due now — due week 4. `Implementation-Ownership-Plan.md` §3
 currently assigns `B1.5` (property tests, depends on `B1.2`/`B1.3`) to the Architecture
 Owner. **Left open by design; revisit at week 4.** No signature required now.
 
-**Status:** OPEN — revisit week 4.
+**Status:** ~~OPEN — revisit week 4.~~ *(superseded 2026-08-29 — see the
+Resolution below. The original text above is retained as the record of what
+was deferred, not as a live status.)*
+
+---
+
+### Resolution — 2026-08-29 — superseded by DEC-7's amendment
+
+**The question dissolved; it was never answered.** DEC-9 defers a purely
+ADMINISTRATIVE question — every substantive noun in it was about assignment:
+its heading, before this entry was retitled, read "`B1.5` (property test)
+**ownership** — deliberately open"; its body says "§3 currently **assigns**
+`B1.5` … **to the Architecture Owner**"; it closes "No signature required
+now." It contains no `[R]`/`[I]` evidence, no options,
+and no "question for architect ruling" — unlike DEC-15, DEC-20 or DEC-21. The
+row it defers on is a Responsibility Matrix row
+(`Implementation-Ownership-Plan.md:38`, `| CI: G-9 property tests | Jayanth |
+Jayanth | Durga | — |`) — four names, no technical content.
+
+**DEC-7's 2026-08-24 amendment removed the model DEC-9 was deferring on:**
+
+> Work is picked up by availability, not fixed advance assignment. Whoever
+> picks up a piece of work becomes its accountable owner for that specific
+> piece at commit time — the Responsibility Matrix's "Implementer" field is
+> filled in retroactively, by whoever actually did the work, not assigned in
+> advance.
+
+DEC-9 asks whether B1.5's pre-assignment to the Architecture Owner should
+stand. Under DEC-7 amended, pre-assignment is not how any work is allocated.
+The question therefore has no answer to give — it stopped applying on
+2026-08-24, and DEC-9 was simply never updated to say so.
+
+DEC-9 reaches nothing DEC-7 does not. What B1.5 actually still needs decided
+— the property-testing library ([[DEC-22]]) and whether its coverage should
+extend past B1.2/B1.3 ([[DEC-24]]) — DEC-9 is entirely silent on. Both are
+deliberately separate entries rather than folded in here.
+
+---
+
+#### The operational gap DEC-7 leaves open — stated plainly, not softened
+
+DEC-7's amendment does not only reassign ownership; it imposes an obligation:
+
+> Peer review still happens. Whoever is next available reviews it, named
+> explicitly in the commit or pull request. Review is not skipped because
+> assignment is now flexible — accountability moved from "pre-assigned" to
+> "named at the point of work," it did not disappear.
+
+**That obligation is not being met, and the cause is not a commit-message
+habit.** Measured against the actual record, not impression:
+
+- Of the 15 commits since the `varun/main` reconciliation (`da3659d`),
+  **13 are authored by Jayanth alone**. The other two are Durga's corpus
+  checkpoint and the merge commit itself — neither is a review.
+- **Zero commits name a Reviewer.** Grepped every commit body in that range:
+  the only "review" hit is the phrase "design review" inside DEC-21's message,
+  describing a conversation, not a reviewer.
+- On 2026-08-28 and 2026-08-29 — six commits, including the E-6 invariant
+  fix, DEC-21's signing, and B1.4 — **no one other than Jayanth committed
+  anything at all**. Durga's last activity was 2026-08-27; Varun's last
+  commit predates the merge.
+- The named reviewers for the components touched are unavailable in practice:
+  Pipeline core → Durga, Suppression semantics → Varun, Aggregation → Durga,
+  G-9 property tests → Durga (`Implementation-Ownership-Plan.md:38-43`).
+
+So "whoever is next available" has, for this stretch, resolved to **no one**.
+Writing "Reviewer: unfilled" in future commits would record that honestly —
+which DEC-7's ORIGINAL text already anticipated ("the Reviewer role is
+explicitly recorded as unfilled, not assigned pro forma… An unfilled Reviewer
+field that says 'unfilled' is worth more than a filled one that is fiction")
+— but recording it does not supply the second pair of eyes, and several of
+this session's commits changed a frozen-invariant-adjacent code path (the E-6
+fix, DEFECT-22's evaluator change, the suppression range guard).
+
+**This is not resolved here.** It is a question DEC-7 does not reach: what
+does peer review MEAN when only one person is active for days at a time? That
+needed its own decision and now has one — [[DEC-23]], ruled 2026-08-29. It is
+deliberately not pre-empted in this resolution, which closes only the
+ownership question.
+
+- **Status:** RESOLVED — superseded by DEC-7's 2026-08-24 amendment. The
+  ownership question is closed. The review-availability question it exposes is
+  NOT closed here — it is ruled on separately in [[DEC-23]].
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
 
 ---
 
@@ -344,6 +427,17 @@ maintained after initial signing (see the "already resolved" correction
 in `docs/ArchitectureOwnerReviewQueue.md`) — DEC-16/DEC-17 are added here
 per explicit instruction, not as a signal the rest of this table is
 current.*
+
+*Staleness re-confirmed 2026-08-29, as of DEC-24: this table still shows
+DEC-9 as "Open by design" when it is RESOLVED and signed, and omits DEC-20
+through DEC-24 entirely. Deliberately not repaired in that pass — patching
+the DEC-9 row alone would make the table LOOK current while five entries were
+still missing, which is worse than a visibly unmaintained table. Recorded
+here rather than in `docs/DEFECTS.md`: that register is for verification
+findings with an owning step and something they block (its own header), and
+this blocks nothing — it is a maintenance debt in this document, where a
+reader of the stale table will actually see the warning. Not a work item
+tonight; noted so it is not silently forgotten.*
 
 ---
 
@@ -1920,3 +2014,277 @@ deliberate non-violations. `tsc -b` clean; 18/18 test files pass;
 - **Status:** RESOLVED and SIGNED 2026-08-29. Implemented in
   `packages/engine/consistency.ts`.
 - **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+---
+
+## DEC-22 — B1.5/G-9: property-testing library selection
+
+**[R]** G-9 is wired into CI and does nothing. `package.json`'s
+`test:properties` is still its original stub —
+`echo "test:properties: stub (Stage 1b / G-9 implements this)"` — and
+`.github/workflows/ci.yml:117-123` runs it under the comment "G-9 — property
+tests (Stage 1b onward)". This is the same shape as DEFECT-1 (G-1 verifying
+nothing) and the pre-Step-8 G-7: a gate that is green because it asserts
+nothing.
+
+**[R]** No decision anywhere selects a property-testing library. Searched
+[[DEC-9]] (five lines, purely administrative — no tooling content), the
+Implementation-Ownership-Plan (four B1.5/G-9 mentions — lines 38, 143, 207,
+222 — none naming a library), and the rule-engine specification (zero hits
+for `fast-check`, `jsverify`, `property-based`). `devDependencies` today are
+`@eslint/js`, `dependency-cruiser`, `eslint`, `globals`, `typescript`,
+`typescript-eslint` — no property-testing library installed.
+
+**Recorded so it is not mistaken for a decision:** `fast-check` was named in
+passing by Claude Code in an earlier working session as "the conventional
+TypeScript choice". That was an assumption, not a ruling, and nothing in this
+corpus endorses it. The investigation below was run precisely because
+"conventional" is not "decided".
+
+---
+
+#### Investigation — registry facts, gathered 2026-08-29
+
+| | `fast-check` | `jsverify` |
+|---|---|---|
+| Latest version | 4.9.0 | 0.8.4 |
+| Last published | **2026-07-08** (~52 days ago) | **2023-09-27** (~2 years stale) |
+| License | MIT | MIT |
+| Weekly downloads | **37,512,910** | 45,837 |
+| Direct dependencies | 1 (`pure-rand`) | 4 (`lazy-seq`, `rc4`, `trampa`, `typify-parser`) |
+| Install-time lifecycle hooks | **NONE** | **NONE** |
+| Unpacked size | ~1.4 MB | — |
+
+**Supply-chain check, the reason for looking at all:** neither package, nor
+`fast-check`'s single transitive dependency `pure-rand`, declares
+`preinstall` / `install` / `postinstall` / `prepare`. Their `scripts` blocks
+are build/test entries that run in the maintainers' repo, not on
+`npm install`. `npm audit` reports **0 vulnerabilities** against the current
+tree. No CVE was discoverable for either through the registry data available
+here — stated as "not found by this check", not as "none exists".
+
+`jsverify`'s four transitive dependencies were each last published in **June
+2022**. That is four unmaintained packages entering the tree, against
+`fast-check`'s one actively-maintained.
+
+---
+
+#### Which is actually better, on the merits — not on popularity
+
+Download counts are reported above for completeness and are NOT the argument;
+a 800:1 ratio mostly measures defaults, not quality. Three things decide it:
+
+1. **Maintenance.** `jsverify` has had no publish in ~2 years and pulls in
+   four dependencies last touched in 2022. Adopting it means adopting five
+   unmaintained packages for a gate that must stay green for the life of the
+   project.
+2. **Dependency surface.** 1 vs 5. This project has a stated preference for
+   fewer dependencies, and `pure-rand` exists for a real reason — a seeded,
+   reproducible PRNG, which is exactly what a REPLAYABLE property failure
+   needs (§17.2, G-10).
+3. **Shrinking and seeding.** `fast-check` reports a failing counterexample
+   with a seed and a shrunk minimal case. For this project that is not a
+   convenience: a property failure that cannot be replayed deterministically
+   is a defect report that cannot be acted on, and determinism is §4.3's
+   central claim.
+
+**The third option, taken seriously rather than dismissed:** a hand-rolled
+harness — a loop, `Math.random`, and assertions — adds no dependency at all
+and is maybe 50 lines. It is genuinely viable for `maxAppliedReduction`'s
+order-independence. It is NOT viable for the whole target: without shrinking,
+a failure surfaces as a 40-element generated finding set with no indication
+which element mattered; without seeding, it is not reproducible; and
+generators for the ten `*Findings` shapes are real work that would then be
+maintained by this project instead of upstream. The dependency buys
+reproducibility and minimisation, which is the part that makes a failing
+property test actionable.
+
+**Recommendation: `fast-check`, as a `devDependency`.** Reasoning above, in
+that order. This is a recommendation, not a resolution — the Architecture
+Owner rules after seeing these findings, not before.
+
+**Scope note:** this entry rules on the LIBRARY only. Whether B1.5's coverage
+should extend beyond B1.2/B1.3 to `stage7-8.ts` and `consistency.ts` is a
+separate schedule commitment, deliberately not bundled into this yes —
+see [[DEC-24]].
+
+**Related:** [[DEC-9]], closed as superseded; [[DEC-23]], the review-
+availability ruling its resolution surfaced.
+
+- **Status:** RESOLVED and SIGNED 2026-08-29 — `fast-check` approved as a
+  devDependency for G-9. Not yet installed; no property test written;
+  `test:properties` still a stub. Implementation follows this ruling.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+---
+
+## DEC-23 — Peer review when only one person is active: Architecture Owner verification pass
+
+**[R]** DEC-7's 2026-08-24 amendment moved accountability from pre-assignment
+to named-at-commit, but kept the review obligation intact:
+
+> Peer review still happens. Whoever is next available reviews it, named
+> explicitly in the commit or pull request. Review is not skipped because
+> assignment is now flexible — accountability moved from "pre-assigned" to
+> "named at the point of work," it did not disappear.
+
+**[I] The obligation is not being met, measured from the commit record rather
+than impression.** Gathered 2026-08-29 over the 15 commits since the
+`varun/main` reconciliation (`da3659d`..`055918b`):
+
+- **13 of 15 commits are authored by Jayanth alone.** The remaining two are
+  Durga's corpus checkpoint (`a45b286`) and the merge commit (`01680ab`) —
+  neither is a review of anyone's work.
+- **Zero commits name a Reviewer.** Every commit body in the range was
+  grepped; the only "review" hit is the phrase "design review" inside
+  DEC-21's message, describing a conversation, not a reviewer.
+- **On 2026-08-28 and 2026-08-29 — six commits — no one other than Jayanth
+  committed anything at all.** Durga's last activity was 2026-08-27; Varun's
+  last commit predates the merge entirely.
+- The named reviewers for the components actually touched were inactive
+  across that window: Pipeline core → Durga, Suppression semantics → Varun,
+  Aggregation → Durga, G-9 property tests → Durga.
+
+So "whoever is next available" has, for this stretch, resolved to **no one**.
+This is not a commit-message habit that better discipline would fix; there
+was no second person to name. Several commits in that window changed
+invariant-adjacent logic — the E-6 violation fix (`f22967e`), DEFECT-22's
+evaluator change (`469497b`), and the suppression range guard (`5e1675c`).
+
+**[I]** DEC-7's ORIGINAL text already provides for recording the absence
+honestly — "the Reviewer role is **explicitly recorded as unfilled**, not
+assigned pro forma… An unfilled Reviewer field that says 'unfilled' is worth
+more than a filled one that is fiction". That remains right, and it remains
+insufficient: recording a gap does not supply the second pair of eyes, and
+deferring review until a named reviewer resurfaces means invariant-adjacent
+code ships unreviewed for days at a time.
+
+**Decision — a standing practice, not a one-time waiver.**
+
+While only one person is actively available, DEC-7's peer-review requirement
+is satisfied by an **explicit, recorded verification pass by the Architecture
+Owner before any commit touching invariant-adjacent logic** — evaluators,
+suppression, aggregation, escalation, consistency. Specifically:
+
+1. The verification pass happens **before the commit**, not deferred until a
+   named reviewer resurfaces.
+2. It is **recorded**, not implicit — the commit names the Architecture Owner
+   as having verified, distinctly from the Implementer line.
+3. It is a genuine verification against the contracts and the property being
+   claimed, not a restatement of the commit message. The negative-control
+   discipline already used this session — break the behaviour, confirm the
+   test catches it, restore — is the standard, not a nice-to-have.
+4. It applies to invariant-adjacent logic. Documentation, register entries,
+   and test-only changes do not require it, though nothing prevents it.
+
+**This applies going forward until Durga or Varun is confirmed active again,
+at which point normal DEC-7 peer review resumes** and this practice lapses
+automatically. It does not amend DEC-7; it states how DEC-7's requirement is
+discharged under single-person availability.
+
+**Stated plainly so it is not over-claimed:** an Architecture Owner
+verification pass is NOT equivalent to independent peer review. The same
+person authoring and verifying loses the independence that makes review
+valuable, and this ruling does not pretend otherwise. It is the strongest
+available discipline under the actual staffing, chosen over the two
+alternatives — shipping unreviewed, or blocking all invariant-adjacent work
+until someone returns — both of which are worse. Commits made under this
+practice remain eligible for retro-review when people are available, exactly
+as DEC-7's original amendment envisaged.
+
+**Related:** [[DEC-9]], whose resolution surfaced this gap and deliberately
+did not pre-empt it.
+
+- **Status:** RESOLVED and SIGNED 2026-08-29. Standing practice, effective
+  immediately, lapsing when a second person is confirmed active.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+---
+
+## DEC-24 (CANDIDATE — unsigned, open) — B1.6: extend property-test coverage to B1.4 and the consistency relations
+
+**[R]** B1.5's exit criteria and dependency line, from the
+Implementation-Ownership-Plan: line 143 — "Property tests G-9 | **B1.2,
+B1.3** | Randomised; order-independence proven" — and line 222 —
+"suppression monotonic and **order-independent** under property test ·
+aggregation **pure and recomputable**".
+
+**Those targets remain accurate and remain unmet.** Nothing here revises
+them. `stage4.fixture.test.ts` and `stage5-6.fixture.test.ts` are
+example-based: hand-written literals and the four committed fixtures, no
+generators, no randomisation, no shrinking.
+
+**[I] B1.5's dependency line reads `B1.2, B1.3` because B1.4 and
+`consistency.ts` did not exist when the plan was written.** Confirmed from
+git, not inferred:
+
+- `packages/engine/consistency.ts` — added **2026-08-28** (`f3520ea`, DEC-21)
+- `packages/engine/stage7-8.ts` — added **2026-08-29** (`055918b`, B1.4)
+
+Extending coverage to them closes a gap the plan could not have anticipated.
+It does not override the plan, and the plan is frozen and cannot be edited to
+match — which is why the divergence has to live here.
+
+**[I] The cost, quantified so it is visible rather than implied.**
+Property-testable pure functions now in the engine:
+
+| File | Exported functions | In B1.5's original scope? |
+|---|---|---|
+| `stage4.ts` | 2 | Yes (B1.2) |
+| `stage5-6.ts` | 1 | Yes (B1.3) |
+| `stage7-8.ts` | 5 | **No — B1.4, post-dates the plan** |
+| `consistency.ts` | 11 | **No — DEC-21, post-dates the plan** |
+
+**3 functions originally in scope, 16 outside it** — roughly a 6× increase in
+surface. Counted as properties rather than functions:
+
+- **B1.5, original scope (~7 properties):** suppression order-independence;
+  max-not-product across generated application sets; `maxAppliedReduction`
+  bounded in [0, 1]; aggregation determinism over permuted finding sets;
+  score = Σ effectiveWeight where `countedInScore` (P-8); `effectiveWeight`
+  within [0, baseWeight] across generated reductions; empty-set stability.
+- **B1.6, this extension (~8 properties):** `recordIntervention` is a
+  maximum — commutative, associative, idempotent, monotonic (4);
+  `computeEffectiveTier` never returns below the floor, and is idempotent
+  under re-application (2); `computeRawTier` monotonic non-decreasing in
+  score (1); `assessConsistency` returns `indeterminate` if and only if the
+  result is unevaluable, across generated findings for all ten modules (1).
+
+**~15 properties instead of ~7**, plus **generators for the ten `*Findings`
+shapes** — which is the larger share of the work and is required only for the
+`consistency.ts` half.
+
+**Framed as B1.6, deliberately separate from B1.5.** Keeping it distinct
+means B1.5's original exit criteria can be signed off on their own terms
+against the plan as written, without this extension's schedule risk attached
+to them. Bundling would make B1.5 unsignable until a body of work the plan
+never scoped is complete.
+
+**The trade, stated both ways.** Accepting B1.6 means accepting real
+additional test-writing time on top of work already in flight. Declining it
+means G-9 goes green while **16 of 19 pure functions** are covered only by
+hand-picked examples — including `recordIntervention`, whose maximum property
+is currently proven by one hand-enumerated malformed sequence and a 3×3
+sweep, and the ten consistency relations, each proven by exactly one
+coherent and one contradictory literal. Either choice is defensible; leaving
+it unrecorded is not.
+
+**Questions for architect ruling:**
+1. Is B1.6 accepted as a task at all, or is the extension declined and the
+   gap recorded as accepted?
+2. If accepted — scheduled alongside B1.5, or explicitly after it, so B1.5
+   can close first?
+3. Does B1.6 cover both `stage7-8.ts` and `consistency.ts`, or only the
+   former? The `consistency.ts` half carries the `*Findings` generator cost
+   almost entirely on its own.
+
+**Depends on:** [[DEC-22]] (`fast-check` approved) — B1.6 cannot start before
+the library exists, but B1.5 has the same dependency, so this is not a
+distinguishing constraint.
+
+**Related:** [[DEC-21]], which introduced the consistency relations;
+[[DEC-9]], closed as superseded.
+
+- **Status:** CANDIDATE — unsigned, open. A real schedule commitment on top
+  of work already in flight; deliberately not bundled into DEC-22's yes.
+- **Signed by:** *(unsigned — awaiting Architecture Owner)*
