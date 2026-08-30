@@ -54,6 +54,24 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 )
 
+# ── DEC-30 Part 4 — Tier 3 SCAFFOLDING (steps 1-4 only; NOT YET WIRED IN) ──
+#
+# Same field set `loginInterface.ts`'s `classifyField` Tier 1/2 recognise by
+# DECLARED semantics, so the two categories cannot disagree about which
+# fields carry credential intent from markup alone. This selector is
+# narrower than `classifyField`'s full Tier 3 (name/id guesswork over
+# <select>/<textarea> and plain <input type=text|tel|number|hidden>) --
+# flagged below at the call site as an open design question, not silently
+# glossed over.
+CREDENTIAL_FIELD_SELECTOR = "input[type=password], input[type=email], input[autocomplete]"
+
+# listenerOnCredentialField's definition (DEC-30 Part 4, step 4): true iff any
+# credential field carries a listener of one of these types. Kept as a set so
+# the observation records WHICH types fired, not a collapsed boolean --
+# collapsing at capture time destroys information DEC-30 says cannot be
+# recovered later.
+LISTENER_TYPES_OF_INTEREST = frozenset({"input", "keyup", "keydown", "change", "blur", "paste"})
+
 
 # ── Split assignment (D0.5 §3, invariants S-2, S-2a, S-2b) ──────────────
 #
@@ -218,6 +236,140 @@ def classify_error(exc: Exception) -> str:
     if "too many redirects" in text or "redirect" in text:
         return "redirect_loop"
     return "navigation_error"
+
+
+# ── DEC-30 Part 4 — Tier 3 SCAFFOLDING: CDP listener detection ───────────
+#
+# 🚫 HARD CONSTRAINT (DEC-30, verbatim): monkey-patching
+# EventTarget.prototype.addEventListener to observe listener registration is
+# FORBIDDEN, not disfavoured. Patching runs OUR code inside the hostile page's
+# context, where malicious script can detect it, disable it, or feed it false
+# data -- a phishing kit that detects instrumentation and behaves benignly
+# makes the evidence actively misleading, worse than absent. CDP observes
+# from OUTSIDE the page, out of reach of page script. This function must stay
+# that way; do not "simplify" it into a page-context patch.
+#
+# NOT YET WIRED INTO capture_one(). NOT YET RUN. Scaffolding only, per DEC-30
+# design review -- deliberately not executed against a live or synthetic page
+# in this pass so it does not compete with other work for CPU/browser
+# resources on this machine. Needs validation against known synthetic pages
+# before it is trusted, exactly as Tier 1 was (DEC-30 Part 1's DCL bug was
+# found that way, not any other).
+#
+# Excludes step 5 (credentialInterfaceInjected via a pre-load MutationObserver)
+# by design -- DEC-30 flags that step as unable to run from outside the page,
+# lower-confidence, build-last, and possibly warranting its own decision since
+# its only consumer (CRED-A1) is already DEC-14 non-functional. Not attempted
+# here.
+def _collect_listener_observations(ctx, page) -> list[dict[str, Any]]:
+    """
+    DOMDebugger.getEventListeners over each credential-shaped field, via CDP.
+
+    Intended call site: after page.goto(..., wait_until="load") and the
+    existing 2s settle (DEC-30's specified sequence) -- the DOM must already
+    be in its settled, post-script state before nodes are queried.
+
+    Returns one entry per matched field carrying at least one listener of
+    interest: `{"nodeId": <CDP nodeId>, "listenerTypes": [...]}`. `nodeId` is
+    a CDP-session-local integer with no meaning outside this capture and is
+    retained only for cross-referencing entries within one snapshot, not as a
+    stable identifier.
+    """
+    # TWO mechanisms, combined -- neither one alone covers both cases, and
+    # this was found by testing, not assumed:
+    #
+    #   1. SAME-PROCESS frames (typical for same-origin src/srcdoc iframes):
+    #      reached via the MAIN frame's single session, DOM.getDocument
+    #      with pierce=True, then walking the returned tree for each
+    #      iframe's `contentDocument` (querySelectorAll does not cross that
+    #      boundary on its own, so each nested document is queried
+    #      explicitly).
+    #
+    #   2. OUT-OF-PROCESS frames (genuinely cross-origin, confirmed against
+    #      a real cross-origin iframe forced via --site-per-process --
+    #      loopback addresses are NOT isolated from each other under
+    #      Chromium's default policy, which is why forcing was needed to
+    #      test this at all; real cross-site phishing kits on the public
+    #      internet get default Site Isolation): `contentDocument` is
+    #      entirely ABSENT for these in the pierced tree, so (1) cannot see
+    #      them. `ctx.new_cdp_session(frame)` -- Playwright's Python API
+    #      accepts a Frame here, not just a Page -- gives a session scoped
+    #      to that frame's own out-of-process target, with Playwright
+    #      handling Target.attachToTarget internally.
+    #
+    # `new_cdp_session(frame)` THROWS for a same-process frame ("this frame
+    # does not have a separate CDP session, it is a part of the parent
+    # frame's session") -- confirmed empirically, not assumed. That error is
+    # the signal used below to skip frames already covered by mechanism 1,
+    # rather than double-counting them.
+    def find_nested_content_documents(node: dict[str, Any]):
+        for child in node.get("children") or []:
+            yield from find_nested_content_documents(child)
+        content_doc = node.get("contentDocument")
+        if content_doc is not None:
+            yield content_doc
+            yield from find_nested_content_documents(content_doc)
+
+    def query_session(cdp_session, frame_label: str) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        try:
+            doc = cdp_session.send("DOM.getDocument", {"depth": -1, "pierce": True})
+        except Exception as exc:
+            print(f"DOM.getDocument error in {frame_label} (ignored): {exc}", file=sys.stderr)
+            return found
+        for doc_root in (doc["root"], *find_nested_content_documents(doc["root"])):
+            root_id = doc_root["nodeId"]
+            try:
+                matched = cdp_session.send("DOM.querySelectorAll", {
+                    "nodeId": root_id,
+                    "selector": CREDENTIAL_FIELD_SELECTOR,
+                })
+            except Exception as exc:
+                print(f"DOM.querySelectorAll error in {frame_label} (ignored): {exc}", file=sys.stderr)
+                continue
+            for node_id in matched["nodeIds"]:
+                try:
+                    resolved = cdp_session.send("DOM.resolveNode", {"nodeId": node_id})
+                    object_id = resolved["object"]["objectId"]
+                    listeners = cdp_session.send("DOMDebugger.getEventListeners", {"objectId": object_id})
+                    types = sorted({
+                        entry["type"] for entry in listeners.get("listeners", [])
+                        if entry.get("type") in LISTENER_TYPES_OF_INTEREST
+                    })
+                    if types:
+                        found.append({"nodeId": node_id, "listenerTypes": types})
+                except Exception as exc:
+                    # One field's introspection failing must not lose the rest --
+                    # same "observation must not break capture" discipline Tier 1
+                    # applies to its per-request handler.
+                    print(f"CDP getEventListeners error for node {node_id} in {frame_label} (ignored): {exc}",
+                          file=sys.stderr)
+        return found
+
+    results: list[dict[str, Any]] = []
+
+    main_cdp = ctx.new_cdp_session(page)
+    try:
+        results.extend(query_session(main_cdp, "main frame (+ same-process nested frames)"))
+    finally:
+        main_cdp.detach()
+
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            frame_cdp = ctx.new_cdp_session(frame)
+        except Exception:
+            # Expected, common case: a same-process frame has no separate
+            # session and was already covered above. Not logged as an error
+            # -- this is the normal path for most iframes, not a failure.
+            continue
+        try:
+            results.extend(query_session(frame_cdp, f"out-of-process frame {frame.url}"))
+        finally:
+            frame_cdp.detach()
+
+    return results
 
 
 # ── Capture ──────────────────────────────────────────────────────────────
