@@ -249,7 +249,9 @@ for (const p of paths) {
   if (p !== undefined) {
     const snap = readSnapshot(p);
     const dom = snap.raw.renderedDom!;
-    const stripped = dom.replace(/<input([^>]*)type\s*=\s*["']?password["']?/gi, '<input$1type="submit"');
+    const stripped = dom
+      .replace(/<input([^>]*)type\s*=\s*["']?password["']?/gi, '<input$1type="submit"')
+      .replace(/autocomplete\s*=\s*["']?(current-password|new-password)["']?/gi, 'autocomplete="off"');
     const before = extractEvidence(snap).evidence.loginInterface;
     const after = extractEvidence({ ...snap, raw: { ...snap.raw, renderedDom: stripped } }).evidence.loginInterface;
     assert.notEqual(JSON.stringify(before), JSON.stringify(after),
