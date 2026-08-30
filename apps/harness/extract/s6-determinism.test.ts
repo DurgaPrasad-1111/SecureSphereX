@@ -318,8 +318,58 @@ for (const p of paths) {
   // upgraded into "credentials were transmitted".
   assert.equal(x.clientSideTransmissionObserved.state, 'notCollected',
     'clientSideTransmissionObserved must NOT be inferred from the presence of a POST');
+  // listenerOnCredentialField is computed INDEPENDENTLY of
+  // scriptRuntimeObservations (see scriptRuntime.ts's
+  // computeListenerOnCredentialField, DEC-30/33/34) -- `withObs` sets
+  // scriptRuntimeObservations but not listenerObservations, so this must
+  // stay notCollected on THAT basis specifically, not because Tier 3 is
+  // unbuilt (it now is; the dedicated block below tests the built path).
   assert.equal(x.listenerOnCredentialField.state, 'notCollected',
-    'listenerOnCredentialField needs Tier 3 (CDP) and must stay notCollected');
+    'listenerOnCredentialField must be notCollected when listenerObservations itself is absent, ' +
+    'regardless of what scriptRuntimeObservations says');
+
+  // ── Tier 3 listenerOnCredentialField: present/absent distinction ───────
+  //
+  // Three real, distinguishable Observation states from three different raw
+  // shapes -- seeded and checked individually, not assumed. This is exactly
+  // the present-with-empty-array vs genuinely-null distinction S-7 exists to
+  // keep apart: collapsing them would either bury a real "Tier 3 ran, found
+  // nothing" negative under "we don't know" (destroying signal), or report a
+  // missing observation as a checked negative (fabricating one, DEFECT-33's
+  // failure shape in a new place). "Key absent entirely" (as opposed to
+  // explicitly null) is already covered broadly above -- every snapshot in
+  // this store predates listenerObservations and lacks the key outright, and
+  // property 10's opening loop already asserts notCollected across all of
+  // them; this block adds the null/empty/hit distinction that loop cannot.
+  {
+    const withListenerHit = {
+      ...base,
+      raw: { ...base.raw, listenerObservations: [{ mainFrame: true, fieldIndex: 0, listenerTypes: ['keydown'] }] },
+    };
+    const withEmptyListener = { ...base, raw: { ...base.raw, listenerObservations: [] } };
+    const withNullListener = { ...base, raw: { ...base.raw, listenerObservations: null } };
+
+    const hit = extractEvidence(withListenerHit).evidence.scriptRuntime.listenerOnCredentialField;
+    const empty = extractEvidence(withEmptyListener).evidence.scriptRuntime.listenerOnCredentialField;
+    const nul = extractEvidence(withNullListener).evidence.scriptRuntime.listenerOnCredentialField;
+
+    assert.deepEqual(hit, { state: 'present', value: true },
+      'a non-empty listenerObservations must yield present(true)');
+    assert.deepEqual(empty, { state: 'present', value: false },
+      'an EMPTY (but present) listenerObservations must yield present(false) -- a real negative, not notCollected');
+    assert.equal(nul.state, 'notCollected',
+      'a null listenerObservations must yield notCollected -- the capability-gap case');
+
+    assert.notEqual(JSON.stringify(empty), JSON.stringify(nul),
+      'NEGATIVE CONTROL FAILED: present(false) and notCollected must be distinguishable -- ' +
+      'collapsing them would erase a real "Tier 3 ran, found nothing" finding');
+
+    const hitAgain = extractEvidence(withListenerHit).evidence.scriptRuntime.listenerOnCredentialField;
+    assert.deepEqual(hit, hitAgain, 'listenerOnCredentialField extraction is not deterministic');
+
+    console.log('  listenerOnCredentialField: present(true)/present(false)/notCollected ' +
+      'all distinguished correctly; deterministic on the populated path.');
+  }
 
   // Malformed observations must fall back to notCollected, not half-populate.
   //

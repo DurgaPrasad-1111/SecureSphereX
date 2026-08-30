@@ -1,34 +1,35 @@
 /**
- * `scriptRuntime` extraction — DEC-29 Tier 1, the NETWORK-OBSERVED subset only.
- *
- * Three of six fields are now genuinely derivable, because `capture.py`
- * observes them passively at the network layer (`page.on("request")`):
+ * `scriptRuntime` extraction — DEC-29 Tier 1 (network) + DEC-30/33/34 Tier 3
+ * (listener detection), both now genuinely derivable:
  *
  *   transmissionEndpoints    <- script-initiated off-navigation POSTs
  *   dynamicScriptLoadCount   <- scripts requested after DOMContentLoaded
  *   dynamicScriptOrigins     <- their URLs
+ *   listenerOnCredentialField <- CDP DOMDebugger.getEventListeners, scoped to
+ *                                DEC-33's signed declared-signal selector
  *
- * The other three still require in-page instrumentation (DEC-29 Tier 3) or a
- * governance ruling (Tier 4), and remain `notCollected`:
+ * Two fields remain `notCollected` unconditionally:
  *
- *   listenerOnCredentialField       Tier 3 — CDP DOMDebugger.getEventListeners
- *   credentialInterfaceInjected     Tier 3 — pre-load MutationObserver
- *   clientSideTransmissionObserved  Tier 4 — see the note at its assignment
+ *   credentialInterfaceInjected     Tier 3 step 5 (pre-load MutationObserver)
+ *                                   — NOT built, DEC-30 Part 4
+ *   clientSideTransmissionObserved  Tier 4 — deliberately never inferred;
+ *                                   see the note at its assignment
  *
  * ────────────────────────────────────────────────────────────────────────
- * ⚠️ READS A KEY THAT IS NOT YET IN THE FROZEN CONTRACT.
+ * Reads TWO independent, independently-nullable RawMaterial keys —
+ * `scriptRuntimeObservations` (Tier 1) and `listenerObservations` (Tier 3),
+ * both now IN the frozen contract, hand-typed by the Architecture Owner.
+ * They are NOT coupled: a snapshot can have one, both, or neither, even
+ * though today's `capture_one()` always attempts both together. Each is
+ * read and validated independently — `listenerOnCredentialField` is
+ * computed from `listenerObservations` alone, never gated behind
+ * `scriptRuntimeObservations`'s own validity (see
+ * `computeListenerOnCredentialField` below).
  *
- * `RawMaterial` (snapshot.format.v1.ts:177-197) has NO field for network
- * observations. `capture.py` writes `raw.scriptRuntimeObservations` as a
- * SUPERSET key; the contract amendment adding it is a HAND edit by the
- * Architecture Owner, never by tooling (CLAUDE.md: "Amendments are made by
- * hand, never by Claude Code").
- *
- * Until that lands this module reads the key defensively and returns
- * fully-notCollected evidence when it is absent — which is every snapshot in
- * every corpus captured before today. That is the CORRECT reading under S-7:
- * those captures did not observe the network, so the fields were not
- * collected. It is not `absent`.
+ * Absence of either key, for any snapshot, reads as `notCollected`, never
+ * `absent` (S-7) — that snapshot's capture predates the relevant tier, so
+ * nothing was established about it, which is a capability gap, not a
+ * negative finding.
  * ────────────────────────────────────────────────────────────────────────
  */
 
@@ -71,15 +72,74 @@ function isObservations(v: unknown): v is ScriptRuntimeObservations {
     && typeof o['dynamicScriptLoadCount'] === 'number';
 }
 
+/**
+ * The shape `capture.py`'s `_collect_listener_observations` writes, via
+ * `RawMaterial.listenerObservations` (DEC-30/DEC-33/DEC-34 amendment).
+ * Declared here for the same reason `ScriptRuntimeObservations` is: this
+ * interface IS what the raw key is validated against, kept next to its
+ * validator rather than imported from the frozen contract's inline type.
+ */
+export interface ListenerObservationEntry {
+  readonly mainFrame: boolean;
+  readonly fieldIndex: number;
+  readonly listenerTypes: readonly string[];
+}
+
+function isListenerObservations(v: unknown): v is readonly ListenerObservationEntry[] {
+  return Array.isArray(v) && v.every((entry) => {
+    if (typeof entry !== 'object' || entry === null) return false;
+    const e = entry as Record<string, unknown>;
+    return typeof e['mainFrame'] === 'boolean'
+      && typeof e['fieldIndex'] === 'number'
+      && Array.isArray(e['listenerTypes']);
+  });
+}
+
+/**
+ * `listenerOnCredentialField` computed INDEPENDENTLY of
+ * `scriptRuntimeObservations` (Tier 1) -- `listenerObservations` (Tier 3) is
+ * its own separate, independently-nullable RawMaterial field per the
+ * contract, and nothing guarantees the two co-occur beyond today's
+ * `capture_one()` happening to write both together. Nesting this inside the
+ * Tier-1 early-return below would silently report `notCollected` for a
+ * snapshot that has real Tier 3 data but malformed/absent Tier 1 data --
+ * a real bug, not a hypothetical, given the two are independently nullable.
+ *
+ * Present/absent, not a capability-SHAPE gap (contrast DEFECT-31, where
+ * `Observation<T[]>` cannot express a per-element gap inside an array). This
+ * is a whole-field question the existing three-state Observation model
+ * already answers cleanly: the array itself is either genuinely there
+ * (Tier 3 ran) or it is not (it did not) -- no shape mismatch to work around.
+ *
+ * `'api_unavailable'` reused deliberately, not a new reason code: this is
+ * the SAME situation `scriptRuntimeObservations`'s absence already uses it
+ * for -- capture predates the capability, not a runtime failure of one that
+ * exists (that would be `collector_error` or `timeout`, per the per-field
+ * try/except in `_collect_listener_observations` degrading to fewer results,
+ * never to a failure signal reaching here).
+ */
+function computeListenerOnCredentialField(raw: RawMaterial): Observation<boolean> {
+  const listenerObservations = (raw as unknown as Record<string, unknown>)['listenerObservations'];
+  if (!isListenerObservations(listenerObservations)) return nc<boolean>();
+  // Present(false) is a real, meaningful negative: Tier 3 ran, queried the
+  // declared-signal credential fields, and found zero listeners of interest
+  // -- exactly as S-7 requires or 3,895+ genuine "no listener" snapshots
+  // would incorrectly collapse into "we don't know".
+  return present(listenerObservations.length > 0);
+}
+
 export function extractScriptRuntime(raw: RawMaterial): ScriptRuntimeEvidence {
   // The superset key, read without widening RawMaterial itself.
   const observations = (raw as unknown as Record<string, unknown>)['scriptRuntimeObservations'];
+  const listenerOnCredentialField = computeListenerOnCredentialField(raw);
 
   if (!isObservations(observations)) {
     // Every snapshot captured before DEC-29 Tier 1 lands here. notCollected,
     // never absent: the network was not observed, so nothing was established.
+    // listenerOnCredentialField is NOT forced notCollected here -- see its
+    // own computation above, independent of this Tier 1 gate.
     return {
-      listenerOnCredentialField: nc<boolean>(),
+      listenerOnCredentialField,
       clientSideTransmissionObserved: nc<boolean>(),
       transmissionEndpoints: nc<readonly string[]>(),
       // Same reason code as its source field, necessarily: a derived value
@@ -120,10 +180,12 @@ export function extractScriptRuntime(raw: RawMaterial): ScriptRuntimeEvidence {
     dynamicScriptOrigins: present(scriptOrigins),
     dynamicScriptLoadCount: present(observations.dynamicScriptLoadCount),
 
-    // ── Tier 3, not built ────────────────────────────────────────────────
-    // Both need code running inside the page. DEC-29 constrains that to CDP
-    // (DOMDebugger.getEventListeners), never monkey-patching addEventListener.
-    listenerOnCredentialField: nc<boolean>(),
+    // ── Tier 3 ───────────────────────────────────────────────────────────
+    // listenerOnCredentialField: DEC-30/33/34, BUILT -- computed above,
+    // independent of this Tier 1 branch (see computeListenerOnCredentialField).
+    // credentialInterfaceInjected: step 5 (pre-load MutationObserver) is
+    // NOT built (DEC-30 Part 4); stays notCollected until it is.
+    listenerOnCredentialField,
     credentialInterfaceInjected: nc<boolean>(),
 
     // ── Tier 4, deliberately NOT inferred ────────────────────────────────
