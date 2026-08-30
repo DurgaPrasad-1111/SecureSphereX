@@ -2484,3 +2484,60 @@ than findings, which no metric would have revealed.
 - **Related:** [[DEFECT-17]], [[DEFECT-29]], [[DEFECT-33]] (same pattern
   family), [[DEC-27]] (V-15 and the conformance fixture this corrects),
   [[DEC-28]] (why CRED-01 still does not fire).
+
+---
+
+## DEFECT-35 — `CORPUS_DIR`'s unanchored relative path silently created a second, separate corpus when `capture.py` was run from `tools/capture/` instead of the repo root (found and FIXED 2026-08-30)
+
+Finding: `tools/capture/capture.py:50` declared `CORPUS_DIR = Path("corpus")`
+— a plain relative path, resolved against whatever the process's current
+working directory happened to be at launch, never anchored to the repo root
+or to the script's own location.
+
+A real invocation surfaced it directly: `python capture.py --tranco
+..\..\tranco_top10k.csv --limit 20`, run from `tools\capture\` (not the repo
+root), silently created `tools/capture/corpus/` — a second, independent
+corpus tree with its own `INDEX.jsonl` — rather than writing into the real
+`corpus/` at the repo root or erroring. Two prior invocations (one phishing
+batch via `--feed openphish`, one benign batch via `--tranco`) landed there
+unnoticed: 40 real, live captures — 20 phishing, 20 benign, both tiers
+(Tier 1 `scriptRuntimeObservations` and Tier 3 `listenerObservations`)
+populated correctly — sitting in a location nobody was checking, simply
+because the command was run from the "obvious" directory (`tools/capture/`,
+where the script itself lives) rather than the repo root.
+
+**This is the SAME root-cause class as an already-fixed defect, just never
+extended to this constant.** `load_feed_urls`'s `tranco` branch already
+carries this exact fix and says so in its own comment (`capture.py:967-973`,
+verbatim): *"Resolved relative to this script's own location, not cwd —
+CORPUS_DIR's cwd-relative path already caused one wrong-location bug this
+session; not repeating that pattern here."* That comment correctly predicted
+the failure mode by name and then the fix was applied to the CSV path only —
+`CORPUS_DIR` itself, the more consequential of the two since every persisted
+snapshot and every `INDEX.jsonl` append depends on it, was left exactly as
+vulnerable as before.
+
+**No data was lost.** The 40 misplaced snapshots were recovered: verified
+zero `snapshotId` and zero destination-path collisions against the real
+corpus, moved the `.json.gz` files into `corpus/{phishing,benign}/2026-08-30/`
+preserving their date subfolders, appended the 40 `INDEX.jsonl` lines to the
+real index (34,447 → 34,487, exactly +40, verified), spot-checked merged
+entries' `relativePath` fields resolve to real files (40/40), then deleted
+`tools/capture/corpus/` once confirmed empty of anything not yet merged.
+
+**Fix:** `CORPUS_DIR = Path(__file__).resolve().parent.parent.parent /
+"corpus"` — anchored to the script's own location exactly as the `tranco`
+CSV path already was, so it resolves to the same repo-root `corpus/`
+regardless of the caller's working directory. Verified by importing the
+module with `tools/capture` as the working directory (the exact scenario
+that caused this) and confirming `CORPUS_DIR` still resolves to the repo
+root.
+
+**Related:** [[DEC-1]] (the split-v2 identity/collision discipline this
+constant underpins), same unanchored-relative-path root cause the `tranco`
+CSV branch already fixed for a different variable.
+
+- **Status:** FIXED 2026-08-30 in `tools/capture/capture.py`. Verified with
+  `python -m py_compile` and by reproducing the original cwd scenario
+  directly. The 40 real captures this bug produced were recovered and merged
+  into the real corpus, not discarded.

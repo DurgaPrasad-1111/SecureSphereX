@@ -47,7 +47,17 @@ SNAPSHOT_FORMAT_VERSION = "1.1.0"
 SPLIT_FUNCTION_VERSION = "split-v2"
 SPLIT_PROPORTIONS = {"train": 0.60, "validation": 0.20, "test": 0.20}
 
-CORPUS_DIR = Path("corpus")
+# Anchored to the script's own location, not cwd (DEFECT-35). A bare
+# Path("corpus") resolves relative to wherever the process happens to be
+# launched from -- running this script from tools/capture/ (instead of the
+# repo root) silently created a SECOND, separate corpus/ under tools/capture/
+# rather than erroring, and it took a real invocation actually doing that to
+# surface it. The --tranco CSV path already got this exact fix
+# (Path(__file__).parent / "tranco_top10k.csv", load_feed_urls); this constant
+# never received the same treatment despite being the more consequential of
+# the two, since every persisted snapshot and INDEX.jsonl append depends on it.
+# tools/capture/capture.py -> tools/capture -> tools -> repo root.
+CORPUS_DIR = Path(__file__).resolve().parent.parent.parent / "corpus"
 FETCH_TIMEOUT_MS = 15_000
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
