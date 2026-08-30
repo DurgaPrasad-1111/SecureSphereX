@@ -4216,3 +4216,86 @@ question this entry does not resolve).
   `capture_one()` pending explicit wiring work, not pending either
   ruling any longer.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-30
+
+---
+
+## DEC-35 — Tier 4 sentinel-fill: APPROVED, closing [[DEC-29]]'s deliberately-unresolved question
+
+Closes the one question [[DEC-29]] Part 3 / [[DEC-30]] Part 3 left open and
+which [[DEC-30]] explicitly recommended deferring until Tier 1 had produced
+the beacon-on-load fraction. That measurement now exists, and so does the
+answer it was meant to inform.
+
+**[R] The question, as DEC-29/DEC-30 framed it.** `clientSideTransmissionObserved`
+cannot be established passively. Tier 1 measured this directly: a kit that
+exfiltrates only on submit produces ZERO observable network activity, because
+nothing was submitted. The signal does not exist — not "we cannot see it", but
+"it has not happened". Establishing it requires SUBMITTING data to the live
+page and observing where the resulting request goes. DEC-29 declined to rule
+on that, recording the objection verbatim rather than resolving it.
+
+**[R] The objection DEC-29 raised, preserved unchanged because approval does
+not retroactively make it wrong:**
+
+> The ethical objection stands regardless and is unchanged: sentinel-fill
+> would have the harness SUBMIT data to live criminal infrastructure,
+> generating traffic, confirming the page is live, and potentially tripping
+> anti-analysis logic that changes what is captured.
+
+**[I] Measured state at the time of this ruling.** Tier 1, 2 and 3 are built,
+wired and proven against real live infrastructure (640 post-Tier-3 captures,
+zero extraction errors, confirmed listener detections including `rbcode.net`'s
+five-field `keydown`/`input`/`paste` pattern). A complete census — not a
+sample — over all 640 post-Tier-3 snapshots that exist returned **CRED-05
+fires: 0**, with `clientSideTransmissionObserved` `notCollected` for 640/640.
+Tier 4 is therefore not one blocker among several: it is the SOLE remaining
+blocker for CRED-05, and no further capture- or extraction-side engineering
+can move it.
+
+**Decision:** ☑ Sentinel-fill APPROVED, scoped. Establishing
+`clientSideTransmissionObserved` by submitting SYNTHETIC sentinel data to a
+live page and observing the resulting request is permitted.
+
+**Scope conditions, binding on any implementation:**
+
+1. **Synthetic data only.** No real credentials, no real email addresses, no
+   value resembling actual PII. Sentinel values must be self-evidently
+   non-functional and carry a per-run nonce, so a value surfacing later in a
+   credential dump is traceable to this harness.
+2. **Single-shot per URL.** One submission, no retries, no repeated
+   interaction. Volume is a first-order ethical variable here, not an
+   implementation detail.
+3. **No destructive or irreversible interaction.** No file uploads, no
+   payment flows, no CAPTCHA-solving automation. Abort rather than proceed
+   where any of these is detected.
+4. **Sentinel-fill output is NOT corpus data.** A sentinel-filled page was
+   INTERFERED WITH, not observed. Storing it as a corpus snapshot would
+   corrupt the property the entire corpus rests on — that every snapshot is a
+   passive observation — and would silently poison S-6 determinism and every
+   metric computed downstream. It must be written to a separate store and
+   never appended to `corpus/INDEX.jsonl`.
+5. **Evidence is the sentinel token in the request body, never merely "a POST
+   occurred".** DEC-29's Tier 4 reasoning that analytics/telemetry/ad beacons
+   produce an identical network signature to exfiltration remains CORRECT and
+   is not overridden by this approval. What sentinel-fill newly permits is a
+   strictly stronger observation: that the request body contained OUR unique
+   sentinel token. Per §20.2 the body itself is still never stored — only the
+   boolean match and the destination endpoint.
+
+**[I] What this ruling does NOT approve.** It does not approve corpus-wide
+sentinel-fill, a recurring/polling sentinel harness, or interaction beyond a
+single form submission. It approves the mechanism and a bounded first sample.
+Any scale-up past the initial sample is a separate decision, to be taken with
+that sample's results in hand.
+
+**Related:** [[DEC-29]] (the question this closes; its objection preserved
+above), [[DEC-30]] Part 3 (which recommended deferring exactly until now),
+[[DEC-33]] / [[DEC-34]] (Tier 3, whose completion made Tier 4 the sole
+remaining blocker), [[DEFECT-32]] (the over-classification reasoning
+condition 5 preserves).
+
+- **Status:** SIGNED 2026-08-30. Approved as scoped above. No sentinel-fill
+  code has been run at the time of signing; the mechanism is to be designed
+  and reviewed before any live submission, and the first run is limited to a
+  3-5 URL sample.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-30
