@@ -3970,3 +3970,249 @@ records the configuration, so V-15 gates it).
 - **Status:** SIGNED 2026-08-29. Manifest and check are BUILT, wired
   into `ci.yml`, and seed-tested.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-33 (CANDIDATE — unsigned, open) — Tier 3's CDP selector does not match `classifyField`'s full coverage; recommend scoping to declared signals only (Phase I)
+
+Scopes [[DEC-30]] Part 4's design; does **not** reopen or rewrite DEC-30
+itself, which Jayanth signed 2026-08-29. DEC-30's mechanism, hard
+constraint (monkey-patching forbidden), and step 1-4/step 5 split all
+stand unchanged. This entry addresses one open question DEC-30's own
+design left unresolved: exactly which fields the CDP query reaches.
+
+**[R]** DEC-30 Part 4 step 2 specifies the CDP query as
+`input[type=password], input[type=email], input[autocomplete]`, stated to
+be "the same field set `loginInterface.ts` classifies, so the two
+categories cannot disagree about which fields are credential fields."
+
+**[I] That does not hold as written.** `loginInterface.ts`'s
+`classifyField` (`loginInterface.ts:108-138`) classifies credential fields
+through three tiers: Tier 1 (`type==='password'|'email'`), Tier 2
+(declared `autocomplete` token), and Tier 3 (name/id pattern matching over
+`<select>`/`<textarea>` and plain `<input type=text|tel|number|hidden>`).
+DEC-30's selector reaches Tier 1 and Tier 2 only. A field
+`loginInterface.ts` classifies as `password`/`otp`/`pin` purely by
+`name="pwd"` or `id="user_pin"` guesswork, with no declared `type` or
+`autocomplete` hint, is invisible to the CDP query — Tier 3 listener
+detection can never fire on it, whether or not a listener is actually
+present.
+
+**[I] Two options, laid out plainly rather than pre-decided.**
+
+**Option (a) — broaden the CDP query to all `<input>`/`<select>`/`<textarea>`,
+then port `classifyField`'s Tier 3 name/id regex logic into `capture.py`
+(Python) alongside the TypeScript original.**
+
+- Gives Tier 3 the same field coverage `credentialFormPresent` already
+  has — no structural gap between what counts as a credential form and
+  what gets listener-checked.
+- Cost: two independent implementations of the same guessy heuristic, in
+  two languages, with no shared source and no conformance oracle between
+  them. This is precisely the failure shape [[DEFECT-34]] already
+  produced once this session: `capture.py`'s `tldextract` configuration
+  and `psl.ts`'s `tldts` configuration silently disagreed on 32.5% of
+  phishing snapshots, undetected because nothing cross-checked them.
+  `classifyField`'s Tier 3 is explicitly the weakest, bidirectional-error
+  tier ([[DEFECT-32]], still OPEN) even as a *single* implementation;
+  duplicating it doubles the surface for the same class of silent drift
+  this codebase has already been burned by once. A V-15-style cross-check
+  oracle could in principle be built for this too, but that is additional
+  scope beyond "broaden the selector," not included in this estimate.
+- Also broadens what gets queried on every page — every text/tel/number/
+  hidden input and every select/textarea, not just declared credential
+  fields — meaning more CDP round-trips per capture.
+
+**Option (b) — keep the narrow declared-attribute selector, document the
+gap as an explicit Phase I scope limit.**
+
+- Ships what is already scaffolded; no new heuristic, no cross-language
+  duplication, no new drift surface.
+- Plain statement of what this means in practice: `listenerOnCredentialField`
+  will never be established for a credential form `loginInterface.ts`
+  identifies only through Tier 3 name/id guesswork (no `type="password"`/
+  `type="email"`, no `autocomplete` hint). CRED-05's
+  `listenerOnCredentialField` conjunct stays `notCollected` for those forms
+  even after Tier 3 ships — a real, known-in-advance recall ceiling on
+  CRED-05, not a bug, but one the record should state rather than let be
+  discovered later against real data.
+- **MEASURED, 2026-08-30, against the same 3,854-snapshot
+  credential-bearing population confusion.ts's run used
+  (`credentialFormPresent` true; `debugSecretFieldTiers` found the
+  qualifying secret field(s) in all 3,854 — 0 unaccounted, sanity-checked).
+  For each snapshot, the tier that classified its SECRET-kind field(s)
+  (`password`/`otp`/`pin` — the set gating `credentialFormPresent`):
+
+  | Classification | Count | % of 3,854 |
+  |---|---|---|
+  | Tier 1 (declared `type`) present | 3,484 | 90.4% |
+  | Tier 2 (declared `autocomplete` value), no Tier 1 | 129 | 3.3% |
+  | Tier 3 only, but *some* `autocomplete` attribute present anyway | 1 | 0.0% |
+  | Tier 3 only, no `autocomplete` attribute at all — **INVISIBLE to the selector** | 240 | 6.2% |
+
+  **Selector-visible total (Tier 1 + Tier 2 + the one accidental Tier-3
+  hit): 3,614 (93.8%). Selector-invisible total: 240 (6.2%).** Measured
+  directly from real corpus markup via the actual `classifyField` logic
+  (temporarily instrumented to report its own tier, not reimplemented —
+  see the method note below), not estimated.
+  
+  **What this means for the recommendation above:** Option (b)'s ceiling
+  is a **6.2% recall cap** on `listenerOnCredentialField` for credential
+  forms this corpus actually contains, not an unbounded or unknown
+  quantity. That is small enough to support shipping (b) now, and gives a
+  concrete number to revisit this ruling against if Option (a) is ever
+  reconsidered — the 240 invisible snapshots are inspectable in this
+  corpus if a future implementer wants examples of what Tier 3 misses
+  under (b).
+
+  **Method, for reproducibility:** `classifyField` in `loginInterface.ts`
+  was temporarily split into a `classifyFieldWithTier` core (identical
+  classification logic, now also returning which tier matched) with
+  `classifyField` reduced to a thin wrapper calling it — so the
+  measurement used the SAME code path as real extraction, not a
+  reimplementation, avoiding exactly the cross-language-drift risk
+  [[DEFECT-34]] warns against. A debug-only export walked each of the
+  3,854 snapshots' real `renderedDom` and reported the tier for every
+  secret-kind field found. Reverted immediately after this measurement
+  was taken; no instrumentation remains in `loginInterface.ts`.
+
+**[I] Recommendation: Option (b).** The declared-signal fields (Tier 1/2)
+are exactly the ones DEC-30's own design ranks as unambiguous — WHATWG
+autofill semantics the page author opted into. Shipping Tier 3 listener
+detection against that subset first, and deferring the harder name/id
+guesswork coverage until there is a measured reason to pay its
+duplication cost, matches this project's established pattern of not
+building for an unmeasured requirement (the same discipline [[DEC-30]]
+Part 3 already applied to the sentinel-fill question). **This changes
+what Tier 3 can actually detect, not merely how it is implemented, and is
+therefore left as Jayanth's call, not pre-decided here.**
+
+**Related:** [[DEC-30]] (the design this scopes, signed and unchanged),
+[[DEFECT-34]] (the cross-language-drift precedent Option (a) would repeat),
+[[DEFECT-32]] (Tier 3's own standing classification-error defect, still
+OPEN).
+
+- **Status:** SIGNED 2026-08-30. Option (b) adopted: the narrow
+  declared-signal CDP selector, scoped as drafted. Measured ceiling on
+  record (93.8% selector-visible / 6.2% invisible, [[DEC-33]]'s own
+  measurement above).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-30
+
+---
+
+## DEC-34 (CANDIDATE — unsigned, open) — Tier 3 CDP scaffolding: iframe reach fixed for same-process AND out-of-process frames; loopback addresses do not naturally isolate
+
+Own entry rather than an addendum to [[DEC-30]], which Jayanth signed
+2026-08-29 — appending unsigned content to it would recreate the exact
+signed/unsigned contradiction the DEC-9/DEC-23 corrections removed
+earlier tonight. Records validation work on the already-scaffolded Tier
+3 mechanism; does not reopen DEC-30's design or [[DEC-33]]'s open
+selector-scoping question.
+
+**[R]** DEC-30 Part 4's design and the scaffolding built from it query
+credential-shaped fields via CDP. Initial synthetic-page validation
+(same discipline as Tier 1's DCL-timing bug, DEC-30 Part 1) found the
+scaffolding blind to any iframe-embedded field, same-origin or not —
+`DOM.getDocument({pierce: true})` on the top-level session inlines an
+iframe's content document into the response as a `contentDocument`
+field, but `DOM.querySelectorAll` does not itself cross that boundary
+even so. First reproduced against a same-origin `srcdoc` iframe
+(`matched_count=0` on the top-level query).
+
+**[I] Fix has two mechanisms, because one alone does not cover both
+cases — found by testing, not assumed:**
+
+1. **Same-process frames** (typical same-origin `src`/`srcdoc`
+   iframes): reached from the pierced tree already returned by the
+   main frame's own session — walk it for every `contentDocument`
+   (recursively, so nesting is covered) and run
+   `DOM.querySelectorAll` once per document root found, main document
+   included.
+2. **Out-of-process frames** (genuinely cross-origin): invisible to
+   mechanism 1 entirely — `contentDocument` is simply absent for these
+   in the pierced tree, confirmed empirically against a real
+   cross-origin iframe. Playwright's Python `BrowserContext
+   .new_cdp_session()` accepts a `Frame` directly (not just a `Page`)
+   and returns a session scoped to that frame's own out-of-process
+   target, with Playwright handling `Target.attachToTarget`
+   internally — confirmed by direct signature inspection and then by
+   using it successfully against a real OOPIF, not assumed from
+   documentation.
+
+**The two mechanisms are combined via the exception that joins them,
+not a manual frame classification.** An initial attempt to unify
+everything under `new_cdp_session(frame)` for every frame in
+`page.frames` broke the already-passing same-origin case: that call
+**throws** for a same-process frame — `"this frame does not have a
+separate CDP session, it is a part of the parent frame's session"` —
+confirmed empirically when it regressed a passing test, not predicted
+in advance. That exception is now the signal the implementation uses:
+try `new_cdp_session(frame)` for every non-main frame; a thrown "no
+separate session" error means the frame was already covered by
+mechanism 1's pierce walk, so it is skipped rather than logged as an
+error; any other exception is a genuine, visible failure.
+
+**[I] Loopback-isolation finding, load-bearing for how this was tested
+at all.** Under Chromium's DEFAULT launch configuration — no flags,
+exactly what `capture.py` runs — **neither** a port-only difference
+(`127.0.0.1:8101` embedding `127.0.0.1:8102`) **nor** a hostname
+difference (`127.0.0.1` embedding `localhost`) produced a genuinely
+out-of-process frame: both showed a single CDP target and
+`contentDocument` present. Forcing `--site-per-process` was required to
+get a real OOPIF at all, and even then the port-only pair *still*
+stayed same-process — only the hostname-different pair separated.
+**Practical consequence: production `capture.py` (unmodified, no
+isolation flags) will only ever see genuine out-of-process isolation
+against real external cross-site content** — a phishing kit actually
+embedding a different-registrable-domain iframe over the network — not
+against anything constructible from local loopback addresses alone.
+This is why the validation below had to force isolation to exist at
+all, rather than a gap in how the test was built.
+
+**Validated, all six pages, after both fixes were combined (not
+before — an earlier duplicate-result bug in the same-process fix was
+caught by literally this same re-run discipline in an earlier round
+tonight and is not repeated here):**
+
+| Page | Case | Result |
+|---|---|---|
+| A | keydown on password field | 1 hit, `['keydown']` |
+| B | listener on unrelated (non-matching) field | `[]` |
+| C | matched field, zero listeners | `[]` |
+| D | listener added then removed | `[]` |
+| E | same-origin `srcdoc` iframe | 1 hit |
+| F | cross-origin iframe, forced `--site-per-process` | 1 hit |
+
+No duplicates in any result, no unexpected errors on this run.
+
+**[I] Residual limitation, stated as reasoning rather than proof.**
+Page F's out-of-process frame was FORCED via `--site-per-process`, not
+naturally occurring under the default policy production `capture.py`
+runs with — no default-policy OOPIF was constructed to test against,
+because loopback addresses do not isolate under default policy (see
+above), and standing up genuinely distinct public-suffix domains
+locally was judged not worth the additional infrastructure tonight.
+**Reasoned expectation, not a proven fact:** the fix should generalize
+to a default-policy OOPIF, because the mechanism responds to
+Playwright's own `new_cdp_session` exception — a property of whether
+the frame has a separate CDP target — not to *why* that separation
+exists. Nothing in the implementation branches on `--site-per-process`
+or on any launch flag. **Recommended: re-confirm this opportunistically
+once Tier 3 runs against real corpus data containing genuine
+third-party iframes, rather than building further synthetic proof now**
+— consistent with this project's standing preference for measuring
+against real data over chasing synthetic completeness (the same
+judgment call [[DEC-30]] Part 3 made for the sentinel-fill question).
+
+**Related:** [[DEC-30]] (the design this validates, signed and
+unchanged), [[DEC-33]] (the separate, still-open selector-scoping
+question this entry does not resolve).
+
+- **Status:** SIGNED 2026-08-30. The iframe-reach fix and its
+  validation are complete and re-verified with zero regressions; the
+  out-of-process generalization claim is reasoned, not proven, and
+  flagged as such above. [[DEC-33]]'s selector-scoping ruling is now
+  also signed (Option (b)); Tier 3 scaffolding remains unwired into
+  `capture_one()` pending explicit wiring work, not pending either
+  ruling any longer.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-30
