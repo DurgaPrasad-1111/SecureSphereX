@@ -220,6 +220,43 @@ export interface RawMaterial {
     readonly postRequestCount: number;
     readonly postAfterDclCount: number;
   } | null;
+
+  /** DEC-30 Tier 3, steps 1-4 only (credentialInterfaceInjected / step 5 is
+   *  NOT covered here -- see DEC-30 Part 4). CDP-observed event listeners on
+   *  credential-shaped fields at capture time, scoped by DEC-33's signed
+   *  Option (b) selector (input[type=password], input[type=email],
+   *  input[autocomplete]). `null` for every snapshot captured before Tier 3
+   *  existed.
+   *
+   *  Each entry is one matched field carrying at least one listener of
+   *  interest (input/keyup/keydown/change/blur/paste). A field that was
+   *  queried but carries none is NOT recorded -- absence of an entry is
+   *  therefore ambiguous between "no listener" and "field not queried",
+   *  which is acceptable because `listenerOnCredentialField` (the only
+   *  contract field this currently feeds) only needs to know whether ANY
+   *  entry exists at all, never which field it was.
+   *
+   *  `fieldIndex` is the field's 0-based position, in document order, among
+   *  matches within ITS OWN FRAME's DOM.querySelectorAll call -- NOT a CDP
+   *  nodeId, which is capture-session-local and cannot be persisted
+   *  meaningfully (DEC-34).
+   *
+   *  WARNING, found during DEC-34's iframe validation rather than
+   *  anticipated when this field was first sketched: `mainFrame: false`
+   *  entries do NOT currently correlate to anything in
+   *  `LoginInterfaceEvidence`. `renderedDom` above is `page.content()`,
+   *  which serializes ONLY the top-level document -- iframe subdocuments
+   *  are never inlined into it, so `loginInterface.ts`'s parse5 pass
+   *  structurally cannot see, classify, or index an iframe-embedded field.
+   *  Recorded anyway rather than dropped at capture time, since capture is
+   *  irreversible for decayed phishing URLs and extraction can improve
+   *  later -- but no consumer may assume a non-main-frame `fieldIndex`
+   *  names a field `loginInterface.ts` currently reports. */
+  readonly listenerObservations: readonly {
+    readonly mainFrame: boolean;
+    readonly fieldIndex: number;
+    readonly listenerTypes: readonly string[];
+  }[] | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

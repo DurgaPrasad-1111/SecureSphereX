@@ -270,10 +270,17 @@ def _collect_listener_observations(ctx, page) -> list[dict[str, Any]]:
     be in its settled, post-script state before nodes are queried.
 
     Returns one entry per matched field carrying at least one listener of
-    interest: `{"nodeId": <CDP nodeId>, "listenerTypes": [...]}`. `nodeId` is
-    a CDP-session-local integer with no meaning outside this capture and is
-    retained only for cross-referencing entries within one snapshot, not as a
-    stable identifier.
+    interest, in the exact shape RawMaterial.listenerObservations expects
+    (packages/contracts/snapshot.format.v1.ts, DEC-30/DEC-33/DEC-34
+    amendment): `{"mainFrame": bool, "fieldIndex": int, "listenerTypes":
+    [...]}`. `fieldIndex` is 0-based, in document order, among matches
+    WITHIN ITS OWN DOCUMENT ROOT's DOM.querySelectorAll call -- resets per
+    root, not a running count across the whole page. `mainFrame` is true
+    only for the page's actual top-level document (the one `renderedDom`
+    serializes); every iframe -- same-process or out-of-process -- is
+    `mainFrame: false`, because both are equally invisible to
+    `loginInterface.ts`'s parse5 pass over `renderedDom` (see the contract
+    field's own doc comment).
     """
     # TWO mechanisms, combined -- neither one alone covers both cases, and
     # this was found by testing, not assumed:
@@ -310,47 +317,67 @@ def _collect_listener_observations(ctx, page) -> list[dict[str, Any]]:
             yield content_doc
             yield from find_nested_content_documents(content_doc)
 
-    def query_session(cdp_session, frame_label: str) -> list[dict[str, Any]]:
+    def query_root(cdp_session, doc_root: dict[str, Any], is_main_frame: bool,
+                    frame_label: str) -> list[dict[str, Any]]:
+        # fieldIndex is this root's OWN 0-based position count -- reset per
+        # root (a plain enumerate() over ITS OWN matched nodeIds), never a
+        # running count across the whole page. A future field-level consumer
+        # correlating back to `renderedDom` needs "Nth match within this one
+        # document", not an opaque page-wide counter.
         found: list[dict[str, Any]] = []
+        root_id = doc_root["nodeId"]
+        try:
+            matched = cdp_session.send("DOM.querySelectorAll", {
+                "nodeId": root_id,
+                "selector": CREDENTIAL_FIELD_SELECTOR,
+            })
+        except Exception as exc:
+            print(f"DOM.querySelectorAll error in {frame_label} (ignored): {exc}", file=sys.stderr)
+            return found
+        for field_index, node_id in enumerate(matched["nodeIds"]):
+            try:
+                resolved = cdp_session.send("DOM.resolveNode", {"nodeId": node_id})
+                object_id = resolved["object"]["objectId"]
+                listeners = cdp_session.send("DOMDebugger.getEventListeners", {"objectId": object_id})
+                types = sorted({
+                    entry["type"] for entry in listeners.get("listeners", [])
+                    if entry.get("type") in LISTENER_TYPES_OF_INTEREST
+                })
+                if types:
+                    found.append({
+                        "mainFrame": is_main_frame,
+                        "fieldIndex": field_index,
+                        "listenerTypes": types,
+                    })
+            except Exception as exc:
+                # One field's introspection failing must not lose the rest --
+                # same "observation must not break capture" discipline Tier 1
+                # applies to its per-request handler.
+                print(f"CDP getEventListeners error for node {node_id} in {frame_label} (ignored): {exc}",
+                      file=sys.stderr)
+        return found
+
+    def query_session(cdp_session, frame_label: str, top_root_is_main: bool) -> list[dict[str, Any]]:
+        # `top_root_is_main` is true ONLY for the page's actual top-level
+        # session query. ANY nested content document found via the pierce
+        # walk -- even inside that same session -- is a same-process IFRAME,
+        # not the top-level document, so it is always queried as
+        # is_main_frame=False regardless of which session found it.
         try:
             doc = cdp_session.send("DOM.getDocument", {"depth": -1, "pierce": True})
         except Exception as exc:
             print(f"DOM.getDocument error in {frame_label} (ignored): {exc}", file=sys.stderr)
-            return found
-        for doc_root in (doc["root"], *find_nested_content_documents(doc["root"])):
-            root_id = doc_root["nodeId"]
-            try:
-                matched = cdp_session.send("DOM.querySelectorAll", {
-                    "nodeId": root_id,
-                    "selector": CREDENTIAL_FIELD_SELECTOR,
-                })
-            except Exception as exc:
-                print(f"DOM.querySelectorAll error in {frame_label} (ignored): {exc}", file=sys.stderr)
-                continue
-            for node_id in matched["nodeIds"]:
-                try:
-                    resolved = cdp_session.send("DOM.resolveNode", {"nodeId": node_id})
-                    object_id = resolved["object"]["objectId"]
-                    listeners = cdp_session.send("DOMDebugger.getEventListeners", {"objectId": object_id})
-                    types = sorted({
-                        entry["type"] for entry in listeners.get("listeners", [])
-                        if entry.get("type") in LISTENER_TYPES_OF_INTEREST
-                    })
-                    if types:
-                        found.append({"nodeId": node_id, "listenerTypes": types})
-                except Exception as exc:
-                    # One field's introspection failing must not lose the rest --
-                    # same "observation must not break capture" discipline Tier 1
-                    # applies to its per-request handler.
-                    print(f"CDP getEventListeners error for node {node_id} in {frame_label} (ignored): {exc}",
-                          file=sys.stderr)
+            return []
+        found: list[dict[str, Any]] = list(query_root(cdp_session, doc["root"], top_root_is_main, frame_label))
+        for nested_doc in find_nested_content_documents(doc["root"]):
+            found.extend(query_root(cdp_session, nested_doc, False, f"{frame_label} (nested same-process iframe)"))
         return found
 
     results: list[dict[str, Any]] = []
 
     main_cdp = ctx.new_cdp_session(page)
     try:
-        results.extend(query_session(main_cdp, "main frame (+ same-process nested frames)"))
+        results.extend(query_session(main_cdp, "main frame", top_root_is_main=True))
     finally:
         main_cdp.detach()
 
@@ -365,7 +392,7 @@ def _collect_listener_observations(ctx, page) -> list[dict[str, Any]]:
             # -- this is the normal path for most iframes, not a failure.
             continue
         try:
-            results.extend(query_session(frame_cdp, f"out-of-process frame {frame.url}"))
+            results.extend(query_session(frame_cdp, f"out-of-process frame {frame.url}", top_root_is_main=False))
         finally:
             frame_cdp.detach()
 
@@ -413,6 +440,10 @@ def capture_one(
     # serialisation, not here — see the S-6 note at the snapshot assembly.
     network_posts: list[dict[str, Any]] = []
     dynamic_scripts: list[dict[str, Any]] = []
+    # DEC-30/33/34 Tier 3. Initialized here, not just before its own call
+    # site below, so it is always defined for the `raw` dict even if
+    # page.goto itself fails before that call site is ever reached.
+    listener_observations: list[dict[str, Any]] = []
 
     # ⚠️ THE BOUNDARY IS DOMContentLoaded, NOT load. This was found by
     # validation against a page whose behaviour was known in advance, and it
@@ -531,6 +562,22 @@ def capture_one(
 
             page.goto(url, timeout=FETCH_TIMEOUT_MS, wait_until="load")
             page.wait_for_timeout(2000)             # allow scripts to settle
+
+            # ── DEC-30 Part 4 / DEC-33 / DEC-34 — Tier 3 listener detection ──
+            #
+            # Call site is exactly where DEC-30 specifies: after load +
+            # settle, so the DOM is in its post-script state before nodes are
+            # queried. Wrapped at the top level too, not just internally --
+            # `_collect_listener_observations` isolates per-field and
+            # per-frame failures already, but the call itself must not be
+            # able to turn a successful capture into a failed one, same
+            # principle as every other Tier 1/3 observer in this function.
+            try:
+                listener_observations = _collect_listener_observations(ctx, page)
+            except Exception as exc:
+                print(f"_collect_listener_observations error (ignored): {exc}", file=sys.stderr)
+                listener_observations = []
+
             rendered_dom = page.content()
             final_url = page.url
             if http_status and http_status >= 400:
@@ -624,6 +671,30 @@ def capture_one(
                 "postRequestCount": len(network_posts),
                 "postAfterDclCount": sum(1 for p in network_posts if p["afterDcl"]),
             },
+
+            # ── DEC-30 Part 4 / DEC-33 / DEC-34 — Tier 3 listener observations ──
+            #
+            # Now IN the frozen contract (RawMaterial.listenerObservations,
+            # packages/contracts/snapshot.format.v1.ts) -- hand-typed by the
+            # Architecture Owner per the drafted amendment, unlike
+            # scriptRuntimeObservations above whose "not yet in the frozen
+            # contract" comment predates its own amendment landing and is now
+            # stale (left as-is here rather than edited as part of this
+            # unrelated change).
+            #
+            # Each entry is `{mainFrame, fieldIndex, listenerTypes}`, already
+            # shaped exactly as the contract expects by
+            # _collect_listener_observations -- no transformation needed here.
+            #
+            # ⚠️ ALWAYS the real list, including an EMPTY one -- never
+            # collapsed to None here. The contract's `null` means
+            # specifically "captured before Tier 3 existed" (S-7): every
+            # snapshot captured by THIS version of capture.py had Tier 3
+            # actually run, so an empty result is a genuine "queried, found
+            # no listener", not an absence of observation. Writing None for
+            # an empty list would conflate those two -- exactly the I-2
+            # failure this project's own S-7 discipline exists to prevent.
+            "listenerObservations": listener_observations,
         },
         # Extraction is deliberately deferred (D0.5 §5). Raw material outlives
         # the Evidence Contract.
