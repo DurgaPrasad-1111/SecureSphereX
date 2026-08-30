@@ -277,13 +277,96 @@ PATCH. This decision also gates Step 6 (A-6) and Step 11.
 
 ---
 
-## DEC-9 — `B1.5` (property test) ownership — deliberately open
+## DEC-9 — `B1.5` ownership: superseded by DEC-7 (resolved)
 
 Per the guide, not due now — due week 4. `Implementation-Ownership-Plan.md` §3
 currently assigns `B1.5` (property tests, depends on `B1.2`/`B1.3`) to the Architecture
 Owner. **Left open by design; revisit at week 4.** No signature required now.
 
-**Status:** OPEN — revisit week 4.
+**Status:** ~~OPEN — revisit week 4.~~ *(superseded 2026-08-29 — see the
+Resolution below. The original text above is retained as the record of what
+was deferred, not as a live status.)*
+
+---
+
+### Resolution — 2026-08-29 — superseded by DEC-7's amendment
+
+**The question dissolved; it was never answered.** DEC-9 defers a purely
+ADMINISTRATIVE question — every substantive noun in it was about assignment:
+its heading, before this entry was retitled, read "`B1.5` (property test)
+**ownership** — deliberately open"; its body says "§3 currently **assigns**
+`B1.5` … **to the Architecture Owner**"; it closes "No signature required
+now." It contains no `[R]`/`[I]` evidence, no options,
+and no "question for architect ruling" — unlike DEC-15, DEC-20 or DEC-21. The
+row it defers on is a Responsibility Matrix row
+(`Implementation-Ownership-Plan.md:38`, `| CI: G-9 property tests | Jayanth |
+Jayanth | Durga | — |`) — four names, no technical content.
+
+**DEC-7's 2026-08-24 amendment removed the model DEC-9 was deferring on:**
+
+> Work is picked up by availability, not fixed advance assignment. Whoever
+> picks up a piece of work becomes its accountable owner for that specific
+> piece at commit time — the Responsibility Matrix's "Implementer" field is
+> filled in retroactively, by whoever actually did the work, not assigned in
+> advance.
+
+DEC-9 asks whether B1.5's pre-assignment to the Architecture Owner should
+stand. Under DEC-7 amended, pre-assignment is not how any work is allocated.
+The question therefore has no answer to give — it stopped applying on
+2026-08-24, and DEC-9 was simply never updated to say so.
+
+DEC-9 reaches nothing DEC-7 does not. What B1.5 actually still needs decided
+— the property-testing library ([[DEC-22]]) and whether its coverage should
+extend past B1.2/B1.3 ([[DEC-24]]) — DEC-9 is entirely silent on. Both are
+deliberately separate entries rather than folded in here.
+
+---
+
+#### The operational gap DEC-7 leaves open — stated plainly, not softened
+
+DEC-7's amendment does not only reassign ownership; it imposes an obligation:
+
+> Peer review still happens. Whoever is next available reviews it, named
+> explicitly in the commit or pull request. Review is not skipped because
+> assignment is now flexible — accountability moved from "pre-assigned" to
+> "named at the point of work," it did not disappear.
+
+**That obligation is not being met, and the cause is not a commit-message
+habit.** Measured against the actual record, not impression:
+
+- Of the 15 commits since the `varun/main` reconciliation (`da3659d`),
+  **13 are authored by Jayanth alone**. The other two are Durga's corpus
+  checkpoint and the merge commit itself — neither is a review.
+- **Zero commits name a Reviewer.** Grepped every commit body in that range:
+  the only "review" hit is the phrase "design review" inside DEC-21's message,
+  describing a conversation, not a reviewer.
+- On 2026-08-28 and 2026-08-29 — six commits, including the E-6 invariant
+  fix, DEC-21's signing, and B1.4 — **no one other than Jayanth committed
+  anything at all**. Durga's last activity was 2026-08-27; Varun's last
+  commit predates the merge.
+- The named reviewers for the components touched are unavailable in practice:
+  Pipeline core → Durga, Suppression semantics → Varun, Aggregation → Durga,
+  G-9 property tests → Durga (`Implementation-Ownership-Plan.md:38-43`).
+
+So "whoever is next available" has, for this stretch, resolved to **no one**.
+Writing "Reviewer: unfilled" in future commits would record that honestly —
+which DEC-7's ORIGINAL text already anticipated ("the Reviewer role is
+explicitly recorded as unfilled, not assigned pro forma… An unfilled Reviewer
+field that says 'unfilled' is worth more than a filled one that is fiction")
+— but recording it does not supply the second pair of eyes, and several of
+this session's commits changed a frozen-invariant-adjacent code path (the E-6
+fix, DEFECT-22's evaluator change, the suppression range guard).
+
+**This is not resolved here.** It is a question DEC-7 does not reach: what
+does peer review MEAN when only one person is active for days at a time? That
+needed its own decision and now has one — [[DEC-23]], ruled 2026-08-29. It is
+deliberately not pre-empted in this resolution, which closes only the
+ownership question.
+
+- **Status:** RESOLVED — superseded by DEC-7's 2026-08-24 amendment. The
+  ownership question is closed. The review-availability question it exposes is
+  NOT closed here — it is ruled on separately in [[DEC-23]].
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
 
 ---
 
@@ -344,6 +427,17 @@ maintained after initial signing (see the "already resolved" correction
 in `docs/ArchitectureOwnerReviewQueue.md`) — DEC-16/DEC-17 are added here
 per explicit instruction, not as a signal the rest of this table is
 current.*
+
+*Staleness re-confirmed 2026-08-29, as of DEC-24: this table still shows
+DEC-9 as "Open by design" when it is RESOLVED and signed, and omits DEC-20
+through DEC-24 entirely. Deliberately not repaired in that pass — patching
+the DEC-9 row alone would make the table LOOK current while five entries were
+still missing, which is worse than a visibly unmaintained table. Recorded
+here rather than in `docs/DEFECTS.md`: that register is for verification
+findings with an owning step and something they block (its own header), and
+this blocks nothing — it is a maintenance debt in this document, where a
+reader of the stale table will actually see the warning. Not a work item
+tonight; noted so it is not silently forgotten.*
 
 ---
 
@@ -1729,7 +1823,7 @@ a known-brand registry). Neither Option A nor Option B addresses that.
 
 ---
 
-## DEC-21 (CANDIDATE — unsigned, open) — `SecurityEvaluation.consistency` has no coherence-assessment design, and no honest placeholder value exists
+## DEC-21 — `SecurityEvaluation.consistency`: per-module internal-coherence assessment (ten modules; path 1, no contract amendment)
 
 **[R]** `SecurityEvaluation<M>.consistency: ConsistencyAssessment`
 (`evaluation.contract.v1.ts:280`) is non-optional in a FROZEN contract. It
@@ -1740,12 +1834,20 @@ four were closed on 2026-08-26 (`evaluationId`) and 2026-08-27
 `SecurityEvaluation<M>` can be constructed anywhere in this codebase.
 
 **[R]** The contract constrains it hard, and gives all three values a
-meaning (§3, lines 64-76, verbatim):
+meaning (`packages/contracts/evaluation.contract.v1.ts:64-76`, verbatim):
 
 > ECE module specs require a Consistency Assessment in every Evaluation
 > Result. Domain Model §8.3.5 constrains it hard: it assesses coherence of
 > findings WITHIN the module's own domain ONLY. It is NOT confidence, NOT
 > probability, NOT a risk judgement.
+
+This is the frozen contract's own text — DEC-11 established it as the
+authoritative source in place of the missing "ECE Internal Module
+Specifications" document. The contract's own §8.3.5 reference points at the
+Domain Model, which DEC-15 already records as absent from the 46-file
+corpus — a pre-existing, separately logged gap this entry does not depend
+on, since every relation below derives from the enum's own inline comments
+and the live Findings types.
 
 ```ts
 export type ConsistencyAssessment =
@@ -1828,7 +1930,2043 @@ comments pointing here. That is a deliberate, recorded limitation of the
 "conformant stub" precedent authorised `summary`'s placeholder and
 deliberately does NOT extend to this field.
 
-- **Status:** CANDIDATE — unsigned, open. No code change made; the field
-  remains unpopulated and `assembleSecurityEvaluation` continues to throw
-  `Stage1EnvelopeBlockedError` with `missingFields: ['consistency']`.
+---
+
+### Resolution — 2026-08-28 — per-module internal-coherence relations
+
+**Path 1 taken** (design a genuine coherence assessment), not path 2 (a
+frozen-contract amendment). `packages/contracts/` is untouched.
+
+**`indeterminate`'s home, ruled:** `result.status === 'unevaluable'` →
+`'indeterminate'`, unconditionally. This is the one place the contract's own
+definition — "insufficient evidence to assess coherence" — is *literally
+true*: no findings exist to assess. It is not a placeholder, and it is
+unreachable for an `evaluated` result, which is correct.
+
+**The ten relations, implemented in `packages/engine/consistency.ts`.**
+Every one is INTERNAL to a single module's own Findings object; none reads
+another module's evaluation (E-2, §8.4.3). Because nearly every Findings
+field is a producer pass-through, these are in practice checks on the
+PRODUCER contradicting itself.
+
+| Module | Relation → `inconsistent` |
+|---|---|
+| `url` | `isIpLiteral && registrableDomain !== null` |
+| `ssl` | `!httpsEstablished` with any certificate fact non-null; or `daysUntilExpiry < 0` with `certificateCurrentlyValid === true` |
+| `dns` | `!resolves && (aRecordCount > 0 \|\| aaaaRecordCount > 0)` |
+| `redirect` | `hopCount !== chainLength` |
+| `loginForm` | `credentialFormPresent && forms.length === 0` |
+| `javascript` | **none — always `consistent`** |
+| `homograph` | `isMixedScript && scriptsUsed.length === 0` |
+| `authContext` | five clauses: the type's own documented origin-present/absent shape, plus `!storeAvailable` |
+| `downloadContext` | `!referrerPresent && referrerRegistrableDomain !== null`; or `hasCompoundExtension && declaredExtension === null` |
+| `permissionContext` | `requestedPermission === null && precededByUserGesture !== null` |
+
+**`javascript` has no relation, and that is the finding — not an omission.**
+Each pairing among its four live fields was checked and rejected with a
+reason (transmission without a listener is ordinary; an inline script can
+inject a credential interface with `dynamicScriptLoadCount: 0`;
+`dynamicScriptLoadCount` relates to nothing else). Two relations exist in
+principle but are unreachable while DEFECT-18 pins
+`transmissionEndpointDomains` to `[]` and `injectingScriptOriginDomain` to
+`null`.
+
+**Relations deliberately REJECTED, each recorded at its predicate:**
+`chainTrusted` with `chainComplete: false` (AIA fetching makes
+trusted-but-incomplete legitimate); `resolves: true` with zero addresses
+(`resolves` is undefined anywhere in the corpus — [[DEFECT-25]]);
+anything involving `cnamePresent` or `nameServerCount`;
+`mechanisms.length === chainLength` (checks this package's own arithmetic,
+not the producer); `loginForm`'s converse (product ambiguity, ruled out of
+scope); `scriptsUsed.length === 1` with `isMixedScript` ([[DEFECT-24]]);
+`isIdn` implying `containsNonAscii` (punycode form is ASCII);
+`extensionMimeConsistent` against its inputs (already enforced in-module);
+`pageAgeMs` in the permission relation (an ordinary page has an age);
+`pageAgeMs < 0` (range validation, not coherence between findings).
+
+**Consequences, all verified:**
+- `assembleSecurityEvaluation` now RETURNS a complete, type-conformant
+  `SecurityEvaluation<M>` and no longer throws. All thirteen fields are
+  genuinely constructed.
+- A new `assembleEvaluationSet` produces the `EvaluationSet` — one
+  evaluation per module per pass.
+- **Invariant E-8 is testable for the first time** and is now tested
+  directly, on real `SecurityEvaluation` objects, across all four fixtures
+  (`orchestrator.fixture.test.ts` Part 3c, `e2e.sso-flow.fixture.test.ts`
+  section 2b). Every prior version could only assert the weaker "one
+  `ModuleDispatchResult` per module".
+- `Stage1EnvelopeBlockedError` was **DELETED**. It existed only to report the
+  blocked field; with no remaining construction path it was dead code in the
+  same sense DEFECT-18 uses the term, and a retained-but-unreachable error
+  class is a future false safety net. Removed on the Architecture Owner's
+  2026-08-28 instruction. `MechanicalEnvelopeFields` is retained — it is live,
+  used by `buildEvaluation`.
+- No score or tier changed on any fixture: `clean-login` 0/Low,
+  `no-credential` 0/Low, `off-origin-post` 45/Medium, `sso-flow` 0/Low.
+
+**Verification:** adversarial tests seed the ACTUAL violation for every
+module, not just the happy path — a suite that only exercised coherent
+inputs would pass identically against `return false`. Boundary cases are
+covered explicitly (`daysUntilExpiry: 0` is valid, `-5` is not) as are the
+deliberate non-violations. `tsc -b` clean; 18/18 test files pass;
+`test:fixtures` 7/7; `validate:ruleset` CONFORMANT.
+
+- **Status:** RESOLVED and SIGNED 2026-08-29. Implemented in
+  `packages/engine/consistency.ts`.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+---
+
+## DEC-22 — B1.5/G-9: property-testing library selection
+
+**[R]** G-9 is wired into CI and does nothing. `package.json`'s
+`test:properties` is still its original stub —
+`echo "test:properties: stub (Stage 1b / G-9 implements this)"` — and
+`.github/workflows/ci.yml:117-123` runs it under the comment "G-9 — property
+tests (Stage 1b onward)". This is the same shape as DEFECT-1 (G-1 verifying
+nothing) and the pre-Step-8 G-7: a gate that is green because it asserts
+nothing.
+
+**[R]** No decision anywhere selects a property-testing library. Searched
+[[DEC-9]] (five lines, purely administrative — no tooling content), the
+Implementation-Ownership-Plan (four B1.5/G-9 mentions — lines 38, 143, 207,
+222 — none naming a library), and the rule-engine specification (zero hits
+for `fast-check`, `jsverify`, `property-based`). `devDependencies` today are
+`@eslint/js`, `dependency-cruiser`, `eslint`, `globals`, `typescript`,
+`typescript-eslint` — no property-testing library installed.
+
+**Recorded so it is not mistaken for a decision:** `fast-check` was named in
+passing by Claude Code in an earlier working session as "the conventional
+TypeScript choice". That was an assumption, not a ruling, and nothing in this
+corpus endorses it. The investigation below was run precisely because
+"conventional" is not "decided".
+
+---
+
+#### Investigation — registry facts, gathered 2026-08-29
+
+| | `fast-check` | `jsverify` |
+|---|---|---|
+| Latest version | 4.9.0 | 0.8.4 |
+| Last published | **2026-07-08** (~52 days ago) | **2023-09-27** (~2 years stale) |
+| License | MIT | MIT |
+| Weekly downloads | **37,512,910** | 45,837 |
+| Direct dependencies | 1 (`pure-rand`) | 4 (`lazy-seq`, `rc4`, `trampa`, `typify-parser`) |
+| Install-time lifecycle hooks | **NONE** | **NONE** |
+| Unpacked size | ~1.4 MB | — |
+
+**Supply-chain check, the reason for looking at all:** neither package, nor
+`fast-check`'s single transitive dependency `pure-rand`, declares
+`preinstall` / `install` / `postinstall` / `prepare`. Their `scripts` blocks
+are build/test entries that run in the maintainers' repo, not on
+`npm install`. `npm audit` reports **0 vulnerabilities** against the current
+tree. No CVE was discoverable for either through the registry data available
+here — stated as "not found by this check", not as "none exists".
+
+`jsverify`'s four transitive dependencies were each last published in **June
+2022**. That is four unmaintained packages entering the tree, against
+`fast-check`'s one actively-maintained.
+
+---
+
+#### Which is actually better, on the merits — not on popularity
+
+Download counts are reported above for completeness and are NOT the argument;
+a 800:1 ratio mostly measures defaults, not quality. Three things decide it:
+
+1. **Maintenance.** `jsverify` has had no publish in ~2 years and pulls in
+   four dependencies last touched in 2022. Adopting it means adopting five
+   unmaintained packages for a gate that must stay green for the life of the
+   project.
+2. **Dependency surface.** 1 vs 5. This project has a stated preference for
+   fewer dependencies, and `pure-rand` exists for a real reason — a seeded,
+   reproducible PRNG, which is exactly what a REPLAYABLE property failure
+   needs (§17.2, G-10).
+3. **Shrinking and seeding.** `fast-check` reports a failing counterexample
+   with a seed and a shrunk minimal case. For this project that is not a
+   convenience: a property failure that cannot be replayed deterministically
+   is a defect report that cannot be acted on, and determinism is §4.3's
+   central claim.
+
+**The third option, taken seriously rather than dismissed:** a hand-rolled
+harness — a loop, `Math.random`, and assertions — adds no dependency at all
+and is maybe 50 lines. It is genuinely viable for `maxAppliedReduction`'s
+order-independence. It is NOT viable for the whole target: without shrinking,
+a failure surfaces as a 40-element generated finding set with no indication
+which element mattered; without seeding, it is not reproducible; and
+generators for the ten `*Findings` shapes are real work that would then be
+maintained by this project instead of upstream. The dependency buys
+reproducibility and minimisation, which is the part that makes a failing
+property test actionable.
+
+**Recommendation: `fast-check`, as a `devDependency`.** Reasoning above, in
+that order. This is a recommendation, not a resolution — the Architecture
+Owner rules after seeing these findings, not before.
+
+**Scope note:** this entry rules on the LIBRARY only. Whether B1.5's coverage
+should extend beyond B1.2/B1.3 to `stage7-8.ts` and `consistency.ts` is a
+separate schedule commitment, deliberately not bundled into this yes —
+see [[DEC-24]].
+
+**Related:** [[DEC-9]], closed as superseded; [[DEC-23]], the review-
+availability ruling its resolution surfaced.
+
+- **Status:** RESOLVED and SIGNED 2026-08-29 — `fast-check` approved as a
+  devDependency for G-9. Not yet installed; no property test written;
+  `test:properties` still a stub. Implementation follows this ruling.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+---
+
+## DEC-23 — Peer review when only one person is active: Architecture Owner verification pass
+
+**[R]** DEC-7's 2026-08-24 amendment moved accountability from pre-assignment
+to named-at-commit, but kept the review obligation intact:
+
+> Peer review still happens. Whoever is next available reviews it, named
+> explicitly in the commit or pull request. Review is not skipped because
+> assignment is now flexible — accountability moved from "pre-assigned" to
+> "named at the point of work," it did not disappear.
+
+**[I] The obligation is not being met, measured from the commit record rather
+than impression.** Gathered 2026-08-29 over the 15 commits since the
+`varun/main` reconciliation (`da3659d`..`055918b`):
+
+- **13 of 15 commits are authored by Jayanth alone.** The remaining two are
+  Durga's corpus checkpoint (`a45b286`) and the merge commit (`01680ab`) —
+  neither is a review of anyone's work.
+- **Zero commits name a Reviewer.** Every commit body in the range was
+  grepped; the only "review" hit is the phrase "design review" inside
+  DEC-21's message, describing a conversation, not a reviewer.
+- **On 2026-08-28 and 2026-08-29 — six commits — no one other than Jayanth
+  committed anything at all.** Durga's last activity was 2026-08-27; Varun's
+  last commit predates the merge entirely.
+- The named reviewers for the components actually touched were inactive
+  across that window: Pipeline core → Durga, Suppression semantics → Varun,
+  Aggregation → Durga, G-9 property tests → Durga.
+
+So "whoever is next available" has, for this stretch, resolved to **no one**.
+This is not a commit-message habit that better discipline would fix; there
+was no second person to name. Several commits in that window changed
+invariant-adjacent logic — the E-6 violation fix (`f22967e`), DEFECT-22's
+evaluator change (`469497b`), and the suppression range guard (`5e1675c`).
+
+**[I]** DEC-7's ORIGINAL text already provides for recording the absence
+honestly — "the Reviewer role is **explicitly recorded as unfilled**, not
+assigned pro forma… An unfilled Reviewer field that says 'unfilled' is worth
+more than a filled one that is fiction". That remains right, and it remains
+insufficient: recording a gap does not supply the second pair of eyes, and
+deferring review until a named reviewer resurfaces means invariant-adjacent
+code ships unreviewed for days at a time.
+
+**Decision — a standing practice, not a one-time waiver.**
+
+While only one person is actively available, DEC-7's peer-review requirement
+is satisfied by an **explicit, recorded verification pass by the Architecture
+Owner before any commit touching invariant-adjacent logic** — evaluators,
+suppression, aggregation, escalation, consistency. Specifically:
+
+1. The verification pass happens **before the commit**, not deferred until a
+   named reviewer resurfaces.
+2. It is **recorded**, not implicit — the commit names the Architecture Owner
+   as having verified, distinctly from the Implementer line.
+3. It is a genuine verification against the contracts and the property being
+   claimed, not a restatement of the commit message. The negative-control
+   discipline already used this session — break the behaviour, confirm the
+   test catches it, restore — is the standard, not a nice-to-have.
+4. It applies to invariant-adjacent logic. Documentation, register entries,
+   and test-only changes do not require it, though nothing prevents it.
+
+**This applies going forward until Durga or Varun is confirmed active again,
+at which point normal DEC-7 peer review resumes** and this practice lapses
+automatically. It does not amend DEC-7; it states how DEC-7's requirement is
+discharged under single-person availability.
+
+**Stated plainly so it is not over-claimed:** an Architecture Owner
+verification pass is NOT equivalent to independent peer review. The same
+person authoring and verifying loses the independence that makes review
+valuable, and this ruling does not pretend otherwise. It is the strongest
+available discipline under the actual staffing, chosen over the two
+alternatives — shipping unreviewed, or blocking all invariant-adjacent work
+until someone returns — both of which are worse. Commits made under this
+practice remain eligible for retro-review when people are available, exactly
+as DEC-7's original amendment envisaged.
+
+**Related:** [[DEC-9]], whose resolution surfaced this gap and deliberately
+did not pre-empt it.
+
+- **Status:** RESOLVED and SIGNED 2026-08-29. Standing practice, effective
+  immediately, lapsing when a second person is confirmed active.
+- **Signed by:** Jayanth (Architecture Owner)   **Date:** 2026-08-29
+
+**Amendment — 2026-08-29:** a fifth condition, added to the four above. This
+documents an ADDITION to a signed decision, not a revision of it — the
+original four conditions and the 2026-08-29 signature stand unchanged.
+
+5. **Before any `git commit --amend`:** confirm `git log origin/main..HEAD`
+   includes the target commit (i.e. it is still local-only, not yet pushed)
+   before amending. If it is already on `origin`, do not amend — correct via
+   a follow-up commit instead.
+
+Grounded in a real incident, not a hypothetical: on 2026-08-29 an amend of
+`737668a` was requested to widen an understated commit message. The stated
+safety checks — HEAD is the tip, tree clean — both passed, but `737668a` had
+already been pushed (`git ls-remote` confirmed it at `refs/heads/main`), so
+amending would have required a force-push, rewriting history two other
+remotes could already hold. The amend was declined and the correction landed
+as `a588c79` instead. Under single-person availability there is no second
+reviewer to catch this before it reaches `origin`, which is why it belongs in
+this list rather than in ordinary git hygiene.
+
+**Decision:** ☑ Approved — DEC-23 amended as above
+**Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-24 (CANDIDATE — unsigned, open) — B1.6: extend property-test coverage to B1.4 and the consistency relations
+
+**[R]** B1.5's exit criteria and dependency line, from the
+Implementation-Ownership-Plan: line 143 — "Property tests G-9 | **B1.2,
+B1.3** | Randomised; order-independence proven" — and line 222 —
+"suppression monotonic and **order-independent** under property test ·
+aggregation **pure and recomputable**".
+
+**Those targets remain accurate and remain unmet.** Nothing here revises
+them. `stage4.fixture.test.ts` and `stage5-6.fixture.test.ts` are
+example-based: hand-written literals and the four committed fixtures, no
+generators, no randomisation, no shrinking.
+
+**[I] B1.5's dependency line reads `B1.2, B1.3` because B1.4 and
+`consistency.ts` did not exist when the plan was written.** Confirmed from
+git, not inferred:
+
+- `packages/engine/consistency.ts` — added **2026-08-28** (`f3520ea`, DEC-21)
+- `packages/engine/stage7-8.ts` — added **2026-08-29** (`055918b`, B1.4)
+
+Extending coverage to them closes a gap the plan could not have anticipated.
+It does not override the plan, and the plan is frozen and cannot be edited to
+match — which is why the divergence has to live here.
+
+**[I] The cost, quantified so it is visible rather than implied.**
+Property-testable pure functions now in the engine:
+
+| File | Exported functions | In B1.5's original scope? |
+|---|---|---|
+| `stage4.ts` | 2 | Yes (B1.2) |
+| `stage5-6.ts` | 1 | Yes (B1.3) |
+| `stage7-8.ts` | 5 | **No — B1.4, post-dates the plan** |
+| `consistency.ts` | 11 | **No — DEC-21, post-dates the plan** |
+
+**3 functions originally in scope, 16 outside it** — roughly a 6× increase in
+surface. Counted as properties rather than functions:
+
+- **B1.5, original scope (~7 properties):** suppression order-independence;
+  max-not-product across generated application sets; `maxAppliedReduction`
+  bounded in [0, 1]; aggregation determinism over permuted finding sets;
+  score = Σ effectiveWeight where `countedInScore` (P-8); `effectiveWeight`
+  within [0, baseWeight] across generated reductions; empty-set stability.
+- **B1.6, this extension (~8 properties):** `recordIntervention` is a
+  maximum — commutative, associative, idempotent, monotonic (4);
+  `computeEffectiveTier` never returns below the floor, and is idempotent
+  under re-application (2); `computeRawTier` monotonic non-decreasing in
+  score (1); `assessConsistency` returns `indeterminate` if and only if the
+  result is unevaluable, across generated findings for all ten modules (1).
+
+**~15 properties instead of ~7**, plus **generators for the ten `*Findings`
+shapes** — which is the larger share of the work and is required only for the
+`consistency.ts` half.
+
+**Framed as B1.6, deliberately separate from B1.5.** Keeping it distinct
+means B1.5's original exit criteria can be signed off on their own terms
+against the plan as written, without this extension's schedule risk attached
+to them. Bundling would make B1.5 unsignable until a body of work the plan
+never scoped is complete.
+
+**The trade, stated both ways.** Accepting B1.6 means accepting real
+additional test-writing time on top of work already in flight. Declining it
+means G-9 goes green while **16 of 19 pure functions** are covered only by
+hand-picked examples — including `recordIntervention`, whose maximum property
+is currently proven by one hand-enumerated malformed sequence and a 3×3
+sweep, and the ten consistency relations, each proven by exactly one
+coherent and one contradictory literal. Either choice is defensible; leaving
+it unrecorded is not.
+
+**Questions for architect ruling:**
+1. Is B1.6 accepted as a task at all, or is the extension declined and the
+   gap recorded as accepted?
+2. If accepted — scheduled alongside B1.5, or explicitly after it, so B1.5
+   can close first?
+3. Does B1.6 cover both `stage7-8.ts` and `consistency.ts`, or only the
+   former? The `consistency.ts` half carries the `*Findings` generator cost
+   almost entirely on its own.
+
+**Depends on:** [[DEC-22]] (`fast-check` approved) — B1.6 cannot start before
+the library exists, but B1.5 has the same dependency, so this is not a
+distinguishing constraint.
+
+**Related:** [[DEC-21]], which introduced the consistency relations;
+[[DEC-9]], closed as superseded.
+
+- **Status:** CANDIDATE — unsigned, open. A real schedule commitment on top
+  of work already in flight; deliberately not bundled into DEC-22's yes.
 - **Signed by:** *(unsigned — awaiting Architecture Owner)*
+
+---
+
+## DEC-25 (CANDIDATE — unsigned, open) — Output canonicalisation as a class: is order-independence an engine-wide requirement, or established case by case?
+
+**[R]** Determinism is not a quality goal in this project, it is a contracted
+property. §4.3: given identical Security Evaluations and an identical
+rule-set version, stages 2–7 produce an identical score and tier, "no
+dependency on wall-clock time or any iteration/evaluation order".
+`passresult.contract.v1.ts` P-13 requires replay to reproduce "identical
+scoring, identical findings, and an identical effectiveTier", and **G-10 is
+the CI gate that checks it**. §9.1 states the aggregation form directly: "a
+pure function over the complete finding set... SHALL NOT be implemented as an
+incremental accumulator".
+
+**[I] Two defects of the same class were found on the same day, in the same
+file, by the first property test this project has ever run.** Both violated
+§9.1/P-13; neither was visible to any example-based test.
+
+| | Mechanism | Impact |
+|---|---|---|
+| [[DEFECT-26]] | `suppressionsApplied` projected in input-array order | record byte-instability; no score effect |
+| [[DEFECT-27]] | `primarySum` accumulated in input order; IEEE-754 addition is not associative | score differs in final bits; G-10 replay implication |
+
+Both are now FIXED. That is not what this entry is about.
+
+**[I] The pattern, stated as the actual finding:** wherever the engine
+projects a collection or accumulates a number, the OUTPUT inherits the INPUT's
+order unless something is done about it. Nothing in the codebase currently
+requires an author to think about that, and nothing checks it. Two instances
+in one function is weak evidence of a systemic problem and strong evidence
+that the property is not being designed for — DEFECT-27 in particular was
+invisible to a deliberate hand-built reproduction attempt (five weights, all
+120 orderings, one distinct sum, spread 0) and surfaced only under generated
+input.
+
+**[I] Deliberately NOT folded in: [[DEFECT-28]].** It was found in the same
+run and in the same file, and it is a DIFFERENT root cause — a cardinality
+ambiguity in §9.3 (which parent applies when several findings share the parent
+rule), not an ordering or floating-point issue. It has no canonicalisation
+answer; it needs a ruling on what §9.3 means. Merging it into this entry would
+blur a specification gap into an implementation-hygiene question, and the two
+need different remedies.
+
+**[I] Where the pattern could still be hiding — and where it demonstrably
+could not be.** `packages/engine/stage7-8.ts` and
+`packages/engine/consistency.ts` have **no property-test coverage at all**;
+their exit criteria are B1.6, tracked as [[DEC-24]], which is UNSIGNED. Both
+contain pure functions over collections:
+
+- `consistency.ts` — ten predicates reading array fields (`scriptsUsed`,
+  `mechanisms`, `forms`, `transmissionEndpointDomains`).
+- `stage7-8.ts` — `recordIntervention` is a running maximum, and `Math.max`
+  over a set is associative and commutative in IEEE-754 for non-NaN values,
+  so the FP-accumulation half of this pattern is unlikely to bite there.
+
+Stated precisely rather than as blanket suspicion: the FLOATING-POINT half of
+this pattern is specific to summation, and neither file sums anything today.
+The ORDERING half — a projection inheriting input order — is plausible in
+either and unverified in both. §9.3's cardinality ambiguity is specific to the
+aggravator mechanism and does not generalise to either file.
+
+**Questions for architect ruling:**
+
+1. Is order-independence an engine-wide REQUIREMENT to be asserted for every
+   pure function producing a collection or a sum, or a property established
+   case by case where it matters?
+2. If engine-wide: what enforces it? Options include extending B1.5/B1.6's
+   property suite to every such function, a review checklist item under
+   [[DEC-23]]'s verification pass, or a lint-style architectural gate. None is
+   proposed here as preferred.
+3. Should the two remaining untested files be brought under property test
+   BEFORE more engine code is written on top of them, or does that wait for
+   [[DEC-24]]'s scheduling ruling regardless?
+
+**Cost note, so the answer is not free-seeming:** extending property coverage
+to `stage7-8.ts` and `consistency.ts` is exactly the [[DEC-24]] scope already
+quantified there (~8 additional properties plus generators for the ten
+`*Findings` shapes). This entry does not re-argue that cost; it observes that
+two real defects of this class were found the moment property testing was
+first applied, which is evidence bearing on DEC-24's open question rather than
+a separate proposal.
+
+**Related:** [[DEFECT-26]], [[DEFECT-27]] (the two instances, both fixed);
+[[DEFECT-28]] (same run, different root cause, deliberately separate);
+[[DEC-22]] (`fast-check` approved — its shrinking/seeding argument is what
+made DEFECT-27 findable); [[DEC-24]] (B1.6 scope, unsigned).
+
+- **Status:** CANDIDATE — unsigned, open. No code change proposed; both
+  instances are already fixed. This entry asks whether the class needs
+  systematic treatment, which is a scope question, not an implementation one.
+- **Signed by:** *(unsigned — awaiting Architecture Owner)*
+
+---
+
+## DEC-26 — Extraction has never been built; minimal scope for it, given how few rules the corpus can validate at all
+
+**[R] The pipeline was always a three-stage design, and only two stages
+exist.** `packages/contracts/snapshot.format.v1.ts`'s `ExtractionRecord`
+carries `extractorVersion`, `evidenceContractVersion`, `extractedOn`, and
+`evidence: SecurityEvidence` — capture produces `RawMaterial`, an EXTRACTOR
+turns it into `SecurityEvidence`, and the engine consumes that. `Snapshot.
+extraction` is typed `ExtractionRecord | null`.
+
+**[I] No snapshot has ever been extracted.** Sampled 60 snapshots across
+both labels from the corpus payload store: **0 have `extraction`, 0 have
+`presentsCredentialInterface`.** Both are `null` throughout. A real phishing
+snapshot's top level is `snapshotId`, `formatVersion`, `capturedOn`,
+`provenance`, `split`, `fetch`, `raw`, `extraction: null`,
+`presentsCredentialInterface: null`.
+
+This is NOT a defect and is not filed as one: nothing is broken. The
+extractor was never written. It is recorded here because it changes what
+C1.5 costs and what CP-2 can claim.
+
+**[I] What `raw` actually holds**, from
+`phishing/2026-08-21/2f315a95cbb6f349315c786702b58343.json.gz`:
+
+| field | present |
+|---|---|
+| `requestedUrl`, `finalUrl` | yes — plain strings |
+| `renderedDom` | yes — raw HTML |
+| `domContentHash`, `responseHeaders` | yes |
+| `redirectChain` | present but `[]` on this snapshot |
+| `tlsCertificateChain` | **null** |
+| `dnsRecords` | **null** |
+| `screenshotRef` | **null** |
+
+---
+
+#### Three DIFFERENT kinds of gap, deliberately kept distinct
+
+Collapsing these into "extraction is missing" would hide that they need
+completely different responses.
+
+**1. BUILDABLE NOW — raw material exists, extraction logic does not.**
+`url` and `loginInterface`. The URL strings and the rendered DOM are both
+captured. What is missing is parsing: one URL string into `UrlFindings`'
+eleven fields (needs PSL for `registrableDomain`), and the DOM into
+`credentialFormPresent` plus `forms[]` with field kinds, hidden flags,
+autocomplete state and action domains. `domainRepresentation` belongs here
+too, with a caveat: `docs/ProducerCapabilityManifest.md` marks
+`scriptsUsed`/`isMixedScript`/`confusableSkeleton` NOT OBSERVABLE for the
+content-script spike, but explicitly as "library gaps, not platform gaps —
+a real producer can bundle the tables". A harness can bundle Unicode
+script-property and UTS-39 confusables data; a content script could not.
+
+**2. STRUCTURALLY IMPOSSIBLE without changing capture itself.**
+`scriptRuntime`. `listenerOnCredentialField`,
+`clientSideTransmissionObserved` and `credentialInterfaceInjected` are
+RUNTIME observations. No static snapshot of rendered DOM can ever show
+them, however good the extractor. Closing this would mean instrumenting
+capture to execute and observe pages — a change to the capture stage, not
+the extraction stage.
+
+**Flagged for an explicit decision, because the value looks like zero:**
+`scriptRuntime`'s only consumers are **CRED-05** and **CRED-A1**, and
+[[DEC-14]] already accepted both as **non-functional for Phase I** (signed
+2026-08-25). So building capture instrumentation for `scriptRuntime` would
+benefit **no live rule at all** — the two rules it feeds cannot fire today
+regardless of evidence quality. Recommend NOT building it, and recommend
+that be recorded rather than left as an open todo someone later picks up
+without noticing DEC-14.
+
+**3. CONTRACTUALLY OUT OF SCOPE — not an implementation choice.**
+`downloadContext` and `permissionContext`. `snapshot.format.v1.ts:283-285`,
+verbatim:
+
+> S-9  DL and PM family rules are NOT corpus-validatable (D0.1 conformance
+>      classes). Snapshot-derived metrics cover the CRED family only; DL-01,
+>      DL-02 and PM-01 REQUIRE in-browser validation.
+
+`authContext` is likewise closed off, by a different invariant —
+`snapshot.format.v1.ts:281-282`:
+
+> S-8  A snapshot NEVER contains user data. The capture pipeline MUST NOT
+>      read or write the Authentication History Store (§20.2).
+
+---
+
+#### S-10: a SECOND, independent reason CRED-04 cannot be trusted here
+
+`snapshot.format.v1.ts:289-291`, verbatim:
+
+> S-10 CRED-04 is DIVERGENT: the harness observes server-side redirect chains
+>      the extension may not see. Its corpus recall MUST be reported
+>      separately and MUST NOT be folded into a headline figure.
+
+**Cross-reference, stated explicitly so a future reader does not assume
+fixing one fixes both:** [[DEFECT-19]] records that CRED-04 is structurally
+unable to fire because `RedirectFindings.initialRegistrableDomain` and
+`.finalRegistrableDomain` are ungroundable and permanently `null`. That is
+an ENGINE-side defect with a stated fix path (an evidence-contract
+amendment adding registrable-domain fields, or Stage 1 producer-side
+extraction).
+
+S-10 is a different problem and **survives that fix completely**. Even with
+DEFECT-19 resolved and CRED-04 firing correctly, the harness and the
+extension observe DIFFERENT redirect chains — server-side versus what a
+browser follows — so a corpus recall figure for CRED-04 measures something
+the extension does not do. S-10 does not permit folding it into a headline
+figure at all.
+
+Two independent barriers. Resolving DEFECT-19 leaves S-10 untouched.
+
+---
+
+#### S-11, verified live before citing
+
+`snapshot.format.v1.ts:286-288`, verbatim:
+
+> S-11 Residual leakage is REPORTED, never engineered away by re-splitting:
+>      cross-split kit duplication rate, temporal-holdout metrics, and
+>      CRED-02 brand overlap accompany every published result (§13.3).
+
+Confirmed to match `spec/DesignNote-Corpus-Split-Independence.md` §5, whose
+recommendation is "adopt C (registrable domain) as the split key, and report
+residual leakage rather than engineering it away", with Complement 1
+(cross-split duplication rate), Complement 2 (temporal holdout) and
+Complement 3 (CRED-02 brand overlap) mapping one-to-one onto S-11's three
+named metrics. The contract encodes the design note; the substance agrees.
+
+Not a scoping constraint on extraction — a REPORTING obligation on whatever
+metrics C1.5 eventually publishes. Recorded here so it is not discovered
+after the fact.
+
+*(Minor observation, no action: S-11 appears BEFORE S-10 in the contract's
+invariant list. Cosmetic ordering only; both are unambiguous.)*
+
+---
+
+#### The realistic corpus-validatable set
+
+| Rule | Corpus-validatable? | Why |
+|---|---|---|
+| **CRED-01** | **Yes, fully** | `loginForm.forms[].actionRegistrableDomain` + `url.registrableDomain` |
+| **CRED-03** | **Yes, fully** | `homograph.*` + `loginForm.credentialFormPresent` — needs bundled Unicode/UTS-39 tables |
+| **CRED-06** | **Yes, fully** | `loginForm.credentialFormPresent` + `url.isSecureScheme` |
+| **CRED-07** | **Yes, fully** | `loginForm.forms[]` field flags + `url.registrableDomain` |
+| **CRED-02** | **PARTIAL only** | `loginForm` half is extractable; the `authContext` half needs the live store, which S-8 forbids the capture pipeline from touching. Can NEVER be corpus-validated, regardless of how good extraction becomes. |
+| CRED-04 | No | [[DEFECT-19]] (engine) AND S-10 (divergent observation) — independently |
+| CRED-05, CRED-A1 | No | [[DEC-14]], accepted non-functional |
+| DL-01, DL-02, PM-01 | No | S-9, contractually |
+
+**Four rules fully, one partially. Out of eleven.**
+
+---
+
+#### Build scope — ALL SIX derivable categories (Architecture Owner ruling, 2026-08-29)
+
+**Ruled this session: no minimal scope. Build everything genuinely derivable
+from captured data, not only what currently unlocks a validatable rule.**
+
+Extract all six categories the raw material can actually support:
+
+| Category | Raw source | Build? |
+|---|---|---|
+| `url` | `raw.requestedUrl` / `raw.finalUrl` | **YES** |
+| `loginInterface` | `raw.renderedDom` | **YES** |
+| `domainRepresentation` | host of `raw.finalUrl` | **YES** |
+| `redirect` | `raw.redirectChain` | **YES** |
+| `transport` (ssl) | `raw.tlsCertificateChain` — **always `null`** | **NARROWED — `isHttps` only** |
+| `dns` | `raw.dnsRecords` — **always `null`** | **NARROWED — permanently stubbed** |
+| `scriptRuntime` | — | NO — structurally impossible |
+| `downloadContext` | — | NO — S-9 |
+| `permissionContext` | — | NO — S-9 |
+| `authContext` | — | NO — S-8 |
+
+**Stated plainly, so the ruling is not mistaken for a claim it does not
+make: extracting `redirect`, `transport` and `dns` does NOT change which
+rules are corpus-validatable.** That remains **four of eleven** — CRED-01,
+CRED-03, CRED-06, CRED-07 fully, CRED-02 partially — exactly as the S-8 /
+S-9 / S-10 findings above establish. Those findings are unaffected by build
+scope and are not revised by this ruling.
+
+They are built anyway because they are genuinely buildable from data already
+captured, and because the corpus is then ready the moment a rule needs them
+— whenever DEFECT-19's contract amendment lands, whenever DEC-5's ssl/dns
+stubs are promoted to real implementations, whenever a future rule-set
+version reads a `dns.*` or `transport.*` path. Extracting them later would
+mean re-running extraction over the whole corpus; extracting them now costs
+one pass. The earlier draft recommended a three-category minimum on the
+grounds that the other three unlock no validatable rule today. That
+reasoning was correct about validatability and wrong about what to build:
+"unlocks a rule today" is a narrower test than "is genuinely derivable", and
+the Architecture Owner ruled for the latter.
+
+**Two exclusions stand exactly as reasoned above, unaffected by this
+ruling:**
+
+- **`scriptRuntime` — NOT built, and capture is NOT instrumented for it.**
+  Structurally impossible from a static snapshot (gap kind 2), and its only
+  consumers — CRED-05 and CRED-A1 — are [[DEC-14]] non-functional, so the
+  instrumentation would benefit no live rule. This is not a "buildable but
+  deprioritised" case; the raw material does not and cannot exist.
+- **`downloadContext`, `permissionContext` — cannot be built.** S-9,
+  contractually. `authContext` likewise, by S-8.
+
+**Caveats carried forward from the earlier draft, still applicable:**
+`domainRepresentation` remains the most expensive of the six — bundled
+Unicode script-property and UTS-39 confusables tables — and must respect
+[[DEC-20]]'s `confusableSkeleton` convention (`absent()` where no skeleton is
+distinct from the domain) or CRED-03 fires on every page, the exact defect
+DEC-20 already corrected once in the fixtures.
+
+---
+
+#### AMENDMENT (Architecture Owner ruling, 2026-08-29) — `transport` and `dns` narrowed to `isHttps` only
+
+**This supersedes the "genuinely derivable" rationale above FOR THESE TWO
+CATEGORIES SPECIFICALLY.** The remaining four — `url`, `loginInterface`,
+`domainRepresentation`, `redirect` — are unaffected and still build fully.
+
+The ruling above was made when the evidence was "`null` on the snapshot
+inspected" — one sample. That was too weak a fact. The producer was then read
+directly, and the position is stronger and different in kind:
+
+- **`tools/capture/capture.py:330`** — `"dnsRecords": None`. A hardcoded
+  literal. There is no code path that assigns anything else.
+- **`tools/capture/capture.py:228`** — `tls_chain: list[str] | None = None`.
+  `tls_chain` occurs exactly **twice** in the entire file: that initialiser
+  and line 329 where it is serialised. **It is never assigned.**
+
+Empirically confirmed at 50 snapshots per store (25 benign + 25 phishing,
+seeded sample, two independent payload stores): `tlsCertificateChain`
+non-null **0/50 and 0/50**; `dnsRecords` non-null **0/50 and 0/50**.
+`screenshotRef` likewise 0/100.
+
+So these fields are not "sparsely populated" or "populated later" — they are
+**null by construction, for every snapshot that has ever been captured or
+that this capture pipeline can produce.** "Genuinely derivable from captured
+data" was the test the ruling applied, and on the evidence now available
+these two categories **fail that test**: they are derivable only from a
+contract shape that capture never fills.
+
+**Narrowed scope, ruled today:**
+
+- **`transport` — build `isHttps` ONLY**, derived from the scheme of
+  `raw.finalUrl`, which is always present. The other seven fields
+  (`certificateSubject`, `subjectAlternativeNames`, `validFrom`, `validTo`,
+  `issuer`, `chainComplete`, `chainTrusted`) are emitted as `notCollected`
+  unconditionally. **No X.509 parsing is written.** This also removes the
+  third dependency flagged during scoping — a certificate parser — from the
+  build entirely.
+- **`dns` — permanently stubbed.** All eight fields `notCollected`
+  unconditionally. No DNS-record parsing is written.
+
+**"Permanently" means: for as long as `capture.py` does not collect these.**
+This is not a deferral behind a todo. Un-stubbing either category requires a
+change to the CAPTURE stage first — instrumenting TLS-chain retrieval and DNS
+resolution — at which point this amendment is revisited on new evidence. An
+extractor change alone can never lift it.
+
+S-7 governs the stubbed fields: `notCollected`, never `absent`, because the
+harness cannot populate them and `absent` would assert a confirmed-negative
+fact. ⚠️ Noted for a later cleanup, not resolved here: every
+`NotCollectedReason` is worded for an extension (`api_unavailable` = "browser
+exposes no API for this") and none is worded for "the capture pipeline does
+not collect this." `api_unavailable` is the closest fit and is what the
+extractor will emit; the fit is loose and the enum may want a
+`producer_does_not_collect` variant in some future amendment.
+
+**Consequence for CP-2 that should be settled before metrics are published:**
+a confusion matrix from this corpus covers four rules fully and one
+partially, not the engine. It should be published as such, with CRED-04
+reported separately if it is reported at all (S-10) and S-11's three
+residual-leakage metrics alongside. Presenting it as whole-engine accuracy
+would overstate what the corpus can establish. This is unchanged by the
+build-scope ruling — building more extraction does not widen what can be
+validated.
+
+**Ruled 2026-08-29:** build all six derivable categories (above).
+`scriptRuntime` capture instrumentation is explicitly NOT to be built while
+[[DEC-14]] stands — recorded here rather than left as an open todo someone
+later picks up without noticing that its two consumers cannot fire.
+
+**Still open for architect ruling:**
+1. Does CP-2's scope get restated to "CRED-01/03/06/07 fully, CRED-02
+   partially" before any metrics work begins? — see also [[DEC-27]], which
+   adds a second, independent narrowing: only **12.3%** of snapshots carry a
+   credential interface at all, so the effective sample for those four rules
+   is far smaller than the corpus count.
+2. ~~Extraction language — TypeScript or Python?~~ **RESOLVED in [[DEC-27]]:
+   TypeScript, with `tldts` and `parse5`.** Not decided in this entry.
+
+**Related:** [[DEC-5]] (ssl/dns stubs), [[DEC-14]] (CRED-05/CRED-A1
+non-functional), [[DEC-20]] (`confusableSkeleton` convention),
+[[DEFECT-19]] (CRED-04 engine-side), [[DEFECT-23]]/[[DEFECT-24]] (homograph
+gaps bearing on CRED-03).
+
+- **Status:** SIGNED 2026-08-29. This entry sets SCOPE. Its
+  `transport`/`dns` scope was narrowed by the amendment above on 2026-08-29;
+  its language question is resolved by [[DEC-27]], under which
+  implementation of `url`, `domainRepresentation` and the `isHttps`-only
+  `transport` slice has begun.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-27 — Extraction toolchain: TypeScript, `tldts`, `parse5`; PSL divergence gated by a new V-15
+
+Consolidates the toolchain decisions for the extractor whose scope
+[[DEC-26]] sets. Three separable rulings plus two scoping facts recorded so
+they are not rediscovered later.
+
+---
+
+### 1. Language: TypeScript. Confirmed.
+
+`apps/harness` may import `contracts` and `engine` under the dependency
+matrix (`CLAUDE.md` §2), so a TypeScript extractor is type-checked by
+`tsc -b` directly against the frozen `SecurityEvidence` — including
+`Observation<T>`'s tri-state, which S-7's "`notCollected` never `absent`"
+discipline depends on. A Python extractor would hand-maintain an untyped
+mirror of a frozen contract it could never be checked against, and S-7 would
+degrade from a type error to a convention.
+
+Second reason: **CP-3 requires the harness and the extension to produce
+identical findings on SHARED fields**, and A1.2's exit criterion is the same.
+One language means one derivation of the shared logic rather than two
+implementations to reconcile.
+
+**Stated honestly, because it was overstated in the first assessment: DOM
+ACCESS is not reusable.** The extension reads a live DOM
+(`document.querySelectorAll`); the harness parses an HTML string. That layer
+is written twice regardless. What genuinely transfers is everything above it
+— URL → `UrlEvidence`, host → `DomainRepresentationEvidence`, field
+classification, and the `Observation` discipline — plus the contract types.
+Real reuse, narrower than "write it once."
+
+**The counter-argument, recorded because it is strong and was nearly
+decisive.** `rulesets/rules-v0.1.0.json:6` already pins the PSL authority:
+
+```json
+"pslVersion": "tldextract==5.3.0 include_psl_private_domains=true (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)"
+```
+
+⚠️ **The string shown above was SUPERSEDED after this entry was drafted.** When
+DEC-27 was written it read `"tldextract==5.3.0 (bundled snapshot sha256:b693…)"`
+— library, version and digest, with no configuration. [[DEFECT-34]] showed that
+omission was load-bearing (the same library and snapshot resolve differently
+depending on one flag), and [[DEC-31]] added the configuration, applied in
+`409171d`. The current value is quoted here so this entry's argument is read
+against the artifact as it actually stands. **The argument itself is unchanged
+and was not weakened by the correction — if anything DEFECT-34 confirmed it.**
+
+and `tools/capture/capture.py:224` already computes `split_key =
+registrable_domain(url)` with that same library — so **the corpus split keys
+are themselves tldextract-derived.** A TypeScript extractor using `tldts`
+ships a DIFFERENT PSL snapshot from the one the frozen rule set declares.
+`registrableDomain` is the field CRED-01 and CRED-07 both key on, so a
+suffix-boundary disagreement changes findings while `pslVersion` still claims
+tldextract 5.3.0. Python would have inherited the pinned snapshot for free.
+
+That cost is accepted, and **paid for by ruling 3 below**, which converts the
+divergence from invisible to gated. Without ruling 3 this language choice
+would be unsafe.
+
+---
+
+### 2. Libraries: `tldts` for PSL, `parse5` for HTML.
+
+Diligenced to the [[DEC-22]] standard. All four candidates: **MIT**, **no
+`install`/`preinstall`/`postinstall` hooks**, **`npm audit`: 0
+vulnerabilities**.
+
+| Package | Version | Last publish | Weekly DL | Packages added |
+|---|---|---|---|---|
+| **`tldts`** ✅ | 7.4.11 | 2026-08-24 | 80.9M | 2 |
+| `psl` | 1.15.0 | 2024-12-02 (~21 mo) | 43.0M | 2 |
+| **`parse5`** ✅ | 8.0.1 | 2026-04-19 | 153.8M | 2 |
+| `htmlparser2` | 12.0.0 | 2026-07-17 | 94.9M | 6 |
+
+**`tldts` over `psl`, on the merits: freshness, which for a PSL is the whole
+product.** `psl`'s last publish is ~21 months old, so its suffix list is ~21
+months stale — and a stale PSL does not fail loudly, it silently misresolves
+eTLD+1 for every suffix added since. That is precisely the failure mode
+`pslVersion`'s own contract comment names ("A PSL update can shift an eTLD+1
+boundary and change a sameSite outcome under identical evidence"). Equal
+footprint, equal licence, both hook-free.
+
+**`parse5` over `htmlparser2`, on the merits: browser semantics.** `parse5`
+implements the HTML5 tree-construction algorithm, including its
+error-recovery and implied-tag-insertion rules, so malformed markup parses
+the way a browser parses it. `htmlparser2` is a fast forgiving stream parser
+that does not implement tree construction. That distinction is load-bearing
+here for a specific reason: **`raw.renderedDom` is a post-render Playwright
+serialisation of what Chromium actually built**, and phishing pages are
+disproportionately malformed. A parser that recovers differently from
+Chromium would derive a different form structure from the same page.
+Matching browser semantics is the correctness requirement, not a preference.
+`parse5` is also the lighter of the two (2 packages vs 6) and is the parser
+`jsdom` itself uses.
+
+---
+
+### 3. MANDATORY: V-15 and a PSL conformance fixture. Not optional.
+
+**`pslVersion` is declared, contractually meaningful, and enforced by
+nothing.** Searched `tools/`, `packages/`, `apps/`: it appears in the
+contract definition, in `BASELINE.md`'s amendment table, and in one comment
+in `contract-conformance-check.py`. **No validator check reads it. No engine
+code reads it.** It is a declared-but-unenforced field — the same shape as
+the `integrityDigest` gap that [[DEFECT-17]] found and closed by wiring
+**V-14** into G-8.
+
+Two things are therefore required, and adopting `tldts` is conditional on
+both:
+
+**(a) A new G-8 check, V-15** (next free — `validate-ruleset.py`'s header
+documents V-1…V-14, V-14 being DEFECT-17's addition). V-15 asserts that
+`RuleSet.pslVersion` matches the PSL the extractor actually bundles. A
+mismatch fails the gate. This makes an invisible divergence a build failure,
+exactly as V-14 did for the integrity digest.
+
+**(b) A PSL conformance fixture** proving `tldts` and `tldextract` agree on
+registrable-domain boundaries.
+
+⚠️ **THE FIXTURE THIS SECTION ORIGINALLY SPECIFIED WAS DEFECTIVE, and the
+defect was in the specification, not the implementation.** Recorded here rather
+than quietly overwritten, because the failure is instructive.
+
+As drafted, this section named four boundary domains and reported that the
+fixture confirmed agreement on all five cases. That was true and worthless.
+Both sides ran at their LIBRARY DEFAULTS — `psl-reference.py` called
+`tldextract.extract()`, `psl.ts` called `tldts` unconfigured — while
+`capture.py:86-92` runs with `include_psl_private_domains=True`. The fixture
+confirmed two defaults agreed **with each other** while neither matched the
+producer, and passed green while the two PSLs actually in use disagreed on
+**32.5% of phishing snapshots**. The `user.github.io -> github.io` expectation
+in the original table is precisely the wrong answer: the producer returns
+`evil1.github.io`.
+
+[[DEFECT-34]] names the shape — *a verification mechanism confirms internal
+consistency between two things that both happen to be wrong the same way,
+rather than confirming either one matches the actual authoritative
+configuration* — and records the standing principle that a conformance check
+MUST verify against the producer's actual runtime configuration.
+
+**The corrected fixture**, in force since `ce05ded`, runs **seven** cases, of
+which **four are PSL-PRIVATE and chosen because they fail if either side
+reverts to a default**:
+
+| Domain | Expected (producer config) | Exercises |
+|---|---|---|
+| `user.github.io` | `user.github.io` | PSL PRIVATE — ICANN-only yields `github.io` |
+| `cancelcardiffbahora.vercel.app` | `cancelcardiffbahora.vercel.app` | PSL PRIVATE — real live-feed phishing host |
+| `qg77.chris-x.workers.dev` | `chris-x.workers.dev` | PSL PRIVATE — ICANN-only yields `workers.dev` |
+| `bucket.s3.amazonaws.com` | `bucket.s3.amazonaws.com` | deep PSL PRIVATE suffix |
+| `example.co.uk` | `example.co.uk` | multi-label ICANN — control, identical under both |
+| `school.pvt.k12.ma.us` | `school.pvt.k12.ma.us` | four-label ICANN — control |
+| `accounts.example.com` | `example.com` | plain two-label control |
+
+The fixture additionally asserts the ORACLE'S CONFIGURATION
+(`ref.includePrivateDomains === true`), so a default-configured oracle now
+fails rather than silently verifying the wrong question. [[DEC-32]] removes the
+duplication entirely by single-sourcing the flag in `tools/ci/psl-config.json`.
+
+Disagreement on any of these blocks adoption. Seven is a floor, not a ceiling —
+the list should grow when a divergence is found in the wild.
+
+---
+
+### 4. Scoping fact for C1.5 / CP-2: the credential-interface population rate is **12.3%**
+
+Measured over the full 617-snapshot consistent store, not sampled:
+
+| Label | Snapshots | Has DOM | Has `<form>` | **Has password input** |
+|---|---|---|---|---|
+| benign | 200 | 126 (63.0%) | 67 | **14 (7.0%)** |
+| phishing | 417 | 342 (82.0%) | 118 | **62 (14.9%)** |
+| **total** | **617** | **468 (75.9%)** | **185** | **76 (12.3%)** |
+
+DOM availability is fully explained by `fetch.outcome`: `success` (333),
+`http_error` (123) and `empty_document` (12) carry a DOM;
+`dns_resolution_failed` (74), `timeout` (62), `navigation_error` (10) and
+`tls_handshake_failed` (3) do not. 73 of the DOMs present are under 200
+bytes.
+
+**Why this is recorded as a DECISION input and not a curiosity:** CRED-01,
+CRED-03, CRED-06 and CRED-07 — the four rules [[DEC-26]] identifies as fully
+corpus-validatable — all gate on `credentialFormPresent`. So the effective
+validatable sample for those rules is **~76 snapshots, not 26,700**, and on
+this store the credential-bearing negative class is **~14 benign snapshots**.
+
+**CP-2's eventual confidence intervals MUST be computed on the
+credential-bearing subset, not the raw corpus count.** An interval quoted
+against 26,700 would be wrong by more than two orders of magnitude in the
+denominator and would present a ~14-negative measurement as a large-sample
+result. This is a distinct constraint from S-11's residual-leakage reporting
+and from S-10's CRED-04 separation; all three apply simultaneously.
+
+Caveat, stated so the number is not over-trusted: this is a regex probe for
+`<input type=password>`, not extraction. It undercounts OTP/PIN/username-only
+interfaces — `CredentialFieldKind` has five variants — and any form
+constructed after `load` fired. Real extraction will find more. The order of
+magnitude is not in question.
+
+---
+
+### 5. Operational item, NOT a blocker: corpus locality
+
+`corpus/` in the working repository holds `INDEX.jsonl` (26,700 entries) and
+`.gitkeep` — **zero payloads**. This is correct per [[DEC-1]] (payload never
+enters git), but it means the corpus the committed index describes is **not
+reachable from the working tree**, and no payload store matching those 26,700
+entries was found on this machine.
+
+Development and the S-6 determinism proof therefore use a **617-snapshot
+store whose payload count and index line count agree exactly** (a second
+store on disk holds 687 payloads against 481 index lines and is **not** used
+— that inconsistency is itself worth a look, separately).
+
+This does not block extraction: S-6 is a property of the extractor
+(`identical RawMaterial + identical extractorVersion ⇒ identical
+SecurityEvidence`), and any real snapshot set proves or disproves it equally
+well. It DOES block C1.5 metrics, which need the real corpus. Recorded as an
+operational item — the payload store for the 26,700-entry index needs to be
+located or re-captured before CP-2.
+
+---
+
+**Related:** [[DEC-1]] (corpus never in git), [[DEC-8]] (`pslVersion`
+introduced, A-6), [[DEC-22]] (dependency diligence standard), [[DEC-26]]
+(extraction scope), [[DEFECT-17]] (the V-14 precedent this V-15 follows),
+[[DEFECT-31]] (fabrication forced by contract shape).
+
+---
+
+### Ruling 3 — BUILT 2026-08-29. How the incomparable-string problem was resolved.
+
+**The two version strings cannot be compared, and V-15 does not pretend
+otherwise.** The rule set declares `tldextract==5.3.0
+include_psl_private_domains=true (bundled snapshot sha256:b693…)` — the
+configuration clause added by [[DEC-31]] in `409171d`, after this entry was
+drafted; the extractor bundles `tldts@7.4.11`. Different projects,
+different version lines, different PSL snapshot identities. No normalisation
+makes them comparable, and a check that compared them would either fail
+permanently or, if fudged into passing, assert nothing.
+
+Comparing them is also **not the risk worth gating**. The risk is DRIFT: one
+side moves and nobody re-verifies that the two PSLs still agree on
+registrable-domain boundaries — silently changing `registrableDomain`, the
+field CRED-01 and CRED-07 both key on.
+
+So the mechanism splits in two, and each half asserts only what it can:
+
+**V-15 (in `validate-ruleset.py`, gate G-8) — the PINNING half.** Two exact
+comparisons between values that ARE comparable:
+
+1. `BUNDLED_PSL` in `apps/harness/extract/version.ts` vs the `tldts` actually
+   in `node_modules` — catches the dependency moving.
+2. `PSL_RECONCILED_AGAINST` in the same file vs the rule set's `pslVersion` —
+   catches the rule set's declaration moving.
+
+Either mismatch means conformance was last verified against something no
+longer in use. `PSL_RECONCILED_AGAINST` exists precisely so there is a
+comparable value to check; it records WHICH declared `pslVersion` the
+empirical reconciliation was performed against.
+
+**`psl-conformance.fixture.test.ts` (gate G-8 companion) — the EMPIRICAL
+half.** Invokes `tools/ci/psl-reference.py` and compares tldextract's answers
+against tldts's directly over the boundary set. Confirmed live:
+**tldts 7.4.11 and tldextract 5.3.0 agree on all five domains**, including
+both PSL private-section cases. Degrades to a pinned baseline when tldextract
+is not importable — CI installs no Python deps — and **says which mode ran**,
+never claiming a live cross-check that did not happen.
+
+Together: V-15 proves the pairing is DECLARED current; the fixture proves the
+two actually AGREE. Neither alone is sufficient, which is why ruling 3
+required both.
+
+**⚠️ KNOWN GAP — V-15's constants are SELF-ATTESTED. Verified, not theorised.**
+
+Walked through the combined case explicitly: what if BOTH sides move in one
+commit — the rule set's `pslVersion` changes AND `tldts` is upgraded together?
+
+| Case | V-15 |
+|---|---|
+| Both move, `version.ts` NOT updated | ✅ **FAILS** — both checks trip |
+| Both move, both constants updated to match | ⚠️ **PASSES** |
+
+The second row is the gap, and it is **by design rather than an oversight**:
+V-15 gates whether the pairing is DECLARED current, and a developer who edits
+both constants has declared it current. Nothing V-15 can see distinguishes
+"updated the constants and re-ran conformance" from "updated the constants."
+
+**The backstop is `psl-conformance.fixture.test.ts`** — but it had a hole of
+its own. `psl-reference.py` exits 3 when tldextract is not importable, and the
+test then degrades to comparing tldts against DEVELOPER-WRITTEN expectations,
+with no independent oracle. **CI installed no Python dependencies**, so the
+live cross-check was never running there. A simultaneous update that also
+edited the expectation table would have passed CI with zero independent
+verification.
+
+**Closed, because the fix was trivial:** `ci.yml` now installs tldextract at
+the version DERIVED from the rule set's own `pslVersion` (so it cannot drift
+from what is declared), and sets `SSX_REQUIRE_PSL_ORACLE=1`, which turns the
+degrade path into a hard failure. CI can no longer silently fall back to the
+weaker mode; local development still can, and says so loudly.
+
+**Residual gap, NOT closed and not trivial:** the two PSLs are compared on
+five boundary domains. A disagreement on any suffix outside that list is
+caught by nothing. The list is a floor and should grow whenever a divergence
+is found in the wild.
+
+**A flaw found by negative control, recorded because it was self-inflicted.**
+V-15 first returned "no violations" when `version.ts` was absent — a green
+check that had verified nothing, the same vacuous-gate shape [[DEFECT-29]]
+closed for G-9's `--if-present` and [[DEFECT-17]] closed for the integrity
+digest. It now FAILS on a missing extractor. Caught only because the negative
+control tested the missing-file path rather than just the mismatch paths.
+
+- **Status:** SIGNED 2026-08-29. **Rulings 1, 2 and 3 are all now
+  implemented** (V-15 green as one of fifteen G-8 checks; conformance fixture
+  wired into `ci.yml` with no `--if-present`).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-28 — CRED-01 and CRED-07 verified UNFIRABLE on real 2026 phishing: the form-action threat model is superseded, and it was the assumption [[DEC-14]] rested on
+
+**[R] Measured, not inferred.** The full pipeline was run end to end against a
+real corpus for the first time — 617 snapshots (200 benign, 417 phishing),
+snapshot → `extractEvidence` → `runAnalysisPass` (Stages 1–8) → tier, 0 errors.
+
+| Rule | Firings | |
+|---|---|---|
+| **CRED-06** | 9 phishing, 0 benign | the only rule that fired at all |
+| **CRED-01** | **0** | weight 45 — the highest in the rule set |
+| **CRED-07** | **0** | requires the same off-site conjunct |
+| CRED-03 | 0 | 0 IDN domains, 0 confusable skeletons in this corpus |
+
+**[I] The cause is in the data, and was verified against RAW markup rather
+than trusted to the extractor.** Across all 617 snapshots, **zero credential
+forms declare an off-site action.** Every `action` attribute is either absent
+— self-submit, or handled entirely by script — or relative:
+
+```
+page=https://komitoufik-creator.github.io/LOGIN/   action=(none)
+page=http://aethersyncmatrix8.lol/                 action=/?_task=login
+page=https://dhl.iformalia.es/                     action=./
+page=https://www.facebook.com/                     action=(none)
+```
+
+Not one absolute cross-domain URL. Contemporary kits exfiltrate by
+JavaScript to their own backend, or post to a same-host script. **The
+declarative form-action signature CRED-01 detects is essentially extinct in
+this sample.** Separately, 11 credential interfaces (9 phishing, 2 benign)
+have no `<form>` element at all — fields submitted by `fetch()` — which the
+action-based rules cannot see even in principle.
+
+This is a RULE-SET finding, not an extraction defect. The extractor resolves
+actions correctly; there is nothing off-site to find.
+
+---
+
+### [I] The rule set ANTICIPATED this exact failure, and routed it to CRED-05
+
+This is the part that matters, and it is documented in the frozen artifact
+rather than being an interpretation. `rules-v0.1.0.json`, verbatim.
+
+**CRED-01's `knownLimitations`:**
+
+> "Cannot observe submission destinations rewritten by script at submit time —
+> **that case belongs to CRED-05.** A page may declare a benign action
+> attribute and override it dynamically."
+
+**CRED-01's `rationale`:**
+
+> "Distinguished from CRED-05 (**script-mediated exfiltration, invisible to
+> this predicate**)…"
+
+**CRED-05's `rationale`:**
+
+> "Captures credentials leaving the page by script rather than by form
+> submission, to an off-site endpoint — **the exfiltration path CRED-01
+> structurally cannot see**, since CRED-01 only reads the form's declared
+> action, not runtime script behavior."
+
+CRED-01 and CRED-05 were designed as **two halves of one threat model**, each
+carrying weight 45, explicitly cross-referencing the other's blind spot. The
+rule set is internally coherent and its authors were right.
+
+### [I] What this does to DEC-14 — and what it does NOT do
+
+[[DEC-14]] (signed 2026-08-25) accepted CRED-05 and CRED-A1 as non-functional
+for Phase I, on the grounds that fixing them "requires a contract amendment
+… which deserves dedicated attention rather than a rushed fix." That reasoning
+was sound and **is not disturbed by anything here.**
+
+**This entry does NOT reverse DEC-14. It removes the assumption DEC-14 rested
+on.**
+
+Turning off one half of a two-half threat model is a defensible scope decision
+**if the other half still covers a meaningful share of real attacks.** That
+was the implicit premise, and it was reasonable — CRED-01 carries the joint
+highest weight, is the only rule that fires in the committed fixtures
+(`off-origin-post` scores 45/Medium through it), and the rule set's own
+structure presents it as the primary of the pair.
+
+**The measurement shows the remaining half covers 0 of 617.** So the effective
+state is not "one of two exfiltration rules is deferred" but **"neither
+exfiltration rule can fire"** — one disabled by decision, the other by
+obsolescence. DEC-14's cost was assessed as partial coverage loss; it is
+actually total, for this attack class.
+
+Stated plainly so the record is not over-read: DEC-14 was correctly reasoned
+on the information available on 2026-08-25. The information changed on
+2026-08-29. Nothing about DEC-14 was wrong; its premise no longer holds.
+
+### [I] CRED-07 is blocked by the same conjunct, BY DESIGN
+
+CRED-07's own `knownLimitations`, verbatim:
+
+> "Weak in isolation, which is why it carries the lowest primary weight and
+> **requires the off-site conjunct to fire at all.**"
+
+The concealment material genuinely exists in the corpus — 4 credential forms
+with a hidden field, 13 with autocomplete disabled — so CRED-07's first
+disjunct is satisfiable. It never fires because its second conjunct
+(`notSameSite` on the action) is never true. Same root cause; deliberate
+design, not an accident.
+
+⚠️ Note the interaction with [[DEFECT-31]]: CRED-07's `hidden` input is
+markup-only and under-reports (CSS/JS concealment invisible). That limitation
+is currently MASKED — it cannot affect results while the off-site conjunct
+blocks the rule entirely. **If the off-site requirement is ever relaxed,
+DEFECT-31 becomes live and load-bearing on CRED-07's numbers immediately.**
+
+---
+
+### RECOMMENDATION — do not tune anything against today's figure
+
+**Today's measured recall is 13.6% on the credential-bearing subset (9 of 66
+phishing), 2.2% on the whole corpus, with precision 100% on 9 positives.**
+
+**No weight, threshold, or `tau` parameter should be tuned against these
+numbers until the direction question below is ruled on.** The figure describes
+**one rule (CRED-06) detecting one now-uncommon pattern** — a credential form
+served over plain HTTP. It does not describe the system's capability, and
+tuning against it would optimise the rule set for the residue of what is
+measurable rather than for what is happening.
+
+Three specific traps, stated so they are not walked into separately:
+
+1. **Do not lower thresholds to raise recall.** Recall is not threshold-bound
+   here — the rules never fire at any threshold, because their predicates are
+   false. §13.2's `medium: 30` / `high: 60` are not implicated.
+2. **Do not re-weight CRED-06 upward** because it is the only rule producing
+   signal. Its 9 firings were all correct; its weight is not the problem.
+   Inflating it would encode "HTTP login page" as the system's primary
+   detector.
+3. **Do not treat precision 100% as validated.** It rests on 9 positives. One
+   false positive takes it to 90%. No confidence interval has been computed,
+   and [[DEC-27]] §4 requires intervals on the credential-bearing denominator
+   (n=80), not the corpus count.
+
+---
+
+### Direction — RULED 2026-08-29
+
+**Option C — accept and record the coverage gap — applies to THIS measurement
+as an unavoidable FACT, not a choice.** Already-captured static snapshots
+cannot retroactively reveal runtime JavaScript behaviour. No extractor change,
+however good, can recover from an existing snapshot what capture never
+observed. The 617-snapshot measurement above therefore stands as it is, and
+CP-2's scope statement must record that the exfiltration attack class was
+UNCOVERED for it — not under-detected, uncovered.
+
+That is Option C's whole extent. It describes what is true of data already on
+disk. It is explicitly NOT a decision to leave the gap open going forward.
+
+**Option A — rebuild CRED-05's real detection path — is NOT deferred to an
+unscheduled Phase II, and that framing is explicitly REJECTED.**
+
+[[DEC-14]] already made a "defer, and assume coverage exists elsewhere" call
+once. This finding is the direct result of that assumption failing. Repeating
+the same shape of deferral — logging an intention with no concrete plan, no
+owner and no scope — would be **the same mistake a second time, not a lesson
+learned from it.** The distinguishing feature of DEC-14 was not that it
+deferred; it is that it deferred without establishing what the deferral cost,
+and the cost turned out to be total rather than partial.
+
+**So Option A's DESIGN phase starts now, as its own scoped task** — the
+capture-observability design recorded immediately below this entry. It has a
+concrete investigation scope, checked against actual Playwright capabilities
+rather than assumed, to the same standard [[DEC-27]]'s PSL diligence used.
+
+**Option A's IMPLEMENTATION is sequenced after design, and the reason is not
+scheduling convenience.** `tools/capture/capture.py` is the most foundational
+code in this repository: every evaluation module, every metric, every snapshot
+in every corpus depends on what it produces, and a capture change invalidates
+previously-captured material rather than merely extending it. Re-capturing is
+not a rerun — it is a new corpus. That deserves the same design-before-code
+discipline every other build this session received, not a rushed patch
+appended at the end of a long night. Writing capture instrumentation now, at
+speed, would be the third instance of the pattern this entry exists to name.
+
+**Option B — broaden CRED-01's predicate — remains REJECTED**, reasoning
+unchanged from the draft: it changes what CRED-01 means, and its `rationale`
+and `knownLimitations` both currently disclaim exactly the behaviour it would
+acquire, so the artifact would have to be amended in step to stay honest.
+
+**The fourth possibility — relaxing CRED-07's off-site conjunct — remains set
+aside**, also unchanged: CRED-07 is "weak in isolation" by its own
+documentation, so deleting the conjunct converts a specific rule into a broad
+one, and [[DEFECT-31]]'s currently-masked `hidden` under-reporting becomes
+live at the same instant. If concealment is to become a standalone signal that
+is a rule-design decision deserving its own entry, not a conjunct deletion.
+
+- **Status:** Option C's factual state **RESOLVED and recorded** — static
+  snapshots cannot retroactively yield runtime behaviour, and CP-2 must state
+  the exfiltration class as uncovered for this measurement. Option A's
+  **DESIGN task OPEN**, scoped in the capture-observability design below, with
+  implementation deliberately sequenced after it. Neither blocks tonight's
+  other closures.
+
+**Related:** [[DEC-14]] (CRED-05/CRED-A1 non-functional — premise removed, not
+reversed), [[DEC-26]] (corpus-validatable set; gap kind 2 on runtime
+observation), [[DEC-27]] §4 (the n=80 denominator), [[DEFECT-31]] (CRED-07's
+masked `hidden` limitation), [[DEFECT-32]] (`credentialFormPresent`
+classification error, still unmeasured in the under-classification arm).
+
+- **Status:** SIGNED 2026-08-29. The DIRECTION is ruled (see the Direction
+  section above: C resolved as fact, A's design started, B rejected); the
+  ENTRY is now signed. **No fix implemented and none
+  prototyped** — the design task below is design only. The measurement is
+  reproducible via `SSX_CORPUS_STORE=… npm run metrics:confusion`.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-29 — Capture-observability DESIGN for `scriptRuntime`: what `capture.py` must observe to make CRED-05 and CRED-A1 real
+
+**This is [[DEC-28]]'s Option A design task. DESIGN ONLY — no `capture.py`
+change is proposed for tonight, and none was written.** It exists so that
+Option A is a scoped, actionable item with a real effort estimate rather than
+an intention, which is the specific failure mode DEC-28 exists to avoid
+repeating.
+
+**Verification standard.** Every Playwright capability below was checked by
+INSTALLING playwright 1.60.0 in an isolated scratchpad venv and introspecting
+the real API surface — not read from documentation and not assumed. The same
+standard [[DEC-27]] applied to `tldts` and `parse5`. Where something could not
+be verified this way it is marked **UNVERIFIED** explicitly.
+
+---
+
+### [I] The safety question, answered first: no new execution risk
+
+**`page.on('request')` is PASSIVE OBSERVATION and adds no attack surface
+whatsoever.** This matters because the question "can we capture outbound POST
+destinations without executing untrusted JS unsafely?" contains a premise
+worth correcting:
+
+**`capture.py` ALREADY executes untrusted JavaScript.** Line 267 today:
+
+```python
+page.goto(url, timeout=FETCH_TIMEOUT_MS, wait_until="load")
+```
+
+with `ignore_https_errors=True` and a full headless Chromium. Every hostile
+script on every phishing page in the existing corpus has already run. The DOM
+being extracted from is the POST-EXECUTION result — that is what makes
+`renderedDom` useful at all.
+
+So network observation does not introduce JS execution. It records more of
+what already happens. The genuinely new risk is elsewhere, in §3 below.
+
+---
+
+### [I] Field-by-field: what each `ScriptRuntimeEvidence` field actually requires
+
+| Field | Mechanism required | Verified? | Difficulty |
+|---|---|---|---|
+| `transmissionEndpoints` | network layer only | ✅ | **Low** |
+| `dynamicScriptLoadCount` | network layer only | ✅ | **Low** |
+| `dynamicScriptOrigins` | network layer only | ✅ | **Low** |
+| `clientSideTransmissionObserved` | network + sentinel fill | ✅ APIs exist | **Medium–High** |
+| `credentialInterfaceInjected` | injected MutationObserver | ✅ APIs exist | **Medium** |
+| `listenerOnCredentialField` | listener introspection | ✅ two routes | **High** |
+| `injectingScriptOrigin` (D0.1) | mutation + stack attribution | ⚠️ **UNVERIFIED** | **Highest** |
+
+#### 1. Network layer — `transmissionEndpoints`, `dynamicScript*` — LOW difficulty
+
+`page.on('request')` fires for every outbound request. Verified present on
+`Page` and on `BrowserContext` (context-level covers popups and all frames,
+which a phishing page may use). The `Request` object exposes, all verified:
+
+```
+Request.url  .method  .post_data  .post_data_json  .post_data_buffer
+Request.headers  .all_headers  .resource_type  .frame  .is_navigation_request
+```
+
+- `transmissionEndpoints` — collect `request.url` where `method == 'POST'` and
+  `resource_type in ('xhr','fetch')`. Passive, complete, no injection.
+- `dynamicScriptLoadCount` / `dynamicScriptOrigins` — count requests with
+  `resource_type == 'script'` arriving after the `load` event
+  (`page.on('load')` sets a flag). Preferable to watching DOM `<script>`
+  insertion: it is observed at the network layer where the page cannot
+  interfere with our bookkeeping.
+
+**This tier alone unblocks CRED-05's `transmissionEndpointDomains`** once
+paired with the registrable-domain extraction [[DEC-14]] deferred — and it
+requires no code inside the hostile page at all.
+
+#### 2. `clientSideTransmissionObserved` — the hard one, and the design decision
+
+The field means *credentials left the page by script*. The network layer sees
+the request; it cannot know the body carried a credential. Two approaches:
+
+**(a) Sentinel fill — accurate, and changes what capture IS.** Fill each
+credential field with a unique token (`page.fill` verified), trigger submit,
+then scan every outbound `post_data` for the token. If it appears in a request
+to an off-site endpoint, exfiltration is *observed*, not inferred.
+
+⚠️ **This converts capture from OBSERVATION into INTERACTION**, and that is a
+governance question, not a technical one. The harness would be submitting data
+to live criminal infrastructure — generating traffic, confirming the page is
+live, and potentially poisoning the attacker's own dataset. It also risks
+tripping anti-analysis logic and changing what is captured. **Flagged for
+explicit ruling; NOT recommended without one.**
+
+**(b) Structural proxy — safe, weaker.** Record "a credential form is present
+AND an off-site XHR/fetch POST occurred." Purely passive. Cannot distinguish
+credential exfiltration from analytics beaconing, so it would over-report —
+and per [[DEFECT-32]]'s reasoning a bidirectional error yields no publishable
+bound. Would need a differently-named field, or an explicit precision caveat.
+
+**Recommendation: ship tier 1 first and treat this field as its own decision.**
+It is the only field in `ScriptRuntimeEvidence` that cannot be answered
+passively, and conflating it with the easy three would hold them hostage.
+
+#### 3. Injected instrumentation — `listenerOnCredentialField`,
+`credentialInterfaceInjected` — where the REAL new risk is
+
+Both need code running *inside the page*. `add_init_script` is verified on both
+`Page` and `BrowserContext`, and runs **before any page script** — the timing
+required to observe registrations rather than their aftermath.
+
+- `credentialInterfaceInjected` — a `MutationObserver` installed pre-load,
+  flagging credential-field insertion after the `load` event.
+- `listenerOnCredentialField` — **two routes, both verified to exist:**
+  1. Monkey-patch `EventTarget.prototype.addEventListener` in an init script
+     and record registrations, reporting back via `expose_binding` (verified,
+     signature `(name: str, callback: Callable)`).
+  2. **CDP `DOMDebugger.getEventListeners`** — `BrowserContext.new_cdp_session`
+     is verified present. Chromium-only, which `capture.py` already is.
+
+  **Route 2 is preferable and the difference is security, not convenience.**
+  Monkey-patching runs OUR code in the hostile page's context, where malicious
+  script can detect it (`addEventListener.toString()` no longer looks native),
+  disable it, or feed it false data. **A phishing kit that detects
+  instrumentation and behaves benignly makes the evidence actively
+  misleading — worse than absent, because it looks like a clean bill of
+  health.** CDP observes from OUTSIDE the page, out of reach of page script.
+
+**This is the genuinely new risk surface**, and it is why the two tiers should
+not be built together: tier 1 cannot be tampered with, tier 3 can.
+
+#### 4. `injectingScriptOrigin` — ⚠️ UNVERIFIED, hardest, and possibly not worth it
+
+Attributing a DOM mutation to the script that caused it needs a stack capture
+at mutation time correlated to a script URL. **I did not verify that this is
+reliably achievable** — `MutationObserver` callbacks are asynchronous and the
+originating stack is typically gone by the time they fire.
+
+Recorded honestly as an open question rather than estimated. Note it is
+CRED-A1's field, and CRED-A1 is a weight-10 aggregator that also carries
+[[DEFECT-19]]'s single-parent interpretive choice — so it is the least
+valuable field here and the most expensive. **Recommend descoping it from the
+first implementation** and letting CRED-A1 stay non-functional even after
+CRED-05 is restored.
+
+---
+
+### Effort estimate — real, and scoped by tier
+
+Deliberately given per tier, because the tiers have different risk profiles and
+should be separately approvable. These assume someone fluent in the capture
+pipeline, and EXCLUDE re-capture time.
+
+| Tier | Scope | Estimate |
+|---|---|---|
+| **1** | Network observation: 3 fields, `capture.py` + `RawMaterial` extension | **1–2 days** |
+| **2** | Extraction + contract: `scriptRuntime` extractor, DEC-14's registrable-domain amendment | **2–3 days** |
+| **3** | CDP listener introspection + MutationObserver | **3–5 days** |
+| **4** | `clientSideTransmissionObserved` (blocked on the §2 ruling) | **2–4 days after ruling** |
+| **—** | `injectingScriptOrigin` | **UNKNOWN — descope** |
+
+**Tiers 1+2 ≈ 3–5 days restores CRED-05's endpoint detection.** That is the
+value-carrying subset.
+
+⚠️ **The dominating cost is not code — it is RE-CAPTURE.** `scriptRuntime` is
+observable only at capture time, so every existing snapshot is permanently
+blind to it. The 617-snapshot store and the 26,700-entry index would both need
+re-capturing, and phishing URLs decay fast — a re-capture months later samples
+a *different population*, not the same one again. **S-11's residual-leakage
+reporting and any temporal-holdout comparison would need re-basing.** This
+cost is structural and no amount of design removes it; it is the strongest
+argument for deciding scope carefully before running capture, which is exactly
+why DEC-28 sequenced design before implementation.
+
+---
+
+### Handoff
+
+**First concrete item for whoever picks up capture-pipeline work next** —
+Durga per [[DEC-7]] availability, or whoever is free.
+
+**Start with Tier 1.** It is self-contained, carries no tamper risk, needs no
+governance ruling, and delivers the field CRED-05 actually needs
+(`transmissionEndpoints`). It can be validated on a handful of URLs before any
+corpus-wide re-capture is contemplated.
+
+**Do not start with Tier 3.** It is where instrumentation becomes detectable,
+and building it first would put the least reliable evidence into the corpus
+first.
+
+**Two things need a ruling before their tiers begin, not during:** the
+sentinel-fill interaction question (§2), and whether `injectingScriptOrigin`
+is descoped (§4).
+
+**Related:** [[DEC-28]] (the finding that scoped this task), [[DEC-14]]
+(CRED-05/CRED-A1 non-functional; its registrable-domain amendment is Tier 2's
+dependency), [[DEC-26]] (gap kind 2 — recorded `scriptRuntime` as impossible
+from a STATIC snapshot, which remains true; this changes capture, not
+extraction), [[DEFECT-18]] (the structural dead-rule finding behind DEC-14).
+
+- **Status:** SIGNED 2026-08-29. **DESIGN ONLY.** No `capture.py`
+  change written or proposed for immediate execution. Playwright capabilities
+  verified against 1.60.0 by direct API introspection; `injectingScriptOrigin`
+  attribution explicitly UNVERIFIED and flagged as such.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-30 — Tier 1 BUILT and validated; Tier 3 design (CDP-ONLY, monkey-patching FORBIDDEN); Tier 4 answered empirically
+
+Records the build, validation and design work following [[DEC-29]]. Three
+parts: what Tier 1 does now, what Tier 3 must and must not do, and what Tier 4
+turned out to be.
+
+---
+
+### PART 1 — Tier 1 BUILT and VALIDATED
+
+`tools/capture/capture.py` now observes the network passively via
+`page.on("request")` at CONTEXT level (covering popups and nested frames),
+populating `raw.scriptRuntimeObservations`.
+`apps/harness/extract/scriptRuntime.ts` consumes it into
+`ScriptRuntimeEvidence`.
+
+**`BrowserContext.route()` was deliberately NOT used**, contrary to DEC-29's
+own investigation list. `route()` INTERCEPTS: every matched request must be
+explicitly continued or fulfilled, so a handler bug stalls the page and
+corrupts the capture. `on("request")` cannot affect what happens.
+**Observation must never be able to change what is captured**, and route()
+can. Passive observation was sufficient for all three fields.
+
+#### ⚠️ Validation found a STRUCTURAL BUG that would have silently ruined a full re-capture
+
+Validated against synthetic pages whose exact behaviour was written in
+advance — deliberately, because **a live phishing page has no ground truth**:
+if capture reports two endpoints, nothing tells you whether the page had two,
+five or zero. A live capture can show the code RUNS; only a known page can
+show it is CORRECT.
+
+The first run reported `dynamicScriptLoadCount: 0` on a page that provably
+loads a script after load. Tracing every event gave the cause:
+
+```
+req document  GET  kit.html          afterLoad=False
+DCL
+req fetch     POST /beacon           afterLoad=False   <- page's load handler already ran
+req script    GET  /late.js          afterLoad=False   <- page's load handler already ran
+LOAD-EVENT                                             <- Playwright notifies us LAST
+GOTO-RETURNED
+```
+
+**Playwright delivers its `load` event AFTER the page's own
+`window.addEventListener('load', …)` handlers have already run and issued
+their requests.** A flag set on `load` is therefore ALWAYS false for anything
+the page does in its own load handler — which is exactly where exfiltration
+beacons and late script injection live.
+
+**Gating on `load` would have reported `dynamicScriptLoadCount: 0` across an
+entire re-captured corpus, silently, with no error to investigate.** Given
+that re-capture is population-altering and irreversible for decayed phishing
+URLs, this bug would have cost a corpus.
+
+Fixed by using **DOMContentLoaded** as the boundary, which fires before the
+page's load handlers. Known imprecision, documented rather than hidden:
+`async`/`defer` scripts declared in the original HTML can also land after DCL
+and will be counted as dynamic. That over-counts benignly and is vastly
+preferable to a flag that is structurally always false.
+
+**This is the entire justification for DEC-28's design-before-implementation
+sequencing, vindicated on the first validation run.**
+
+#### Validation results
+
+| Fixture | transmissionEndpoints | dynamicScriptLoadCount | Expected |
+|---|---|---|---|
+| beacon-on-load kit | 1 (`/beacon`) | 1 (`/late.js`) | ✅ exactly |
+| benign page | 0 | 0 | ✅ exactly |
+| submit-only kit | **0** | **0** | ✅ — see Part 3 |
+
+**S-6 determinism: the same page captured THREE times produced byte-identical
+`scriptRuntimeObservations`.** Both arrays are sorted and de-duplicated at
+serialisation, because request ARRIVAL ORDER is a property of the network and
+the page's scheduler and is not reproducible — what CRED-05 needs is the SET.
+Extraction-side determinism is covered by `s6-determinism.test.ts` property
+10, with negative controls confirming both the sorting and the
+no-inference rule actually fire.
+
+**No live phishing URL was contacted.** Both origins were `127.0.0.1`.
+
+---
+
+### PART 2 — Tier 2 required two frozen-contract amendments. ✅ BOTH LANDED in `ce05ded`.
+
+**Status of this section as of `ce05ded`: RESOLVED.** Amendments A and B were
+hand-typed into `packages/contracts/` by Jayanth (Architecture Owner) per
+[[DEC-7]] and shipped in `ce05ded`. `ScriptRuntimeEvidence.transmissionEndpointDomains`
+now exists and is derived producer-side by
+`apps/harness/extract/scriptRuntime.ts` through the V-15-gated `psl.ts` path;
+`RawMaterial.scriptRuntimeObservations` now exists and `capture.py` populates
+it. Tier 2 is BUILT.
+
+*The section below is preserved as written, because it records why the block
+was real and what was required to lift it. Read it as history, not as current
+state.*
+
+This was the honest state at drafting, not a partial delivery. **Tier 2 could
+not be completed by tooling**, per `CLAUDE.md`: "Amendments are made by hand,
+never by Claude Code — a pre-tool-use hook blocks writes under
+`packages/contracts/`."
+
+**Amendment A — `RawMaterial` has nowhere to store network observations.**
+`snapshot.format.v1.ts:177-197` has no such field. `capture.py` currently
+writes `raw.scriptRuntimeObservations` as a SUPERSET key: existing consumers
+ignore it, the extractor reads it defensively, nothing breaks — and nothing
+type-checks it either. Proposed:
+
+```ts
+  /** DEC-29 Tier 1. Passive network observation at capture time.
+   *  null for every snapshot captured before it existed. */
+  readonly scriptRuntimeObservations: {
+    readonly transmissionEndpoints: readonly string[];
+    readonly dynamicScriptOrigins: readonly string[];
+    readonly dynamicScriptLoadCount: number;
+    readonly postRequestCount: number;
+    readonly postAfterDclCount: number;
+  } | null;
+```
+
+**Amendment B — `ScriptRuntimeEvidence` has no registrable-domain field.**
+This is exactly the amendment [[DEC-14]] deferred, unchanged. CRED-05's
+predicate reads `javascript.transmissionEndpointDomains`; the module reports
+`[]` unconditionally, and `javascript.ts`'s header explains why it must:
+
+> "Deriving a domain from a raw endpoint string would require PSL-equivalent
+> registrable-domain extraction logic inside this module — exactly the class of
+> thing a module must not do; that derivation belongs at Stage 1 in the
+> evidence PRODUCER."
+
+That reasoning is correct and should NOT be worked around. Proposed:
+
+```ts
+  /** Pre-extracted by the producer, mirroring actionRegistrableDomain's
+   *  precedent. The module MUST NOT derive these itself (§2.6, E-4). */
+  readonly transmissionEndpointDomains: Observation<readonly string[]>;
+```
+
+**Until both land, CRED-05 still cannot fire.** Tier 1's data reaches
+`ScriptRuntimeEvidence` but stops there.
+
+⚠️ **CORRECTION as of `ce05ded` — the conclusion survives, the reason does
+not.** Both amendments have landed, and **CRED-05 still cannot fire — but the
+blocker is now CAPTURE, not CONTRACT.** Every snapshot in every existing corpus
+was captured before Tier 1's network observation existed, so
+`raw.scriptRuntimeObservations` is absent on all of them,
+`ScriptRuntimeEvidence` is `notCollected` throughout, and the `javascript`
+module returns `unevaluable` before CRED-05's predicate is reached. The
+extraction path is complete and proven end to end on a real `capture.py`
+output; what is missing is captured data, which only a re-capture produces.
+
+Stated explicitly so this sentence is not read as "CRED-05 fires once the
+amendments land" — it does not, and no amount of extraction work will change
+that. See [[DEC-29]]'s re-capture cost note: `scriptRuntime` is observable only
+at capture time, so every pre-Tier-1 snapshot is permanently blind to it.
+
+⚠️ **DEC-29's Tier 1/2 effort
+estimate (1–2 and 2–3 days) costed the CODE and omitted that the gating item
+is a hand amendment nobody can schedule around. That estimate was incomplete
+and is corrected here.**
+
+---
+
+### PART 3 — TIER 4 ANSWERED: the passive combination is PARTIAL, and the ruling is premature rather than moot
+
+The question was whether Tier 1 + Tier 3 together yield usable signal for
+`clientSideTransmissionObserved` without sentinel-fill. **Tested directly with
+two kits, identical except for when they exfiltrate.**
+
+| Kit behaviour | Passive network observation |
+|---|---|
+| Beacons on load (no interaction) | ✅ endpoint captured |
+| Exfiltrates ONLY on submit | ❌ **nothing — 0 requests** |
+
+**For submit-only kits the signal does not exist passively. Not "we cannot see
+it" — it has not happened.** No amount of observation finds a request that was
+never issued, because nothing was submitted.
+
+**What Tier 1 + Tier 3 gives, precisely.** CRED-05's predicate is a
+three-way `and`:
+
+| Conjunct | Beacon-on-load kit | Submit-only kit |
+|---|---|---|
+| `listenerOnCredentialField` | ✅ Tier 3 (CDP) | ✅ Tier 3 (CDP) |
+| `clientSideTransmissionObserved` | ⚠️ inferable, weakly | ❌ no evidence exists |
+| `exists endpoint notSameSite` | ✅ Tier 1 | ❌ empty |
+
+So the passive combination **covers beacon-on-load kits and is structurally
+blind to submit-only kits**. It is not sufficient, and it is not useless.
+
+**And `clientSideTransmissionObserved` must NOT be inferred from "an off-site
+POST occurred", even for the kits where one does.** Analytics, telemetry and
+ad beacons produce an identical network signature. Inferring transmission from
+any POST over-reports in an unbounded direction — and per [[DEFECT-32]]'s
+reasoning a bidirectional error yields no publishable bound at all. Worse, it
+would over-report preferentially on BENIGN pages, since those carry the real
+analytics: the same failure shape as DEFECT-32's email-only classification,
+measured at 36% of benign positives before it was ruled out. The extractor
+therefore leaves the field `notCollected`, and a negative control in
+`s6-determinism.test.ts` fails if anyone later "simplifies" it into an
+inference.
+
+#### ⚠️ RECOMMENDATION: the sentinel-fill ruling is PREMATURE, not moot
+
+The passive combination does not remove the need for a decision. **But the
+decision currently rests on an unknown quantity: what fraction of real kits
+beacon before submission?** Nobody knows, and it is not knowable from the
+existing corpus — no captured snapshot has any network data.
+
+**Tier 1 measures exactly that number.** Running it over a sample yields the
+beacon-on-load fraction directly, and that fraction determines whether
+sentinel-fill is worth its governance cost:
+
+- If most kits beacon on load → passive coverage is good, sentinel-fill buys
+  little, and the ethics question can be declined on cost/benefit rather than
+  argued on principle.
+- If most exfiltrate only on submit → passive coverage is poor, and the ruling
+  has to be faced with real stakes attached.
+
+**Recommend deferring the sentinel-fill ruling until Tier 1 has run on a
+sample and produced that fraction.** This is not the "defer and assume"
+pattern DEC-28 rejects: it is deferring a decision until the one measurement
+that determines its answer exists, with the measurement already built and the
+decision explicitly scheduled after it.
+
+The ethical objection stands regardless and is unchanged: sentinel-fill would
+have the harness SUBMIT data to live criminal infrastructure, generating
+traffic, confirming the page is live, and potentially tripping anti-analysis
+logic that changes what is captured.
+
+---
+
+### PART 4 — TIER 3 DESIGN. CDP-ONLY. Monkey-patching is FORBIDDEN.
+
+Implementation may follow once Tier 1's sample validation is in hand.
+
+#### 🚫 HARD CONSTRAINT — read this before writing any Tier 3 code
+
+**Monkey-patching `EventTarget.prototype.addEventListener` to observe listener
+registration is FORBIDDEN. Not disfavoured — forbidden.** It will look like the
+simpler option to whoever implements this, and it must not be chosen. The
+reasoning, recorded verbatim so it cannot be quietly re-litigated as a
+"simplification":
+
+> Patching runs OUR code inside the hostile page's context, where malicious
+> script can detect it (`addEventListener.toString()` no longer returns native
+> code), disable it, or feed it false data. **A phishing kit that detects
+> instrumentation and behaves benignly makes the evidence actively misleading —
+> worse than absent, because it looks like a clean bill of health.**
+> CDP observes from OUTSIDE the page, out of reach of page script.
+
+Absent evidence is `notCollected` and everything downstream handles it
+correctly under S-7. Falsified evidence is `present` and wrong, and there is no
+invariant anywhere in this system that catches it. **The failure modes are not
+comparable, and that asymmetry is the whole argument.**
+
+If a future implementer believes patching is necessary, that requires a new
+signed decision overriding this one — not a code comment.
+
+#### The design
+
+**Mechanism: `BrowserContext.new_cdp_session(page)` → `DOMDebugger.getEventListeners`.**
+Verified present on playwright 1.60.0 by direct API introspection. Chromium-only,
+which `capture.py` already is (`pw.chromium.launch`).
+
+Sequence, after `page.goto(..., wait_until="load")` and the existing 2s settle:
+
+1. Open a CDP session on the page.
+2. `DOM.getDocument`, then `DOM.querySelectorAll` for
+   `input[type=password], input[type=email], input[autocomplete]` — the same
+   field set `loginInterface.ts` classifies, so the two categories cannot
+   disagree about which fields are credential fields.
+3. For each node: `DOM.resolveNode` → `objectId`, then
+   `DOMDebugger.getEventListeners(objectId)`.
+4. `listenerOnCredentialField` = true iff any credential field carries a
+   listener of type `input`, `keyup`, `keydown`, `change`, `blur` or `paste`.
+   ⚠️ Record the TYPES observed, not just the boolean — a `blur` listener and
+   a `keydown` listener are very different signals, and collapsing them at
+   capture time destroys information that cannot be recovered.
+5. `credentialInterfaceInjected` — a pre-load `MutationObserver` via
+   `add_init_script`, flagging credential-field insertion after DCL.
+
+⚠️ **Step 5 is the one part that CANNOT be done from outside the page**, and
+it therefore carries the detection risk the CDP constraint exists to avoid.
+It should be built LAST and treated as lower-confidence evidence than steps
+1–4. It may warrant its own decision about whether the risk is worth
+`credentialInterfaceInjected` at all — whose only consumer is CRED-A1, already
+[[DEC-14]] non-functional.
+
+**`injectingScriptOrigin`: DESCOPED, confirmed.** Unverified feasibility
+(MutationObserver callbacks are async; the originating stack is typically
+gone), lowest value (CRED-A1's aggravator only, weight 10, itself carrying
+[[DEFECT-19]]'s single-parent interpretive choice). CRED-A1 stays
+non-functional even after CRED-05 is restored.
+
+**Revised estimate:** steps 1–4 (the CDP part, no in-page code) **2–3 days**.
+Step 5 (MutationObserver) **2 days**, and should be separately approved.
+Excludes re-capture.
+
+---
+
+**Related:** [[DEC-29]] (the design this executes; its Tier 1/2 estimate is
+corrected in Part 2), [[DEC-28]] (design-before-implementation, vindicated by
+the DCL bug), [[DEC-14]] (Amendment B is its deferred amendment, unchanged),
+[[DEFECT-32]] (the over-classification reasoning Part 3 applies).
+
+- **Status:** SIGNED 2026-08-29. **Tier 1 BUILT, validated, S-6
+  proven. Tier 2 BUILT — both contract amendments landed in `ce05ded`
+  (Part 2, corrected in place); `transmissionEndpointDomains` is derived
+  producer-side and proven end to end against a real `capture.py` output.
+  CRED-05 still cannot fire, but the blocker is now CAPTURE rather than
+  CONTRACT: every existing snapshot predates Tier 1's network observation, so
+  `scriptRuntime` is `notCollected` corpus-wide and the `javascript` module is
+  `unevaluable` before the predicate is reached. Tier 3 DESIGNED, not built.
+  Tier 4 answered; its ruling recommended deferred until Tier 1 yields the
+  beacon-on-load fraction.** No corpus-wide re-capture performed or
+  recommended yet — which is exactly why CRED-05 remains dark.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-31 — `pslVersion` amended to record PSL configuration (applied `409171d`)
+
+**[R] The declaration AS IT STOOD when this entry was written**, `rulesets/rules-v0.1.0.json:6`, verbatim *(superseded by this entry's own correction, applied in `409171d` — see the AFTER block and Status below)*:
+
+```
+"pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)"
+```
+
+**[I] It records the library, the version, and the snapshot digest — and says
+NOTHING about configuration.** Checked mechanically: the string contains none
+of `private`, `icann`, `include`, `config`, `section`.
+
+**[I] That omission is not cosmetic, because the same library and the same
+snapshot give DIFFERENT answers depending on one flag.** `tldextract` 5.3.0
+with the identical bundled snapshot returns:
+
+| host | `include_psl_private_domains=True` | `False` (library default) |
+|---|---|---|
+| `evil1.github.io` | `evil1.github.io` | `github.io` |
+| `cancelcardiffbahora.vercel.app` | `cancelcardiffbahora.vercel.app` | `vercel.app` |
+| `chris-x.workers.dev` | `chris-x.workers.dev` | `workers.dev` |
+
+So `pslVersion` as written **does not identify the resolution behaviour the
+rule set was authored against.** Two implementations can both satisfy the
+declaration exactly and still disagree on 32.5% of phishing snapshots — which
+is precisely what happened ([[DEFECT-34]]).
+
+`ruleset.format.v1.ts:253-256` states the field's purpose: "PSL version the
+registrable-domain comparisons were authored against. A PSL update can shift
+an eTLD+1 boundary and change a sameSite outcome under identical evidence —
+recorded for G-10 replay." **A configuration change shifts eTLD+1 boundaries
+exactly as a version update does**, so by the field's own stated purpose it
+belongs in the declaration.
+
+---
+
+### DRAFTED CORRECTION — not applied. `rulesets/` is frozen.
+
+Same handling as every contract question tonight: drafted for the Architecture
+Owner, not written by tooling.
+
+**BEFORE:**
+
+```json
+  "pslVersion": "tldextract==5.3.0 (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
+```
+
+**AFTER:**
+
+```json
+  "pslVersion": "tldextract==5.3.0 include_psl_private_domains=true (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
+```
+
+The configuration is placed INSIDE the version clause, before the digest,
+because it qualifies the resolver rather than the data — the snapshot digest
+is unchanged by the flag, which is exactly why the flag has to be stated
+separately.
+
+#### ⚠️ CORRECTION to this entry's first draft — the immutability dilemma does not exist
+
+The draft above originally posed a choice between amending in place and
+bumping to `rules-v0.1.1`, on the premise that §12.2 forbids mutating a
+released artifact. **That premise was wrong, and it was my error.** Checked
+against the file rather than assumed:
+
+```
+rulesets/rules-v0.1.0.json:4    "released": false,
+```
+
+§12.2's immutability applies to a RELEASED version. This rule set declares
+`released: false`, so **it is mutable and no version bump is required.** Amend
+in place. There is no trade-off to rule on; the choice I put in front of the
+Architecture Owner was manufactured by not reading line 4.
+
+What DOES still apply: the digest must be recomputed, or **V-14 fails**. That
+is a mechanical consequence of any edit, not an immutability question.
+
+*(Separate observation, no action proposed: the file is named
+`rules-v0.1.0.json` but line 3 declares `"ruleSetVersion": "rules-v0.2.0"` —
+the DEFECT-15 fix bumped the version per §14.1 without renaming the file. Not
+introduced by anything tonight and not addressed here; noted so it is not
+mistaken for a side effect of this amendment.)*
+
+**Also recommended, and cheap: extend V-15 to enforce it.** V-15 already
+compares `PSL_RECONCILED_AGAINST` against the rule set's `pslVersion` as exact
+strings, so once the configuration is IN the string, V-15 gates it for free —
+a future extractor changing `allowPrivateDomains` without updating the
+constant would fail G-8. No new check is needed; the existing one becomes
+meaningful the moment the declaration is complete.
+
+**Related:** [[DEFECT-34]] (the divergence this would have prevented),
+[[DEC-27]] (V-15 and the conformance fixture), [[DEC-8]] (introduced
+`pslVersion` as amendment A-6), [[DEFECT-17]] (V-14, the digest check that
+constrains how this is applied).
+
+- **Status:** **APPLIED in `409171d`, SIGNED 2026-08-29.** No longer a candidate:
+  the change is in the artifact and the decision is ratified. The drafted
+  correction above was hand-typed into the frozen `rulesets/` path by Jayanth
+  (Architecture Owner) per [[DEC-7]] — both lines: `pslVersion` gains
+  `include_psl_private_domains=true`, and `integrityDigest` becomes
+  `sha256:f691cbdad18140a3f77e2047916a03dc9f0c40ff794f2f262e59ada0060f55da`,
+  recomputed with `tools/ci/compute-ruleset-digest.mjs` and confirmed by its
+  `--verify` mode. **V-14 passes** against the new digest, and V-15 now gates
+  the configuration string as this entry predicted. The code-side divergence
+  was already FIXED separately ([[DEFECT-34]]).
+  *(This Status previously read "DRAFT ONLY — `rulesets/` is frozen and nothing
+  was applied", which was true when written and false from `409171d` onward.
+  Corrected rather than left standing; the reasoning above is unchanged.)*
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29
+
+---
+
+## DEC-32 — Single-source the PSL configuration, and add a config-echo check for the [[DEFECT-34]] class
+
+[[DEFECT-34]] named a recurring shape: *a verification mechanism confirms
+internal consistency between two things that both happen to be wrong the same
+way, rather than confirming either one matches the actual authoritative
+configuration.* This entry does two things about it — one that removes the
+class for PSL specifically, and one weaker guard for the next occurrence.
+
+### 1. `tools/ci/psl-config.json` — remove the duplication rather than police it
+
+```json
+{ "includePrivateDomains": true }
+```
+
+Read by all three consumers; the hardcoded copies are **deleted**, not
+commented:
+
+| consumer | before | after |
+|---|---|---|
+| `tools/capture/capture.py` | `include_psl_private_domains=True` | reads the manifest |
+| `apps/harness/extract/psl.ts` | `{ allowPrivateDomains: true }` | reads the manifest |
+| `tools/ci/psl-reference.py` | `include_psl_private_domains=True  # MUST match capture.py` | reads the manifest |
+
+That third line is the argument in miniature: **a comment saying "MUST match"
+is not a mechanism.** There is now nothing to match, because there is one value.
+
+**Precedent, deliberately followed:** G-11's `contract-conformance-check.py`
+already reads `tools/ci/storage-enums.json` pinned to a digest of the LDD, so
+divergence surfaces "as a digest mismatch, not as silent divergence". Same
+shape.
+
+**Verified load-bearing, not decorative.** Flipping the manifest to `false`
+made `psl.ts` disagree with the conformance table (test fails) AND made
+`capture.py` return `github.io` instead of `evil1.github.io` — one edit moved
+a TypeScript consumer and a Python consumer together, which is the property
+being bought.
+
+**No default is supplied anywhere.** A missing or malformed manifest fails
+loudly. Defaulting would reintroduce precisely the silent divergence this
+removes, and §15.1 requires degraded capability to be loud.
+
+⚠️ **One thing CANNOT be single-sourced, and it is stated in `psl.ts` where it
+lives:** tldts spells the flag `allowPrivateDomains`, tldextract spells it
+`include_psl_private_domains`. That vocabulary mapping is human knowledge. It
+now exists in exactly one place instead of being implicit in three.
+
+### 2. `tools/ci/check-conformance-config.mjs` — the general guard, honestly bounded
+
+Enumerates every `*conformance*.ts` fixture and requires each to make an
+assertion about its oracle's CONFIGURATION, or carry an explicit
+`CONFIG-ECHO-EXEMPT: <reason>` marker.
+
+**What it cannot do, stated in the file itself:** it cannot verify a
+configuration is CORRECT. "Correct" means "matches the producer", and no tool
+can derive which file is the producer, nor that two libraries' differently-named
+flags mean the same thing. It enforces a **necessary condition, not a
+sufficient one** — a fixture that never mentions its oracle's config cannot be
+checking it.
+
+Saying so plainly matters here more than usual: a check that overclaimed would
+itself be an instance of the pattern it guards.
+
+It also fails when it finds **zero** fixtures, so a naming-convention change
+cannot turn it into a green check that scanned nothing (DEFECT-29's lesson).
+
+**Seeded failure confirmed:** removing the `assert.equal(ref.includePrivateDomains, …)`
+line from the PSL fixture makes the check FAIL naming that file; restoring it
+passes.
+
+### Not proposed, and why
+
+A general "assert every fixture's reference side matches the producer's real
+configuration" check was considered and **rejected as unbuildable**: "reference
+side" is not a syntactic category, "the producer" has no designated source
+without a manifest like the one above, and cross-language flag equivalence is
+semantic. Any tool claiming to do it would be verifying its own assumptions.
+
+A grep-based blacklist of default-constructed APIs (`tldextract.extract(`,
+single-argument `parse(`) was also considered and rejected: brittle,
+library-specific, and largely redundant once the config is single-sourced.
+
+**Related:** [[DEFECT-34]] (the defect and its standing principle),
+[[DEFECT-17]] / [[DEFECT-29]] / [[DEFECT-33]] (same pattern family),
+[[DEC-27]] (V-15 and the conformance fixture), [[DEC-31]] (`pslVersion` now
+records the configuration, so V-15 gates it).
+
+- **Status:** SIGNED 2026-08-29. Manifest and check are BUILT, wired
+  into `ci.yml`, and seed-tested.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-08-29

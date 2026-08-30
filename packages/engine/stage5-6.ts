@@ -84,6 +84,7 @@
  */
 
 import { maxAppliedReduction } from './stage4.ts';
+import { computeRawTier, thresholdsFrom } from './stage7-8.ts';
 import type { CorrelationFinding, SuppressionApplication, ScoringEntry } from '../contracts/passresult.contract.v1';
 import type { RiskTier } from '../contracts/passresult.contract.v1';
 import type { RuleSet, RuleId } from '../contracts/ruleset.format.v1';
@@ -151,10 +152,51 @@ export function computeScoringAndAggregation(
   for (const finding of findings) {
     const rule = ruleDefinitionFor(finding.ruleId);
     const maxReduction = maxAppliedReduction(finding.findingId, suppressionApplications);
+    const effectiveWeight = rule.baseWeight * (1 - maxReduction);
+
+    // INDEPENDENT RANGE CHECK — deliberately NOT trusting V-7 alone.
+    //
+    // §6.1's whole premise is that suppression only ever REDUCES: with
+    // `reduction` in (0, 1] (V-7, validate-ruleset.py), effectiveWeight is
+    // necessarily within [0, baseWeight]. But V-7 is a single point of
+    // enforcement in a DIFFERENT tool, on a different execution path, and
+    // this engine is handed a `RuleSet` object by its caller — nothing at
+    // this boundary re-establishes that the rule set ever passed G-8.
+    //
+    // DEFECT-17 is this project's own precedent for exactly that mistake:
+    // `compute-ruleset-digest.mjs` could verify a rule set's
+    // `integrityDigest`, but `validate-ruleset.py` never called it, so a
+    // hand-edited digest passed G-8 CONFORMANT regardless. Verification that
+    // exists somewhere is not verification that runs on the path that
+    // matters. V-14 was added to close it; this check is the same reasoning
+    // applied to `reduction`.
+    //
+    // THROW rather than degrade, for three reasons: it matches the two
+    // existing defensive throws in this function (unknown ruleId, missing
+    // thresholds); §12.2/§15.3 require integrity failures to be FAIL-CLOSED;
+    // and P-11 states "A partially aggregated score SHALL NEVER reach
+    // CurrentSecurityState" — emitting a corrupted-but-plausible score is
+    // precisely the outcome that invariant forbids. A silently inflated
+    // score is a false High tier, i.e. a wrong security verdict.
+    //
+    // Both directions are checked: `> baseWeight` catches a negative
+    // reduction (suppression INCREASING weight, the property B1.2-2 names);
+    // `< 0` catches a reduction above 1. Both are the same defect — a
+    // `reduction` outside V-7's (0, 1] — and catching only one direction
+    // would leave the other silently corrupting the sum.
+    if (effectiveWeight > rule.baseWeight || effectiveWeight < 0) {
+      throw new Error(
+        `Suppression may only reduce weight (§6.1): rule "${finding.ruleId}" has baseWeight ` +
+        `${rule.baseWeight} and maxReduction ${maxReduction}, giving effectiveWeight ` +
+        `${effectiveWeight}, outside [0, ${rule.baseWeight}]. The reduction is outside V-7's ` +
+        `permitted (0, 1] range — this rule set did not pass, or was modified after, G-8.`,
+      );
+    }
+
     weights.set(finding.findingId, {
       baseWeight: rule.baseWeight,
       maxReduction,
-      effectiveWeight: rule.baseWeight * (1 - maxReduction),
+      effectiveWeight,
     });
   }
 
@@ -162,16 +204,22 @@ export function computeScoringAndAggregation(
   // ScoringEntry — needs pass 1's effectiveWeight values (for a parent
   // lookup) to already exist for every finding, regardless of order.
   const scoring: ScoringEntry[] = [];
-  let primarySum = 0;
-  let aggravatorSum = 0;
 
   for (const finding of findings) {
     const rule = ruleDefinitionFor(finding.ruleId);
     const { baseWeight, maxReduction, effectiveWeight } = weights.get(finding.findingId)!;
     const subsumed = isSubsumed(finding.ruleId);
+    // DEFECT-26: sorted, not left in input-array order. This list is a SET of
+    // suppression IDs — its order carries no meaning — but an unsorted
+    // projection of `suppressionApplications` inherits that array's order,
+    // so the same pass reordered on the way in produced a different-but-
+    // equivalent record. P-13 requires replay to reproduce IDENTICAL scoring,
+    // which is a byte comparison. SuppressionIds are unique within a rule set
+    // (V-4), so lexicographic order is total — no tie-breaker needed.
     const suppressionsApplied = suppressionApplications
       .filter((a) => a.targetFindingId === finding.findingId && a.applied)
-      .map((a) => a.suppressionId);
+      .map((a) => a.suppressionId)
+      .sort();
 
     let parentQualified: boolean | null = null;
     let countedInScore: boolean;
@@ -189,16 +237,8 @@ export function computeScoringAndAggregation(
         && parentWeights !== undefined
         && parentWeights.effectiveWeight > 0;
       countedInScore = parentQualified;
-      if (countedInScore) {
-        // §9.2: aggravator_weight(a) — the RAW baseWeight, not this
-        // aggravator's own effectiveWeight. See the header comment.
-        aggravatorSum += baseWeight;
-      }
     } else {
       countedInScore = !subsumed;
-      if (countedInScore) {
-        primarySum += effectiveWeight;
-      }
     }
 
     scoring.push({
@@ -216,18 +256,48 @@ export function computeScoringAndAggregation(
     });
   }
 
-  const score = primarySum + aggravatorSum;
+  // Pass 3 — the SUMS, accumulated in a canonical order (DEFECT-27).
+  //
+  // §9.1 requires "a pure function over the complete finding set". Summing
+  // inside pass 2 accumulated in INPUT order, and IEEE-754 addition is not
+  // associative: the same finding set permuted produced scores differing in
+  // the final bits (139.93345381530986 vs 139.93345381530983 on the
+  // counterexample that found this). That is a determinism failure, not a
+  // rounding curiosity — P-13 requires replay to reproduce identical scoring,
+  // and G-10's replay gate compares Pass Results.
+  //
+  // Sorted by `findingId`, NOT by weight: ties in effectiveWeight are real
+  // and common (two findings of the same rule with no suppression), so a
+  // weight sort would silently fall back to input order for exactly those
+  // entries and reintroduce the bug. `findingId` is a UUIDv4 minted per
+  // finding (`id.ts`) and the PRIMARY KEY of `skr.correlation_finding`
+  // (LDD §5.17) — genuinely unique, so the order is total and needs no
+  // tie-breaker.
+  const canonicallyOrdered = [...scoring].sort((a, b) =>
+    a.findingId < b.findingId ? -1 : a.findingId > b.findingId ? 1 : 0);
 
-  const thresholdMedium = ruleSet.parameters.find((p) => p.id === 'threshold_medium')?.value;
-  const thresholdHigh = ruleSet.parameters.find((p) => p.id === 'threshold_high')?.value;
-  if (thresholdMedium === undefined || thresholdHigh === undefined) {
-    // Defensive only — V-4 (validate-ruleset.py) already guarantees both
-    // parameters are registered in a real rule set.
-    throw new Error('threshold_medium/threshold_high must both be registered in the rule set (V-4 should have caught this).');
+  let primarySum = 0;
+  let aggravatorSum = 0;
+  for (const entry of canonicallyOrdered) {
+    if (!entry.countedInScore) continue;
+    if (entry.ruleType === 'aggravator') {
+      // §9.2: aggravator_weight(a) — the RAW baseWeight, not this
+      // aggravator's own effectiveWeight. See the header comment.
+      aggravatorSum += entry.baseWeight;
+    } else {
+      primarySum += entry.effectiveWeight;
+    }
   }
 
-  // §9.4: Low < medium; Medium in [medium, high); High >= high.
-  const rawTier: RiskTier = score >= thresholdHigh ? 'High' : score >= thresholdMedium ? 'Medium' : 'Low';
+  const score = primarySum + aggravatorSum;
+
+  // §9.4's score->tier mapping is STAGE 7 (Threshold Evaluation), a separate
+  // stage per docs/pipeline-design-note.md's table — extracted to
+  // stage7-8.ts rather than duplicated here. Called from this function only
+  // because AggregationRecord carries `rawTier`; the mapping itself is not
+  // Stage 6's.
+  const thresholds = thresholdsFrom(ruleSet);
+  const rawTier: RiskTier = computeRawTier(score, thresholds);
 
   const subsumptionApplied = ruleSet.subsumption
     .filter((entry) => firedRuleIds.has(entry.composite))
@@ -241,7 +311,7 @@ export function computeScoringAndAggregation(
       primarySum,
       aggravatorSum,
       score,
-      thresholds: { medium: thresholdMedium, high: thresholdHigh },
+      thresholds,
       rawTier,
     },
   };

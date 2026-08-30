@@ -85,10 +85,27 @@ def _psl_extractor():
     """
     import tldextract
 
+    # DEC-32: the configuration is READ, not hardcoded. tools/ci/psl-config.json
+    # is the single source of truth shared by this producer, the extractor
+    # (apps/harness/extract/psl.ts) and the conformance oracle
+    # (tools/ci/psl-reference.py). DEFECT-34 happened because three copies of
+    # this flag existed and one silently differed; there is now one copy.
+    #
+    # No default is supplied on purpose. A missing or malformed manifest MUST
+    # fail loudly -- defaulting here would reintroduce exactly the silent
+    # divergence this change removes, and Specification 15.1 requires degraded
+    # capability to be loud.
+    cfg_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ci', 'psl-config.json')
+    with open(cfg_path, encoding='utf-8') as fh:
+        cfg = json.load(fh)
+    if 'includePrivateDomains' not in cfg:
+        raise SystemExit(f"PSL CONFIG INVALID: {cfg_path} has no 'includePrivateDomains'")
+
     return tldextract.TLDExtract(
         suffix_list_urls=(),
         fallback_to_snapshot=True,
-        include_psl_private_domains=True,
+        include_psl_private_domains=bool(cfg['includePrivateDomains']),
     )
 
 
@@ -226,6 +243,52 @@ def capture_one(
     redirect_chain: list[dict[str, Any]] = []
     response_headers: dict[str, str] | None = None
     tls_chain: list[str] | None = None
+
+    # ── DEC-29 Tier 1 — network-layer observation ────────────────────────
+    #
+    # PASSIVE ONLY. `page.on("request")` observes requests the page makes; it
+    # neither injects script into the page nor blocks anything. It adds NO new
+    # execution risk: page.goto(wait_until="load") below already executes every
+    # script on the page, which is what makes renderedDom useful at all. This
+    # records more of what already happens.
+    #
+    # Deliberately NOT using BrowserContext.route(): route() intercepts and
+    # requires an explicit continue/fulfil per request, so a handler bug stalls
+    # the page and corrupts the capture. Observation must never be able to
+    # change what is captured. on("request") cannot.
+    #
+    # Ordering is APPEND-ORDER = chronological, and deduplication happens at
+    # serialisation, not here — see the S-6 note at the snapshot assembly.
+    network_posts: list[dict[str, Any]] = []
+    dynamic_scripts: list[dict[str, Any]] = []
+
+    # ⚠️ THE BOUNDARY IS DOMContentLoaded, NOT load. This was found by
+    # validation against a page whose behaviour was known in advance, and it
+    # would not have been found any other way.
+    #
+    # Playwright's `load` event is delivered to US *after* the page's own
+    # `window.addEventListener('load', ...)` handlers have already run and
+    # issued their requests. Observed ordering, verbatim from the trace:
+    #
+    #     req document  GET  kit.html
+    #     DCL
+    #     req fetch     POST /beacon      <- page's load handler already ran
+    #     req script    GET  /late.js     <- page's load handler already ran
+    #     LOAD-EVENT                      <- Playwright notifies us LAST
+    #
+    # A flag set on `load` is therefore ALWAYS False for anything the page does
+    # in its own load handler — which is precisely where exfiltration beacons
+    # and late script injection live. Gating on it would have reported
+    # dynamicScriptLoadCount = 0 across an entire re-captured corpus, silently,
+    # with no error to investigate.
+    #
+    # DOMContentLoaded fires BEFORE the page's load handlers, so it is a sound
+    # boundary. Known imprecision, accepted and documented rather than hidden:
+    # `async`/`defer` scripts declared in the ORIGINAL HTML can also land after
+    # DCL and will be counted as dynamic. That over-counts in a benign
+    # direction and is vastly preferable to a flag that is structurally always
+    # false.
+    dom_content_loaded = False
     rendered_dom: str | None = None
     final_url: str | None = None
     http_status: int | None = None
@@ -263,6 +326,56 @@ def capture_one(
                         http_status = resp.status
 
             page.on("response", on_response)
+
+            # ── DEC-29 Tier 1 handlers ───────────────────────────────────
+            #
+            # Every handler is wrapped: an exception raised inside a Playwright
+            # event callback must never propagate into the navigation and turn
+            # a successful capture into a failed one. Observation is strictly
+            # subordinate to capture — S-8's spirit applied to instrumentation.
+            def on_dcl() -> None:
+                nonlocal dom_content_loaded
+                dom_content_loaded = True
+
+            def on_request(req) -> None:
+                try:
+                    rtype = req.resource_type
+
+                    # dynamicScriptOrigins / dynamicScriptLoadCount: scripts
+                    # fetched AFTER load. Observed at the network layer rather
+                    # than by watching <script> insertion, because the page
+                    # cannot interfere with our bookkeeping here.
+                    if rtype == "script" and dom_content_loaded:
+                        dynamic_scripts.append({"url": req.url})
+
+                    # transmissionEndpoints: script-initiated POSTs. Navigation
+                    # requests are excluded deliberately — a form submission is
+                    # CRED-01's territory (declared action), not CRED-05's
+                    # (script-mediated). Conflating them would let CRED-05 fire
+                    # on ordinary form posts.
+                    if req.method == "POST" and rtype in ("xhr", "fetch") \
+                            and not req.is_navigation_request():
+                        # post_data raises on some non-UTF8 bodies; the DESTINATION
+                        # is what CRED-05 needs, so a body we cannot decode must
+                        # not lose us the endpoint.
+                        try:
+                            has_body = req.post_data is not None
+                        except Exception:
+                            has_body = None
+                        network_posts.append({
+                            "url": req.url,
+                            "resourceType": rtype,
+                            "afterDcl": dom_content_loaded,
+                            "hasBody": has_body,
+                        })
+                except Exception as exc:   # never let observation break capture
+                    print(f"on_request observer error (ignored): {exc}", file=sys.stderr)
+
+            page.on("domcontentloaded", on_dcl)
+            # Bound at CONTEXT level, not page level: a phishing page may open a
+            # popup or use nested frames, and context-level events cover every
+            # page and frame in the context. Page-level would miss them.
+            ctx.on("request", on_request)
 
             page.goto(url, timeout=FETCH_TIMEOUT_MS, wait_until="load")
             page.wait_for_timeout(2000)             # allow scripts to settle
@@ -329,6 +442,36 @@ def capture_one(
             "tlsCertificateChain": tls_chain,
             "dnsRecords": None,
             "screenshotRef": None,
+
+            # ── DEC-29 Tier 1 — scriptRuntime raw observations ────────────
+            #
+            # ⚠️ NOT YET IN THE FROZEN CONTRACT. `RawMaterial`
+            # (packages/contracts/snapshot.format.v1.ts:177-197) has NO field
+            # for network observations, and it is frozen — the amendment is a
+            # HAND edit by the Architecture Owner, never by tooling. Until it
+            # lands, a snapshot carrying this key is a superset of RawMaterial:
+            # every existing consumer ignores the extra key, and the extractor
+            # reads it only when present. Nothing breaks; nothing type-checks
+            # it either. See DEC-29 for the exact proposed amendment.
+            #
+            # S-6 DETERMINISM. Both lists are sorted and de-duplicated HERE, at
+            # serialisation, not at observation time. Request arrival order is
+            # a property of the network and the page's scheduler — it is NOT
+            # reproducible across captures, and neither is it meaningful. What
+            # CRED-05 needs is the SET of endpoints. Sorting makes two captures
+            # of an unchanged page produce byte-identical output, which is the
+            # same discipline DEFECT-26/27 established for the engine's arrays.
+            "scriptRuntimeObservations": {
+                "transmissionEndpoints": sorted({p["url"] for p in network_posts}),
+                "dynamicScriptOrigins": sorted({s["url"] for s in dynamic_scripts}),
+                "dynamicScriptLoadCount": len({s["url"] for s in dynamic_scripts}),
+                # Retained unsorted-but-derived detail for diagnosis. Counts
+                # only — no bodies are stored: a POST body to a phishing
+                # endpoint may contain third-party data, and §20.2's
+                # never-transmit discipline argues against warehousing it.
+                "postRequestCount": len(network_posts),
+                "postAfterDclCount": sum(1 for p in network_posts if p["afterDcl"]),
+            },
         },
         # Extraction is deliberately deferred (D0.5 §5). Raw material outlives
         # the Evidence Contract.

@@ -250,6 +250,20 @@ export interface ScriptRuntimeEvidence {
   readonly listenerOnCredentialField: Observation<boolean>;
   readonly clientSideTransmissionObserved: Observation<boolean>;
   readonly transmissionEndpoints: Observation<readonly string[]>;
+    /** eTLD+1 of each entry in transmissionEndpoints, PSL-resolved BY THE
+   *  PRODUCER. Mirrors the actionRegistrableDomain / downloadRegistrableDomain
+   *  precedent: every field in this contract that holds a registrable domain
+   *  says so in its name.
+   *
+   *  Pre-extracted deliberately. The javascript module MUST NOT derive these
+   *  from transmissionEndpoints itself — PSL-equivalent extraction inside a
+   *  module is exactly what §2.6 and E-4 forbid, and that derivation belongs
+   *  at Stage 1 in the producer or is R-01 territory reserved for Stage 2.
+   *
+   *  Closes the amendment DEC-14 deferred. Until a producer populates this,
+   *  javascript.ts reports transmissionEndpointDomains as [] unconditionally
+   *  and CRED-05's `exists` over it is vacuously false (DEFECT-18). */
+  readonly transmissionEndpointDomains: Observation<readonly string[]>;
   readonly dynamicScriptLoadCount: Observation<number>;
   readonly dynamicScriptOrigins: Observation<readonly string[]>;
   readonly credentialInterfaceInjected: Observation<boolean>;

@@ -1244,8 +1244,1243 @@ v1.ts`) currently performs one. That is a rule-set format concern, not
 an engine bug: `packages/engine` implements every operator the format
 defines, correctly.
 
+### Shared pattern: `STATIC_EXTRACTION_RECALL_FLOOR` (named 2026-08-29)
+
+A SECOND, independent reason CRED-03's corpus numbers will understate the
+truth — distinct from the `tau_collision` gap above, and not fixed by fixing
+it.
+
+`apps/harness/extract/domainRepresentation.ts` implements
+`confusableSkeleton` over a BOUNDED confusable map — the Cyrillic and Greek
+homoglyphs of ASCII Latin — not the full UTS-39 `confusables.txt` table
+(~6,000 entries, not bundled). A confusable built from a script outside that
+core (Armenian `ա`, Cherokee `Ꭰ`, fullwidth forms) produces no skeleton, so
+CRED-03 does not fire.
+
+**The bias is one-directional.** Every entry in the bounded map is a genuine
+visual confusable, so the implementation does not OVER-detect. It only
+UNDER-detects. Measured CRED-03 recall on the corpus is therefore a **FLOOR**
+for the homograph attack subtypes outside the core, never a true measurement.
+
+This is the same pattern as [[DEFECT-31]]'s `CredentialField.hidden` finding:
+**static extraction structurally cannot observe some sophisticated attack
+techniques that a live browser can** — CSS/JS-based concealment there,
+confusable scripts outside the bounded core here. Both bias measured recall
+DOWNWARD, never upward, and both affect a rule DEC-26 lists as fully
+corpus-validatable.
+
+⚠️ **Any future CP-2 report of CRED-03's or CRED-07's recall MUST cite this
+limitation alongside the number.** For the affected attack subtypes the figure
+is a floor, not a measurement, and presenting it without the caveat would
+overstate what the corpus establishes — in the direction that flatters the
+system.
+
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
 - **Status:** OPEN, not a work item tonight. Recorded so `tau_collision`
   is not mistaken for a live tunable, and so the distance between
   CRED-03's `rationale` and its actual predicate is on the record before
-  anyone tunes the parameter expecting it to do something.
+  anyone tunes the parameter expecting it to do something. The
+  `STATIC_EXTRACTION_RECALL_FLOOR` note above is a REPORTING obligation on
+  CP-2 rather than a code fix, and stands independently of whether
+  `tau_collision` is ever wired up.
+- **Related:** [[DEFECT-31]] (same pattern, CRED-07 side), [[DEC-26]]
+  (which rules are corpus-validatable), [[DEC-27]] (CP-2 sample-size
+  scoping).
+
+---
+
+## DEFECT-24 — `homograph.ts`'s `scriptsUsed` doc comment contradicts all four fixtures' actual usage (found 2026-08-28; RESOLVED 2026-08-29)
+
+Finding: two incompatible readings of `HomographFindings.scriptsUsed` are
+live in the repository at once, and nothing reconciles them.
+
+**The module's own header comment** (`packages/engine/modules/homograph.ts`,
+lines 44-47) says the array lists only NON-DEFAULT scripts — verbatim:
+
+> "This applies equally to scriptsUsed even though it is an array:
+> `scriptsUsed: present([])` is the correct way for a producer to report
+> 'observed, zero non-default scripts'; `absent()` is not an unstated
+> synonym for that"
+
+Under that reading, `[]` is the correct value for a plain ASCII domain, and
+a Latin+Cyrillic domain would report a single entry, `['Cyrillic']`.
+
+**All four committed fixtures do the opposite** — they list EVERY script,
+including the default one:
+
+```
+fixtures/clean-login.ts:121:      scriptsUsed: present(['Latin']),
+fixtures/no-credential.ts:106:    scriptsUsed: present(['Latin']),
+fixtures/off-origin-post.ts:116:  scriptsUsed: present(['Latin']),
+fixtures/sso-flow.ts:127:        scriptsUsed: present(['Latin']),
+```
+
+Every one of those domains is pure ASCII (`accounts.example.com`,
+`blog.example.com`, `login.idp-example.com`), so under the module's own
+stated convention each should be `present([])`. Under the fixtures'
+convention, `[]` would instead mean "a domain using no scripts at all",
+which no domain can be.
+
+**The contract does not settle it.** `DomainRepresentationEvidence.scriptsUsed`
+is `Observation<readonly string[]>` with the sole comment
+`// Unicode script names` (`evidence.contract.v1.ts:263`).
+`HomographFindings.scriptsUsed` is `readonly string[]` with no comment at
+all. Neither says whether the default/ASCII script is included.
+
+**Load-bearing consequence — this blocked a real check.** DEC-21's
+`homograph` coherence relation would naturally be "`isMixedScript` requires
+at least two scripts", which is definitionally true under the fixtures'
+reading and FALSE under the module comment's reading (one non-default script
+alongside an unlisted default IS mixed script). Because the ambiguity is
+unresolved, `consistency.ts` encodes only the weaker
+`isMixedScript && scriptsUsed.length === 0`, which holds under both
+readings, and `consistency.fixture.test.ts` asserts explicitly that
+`scriptsUsed: ['Cyrillic']` with `isMixedScript: true` is NOT flagged. The
+stronger check is available the moment this is decided.
+
+Not resolved here — deciding it is a producer-semantics call, and the
+producer (`tools/capture/`) does not yet emit this field for real
+(`docs/ProducerCapabilityManifest.md` marks `scriptsUsed` **NOT OBSERVABLE**,
+0/6, a bundled-Unicode-tables gap). Whichever reading is chosen, the other
+site must change to match: either the four fixtures become `present([])`,
+or `homograph.ts`'s comment is corrected.
+
+### Resolution (2026-08-29) — the FIXTURES' reading is adopted
+
+`scriptsUsed` lists **EVERY Unicode script present in the domain, including
+the default/ASCII one.** A pure-ASCII domain is `present(['Latin'])`. The
+module comment was the site that changed; **no fixture data was touched.**
+
+Re-reading `homograph.ts:38-48` in full context settles it, and this entry's
+original framing was slightly wrong about what the comment was doing. The
+passage's SUBJECT is the tri-state mapping — its whole job is to establish
+that `present([])` is not a synonym for `absent()` under I-2. The words "zero
+non-default scripts" are an incidental parenthetical inside that argument,
+not a considered ruling on script-listing semantics.
+
+Three reasons for this direction:
+
+1. **The "non-default" reading is unimplementable.** *Default relative to
+   what* — the TLD, the user's locale, Latin? No definition exists anywhere
+   in the repository. An extractor cannot implement an undefined predicate,
+   and DEC-27's extractor has to implement one of the two.
+2. **It is what the contract plainly says.** `// Unicode script names`
+   (`evidence.contract.v1.ts:263`), and it is what every Unicode
+   script-property API returns. The other reading needs a subtraction step
+   nothing specifies.
+3. **It unblocks DEC-21's relation**, below.
+
+**Changes applied in the same commit — the resolution is not documentation
+only:**
+
+- `packages/engine/modules/homograph.ts` — header corrected; "zero
+  non-default scripts" replaced, and the adopted semantics stated explicitly
+  with its reasoning. The I-2 argument is preserved verbatim in substance,
+  since it was correct and is load-bearing.
+- `packages/engine/consistency.ts` — [[DEC-21]]'s homograph relation
+  STRENGTHENED from `isMixedScript && scriptsUsed.length === 0` to
+  `isMixedScript && scriptsUsed.length < 2`. The weaker form existed only
+  because it was the one holding under both readings; with the ambiguity gone,
+  `length >= 2` is the exact relation. It subsumes the old check.
+- `packages/engine/consistency.fixture.test.ts` — the assertion that
+  `scriptsUsed: ['Cyrillic']` with `isMixedScript: true` is NOT flagged was
+  **inverted to `true`**, because under the adopted reading that combination
+  is a genuine self-contradiction. ⚠️ This is the part worth noticing:
+  resolving the ambiguity made a previously-passing assertion WRONG, and it
+  was fixed in the same change rather than left broken. A boundary case was
+  added alongside it (two scripts with `isMixedScript: false` is not judged
+  by this relation).
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29. Never load-bearing on a rule — CRED-03
+  reads `isMixedScript` and `confusableSkeleton`, never `scriptsUsed` itself
+  (re-confirmed against `rulesets/rules-v0.1.0.json`). It WAS load-bearing on
+  the strength of DEC-21's homograph relation, which is now strengthened.
+  Binding on DEC-27's extractor, which will emit the adopted form.
+
+---
+
+## DEFECT-25 — `DnsFindings.resolves` has no definition anywhere in the corpus (found 2026-08-28)
+
+Finding: `resolves` is the gating field of the `dns` module and nothing,
+anywhere, says what it means.
+
+Exhaustive search, all negative:
+- `evidence.contract.v1.ts:179` — `readonly resolves: Observation<boolean>;`
+  — no comment.
+- `evaluation.contract.v1.ts` — `readonly resolves: boolean;` inside
+  `DnsFindings` — no comment.
+- `packages/engine/modules/dns.ts` — reads it as a bare pass-through
+  (`resolves: evidence.resolves.value`), and its header does not gloss it.
+- All four fixtures carry `resolves: notCollected('api_unavailable')`, so
+  there is no empirical example of a real value anywhere in the repository
+  either. (`docs/ProducerCapabilityManifest.md` marks the whole `dns.*`
+  category PRODUCER_EXCLUSIVE — no content-script producer exists, so no
+  captured value exists to inspect.)
+
+**The two readings differ materially:**
+1. "The name resolves to an ADDRESS" — then `resolves: true` with
+   `aRecordCount: 0` and `aaaaRecordCount: 0` is a contradiction.
+2. "The name EXISTS / the query returned NOERROR" — then a name with only
+   MX records legitimately resolves while having no address at all, and the
+   same combination is perfectly coherent.
+
+**Load-bearing consequence.** DEC-21's `dns` coherence relation encodes only
+the direction that holds under BOTH readings — `!resolves &&
+(aRecordCount > 0 || aaaaRecordCount > 0)`, since address records prove the
+name resolves however "resolves" is defined. The converse is deliberately
+NOT encoded, and `consistency.fixture.test.ts` asserts that
+`resolves: true` with zero addresses is not flagged, citing this entry. If
+reading (1) is confirmed, that check should be added.
+
+Not currently load-bearing on any rule: no predicate in
+`rulesets/rules-v0.1.0.json` reads any `dns.*` path (the `dns` module is a
+DEC-5 conformant stub for exactly that reason). This is a
+definition gap to close before `dns` findings are first consumed, not a
+live defect.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, low priority. Blocks the stronger half of DEC-21's `dns`
+  relation; blocks nothing else today.
+
+---
+
+## DEFECT-26 — `ScoringEntry.suppressionsApplied` order followed the input array, not a canonical order (found and FIXED 2026-08-29)
+
+Finding: `packages/engine/stage5-6.ts` built each entry's
+`suppressionsApplied` by filtering and mapping `suppressionApplications`
+directly, inheriting that array's order:
+
+```ts
+const suppressionsApplied = suppressionApplications
+  .filter((a) => a.targetFindingId === finding.findingId && a.applied)
+  .map((a) => a.suppressionId);
+```
+
+The same pass, with its applications reordered on the way in, therefore
+produced a different — though semantically equivalent — record. Minimal
+reproduction, one finding and two applied suppressions:
+
+```
+order A  suppressionsApplied: ["S-01","S-02"]
+order B  suppressionsApplied: ["S-02","S-01"]
+score identical?       true (20)
+effectiveWeight ident? true
+FULL OUTPUT identical? false
+```
+
+**Severity: low. Record-stability only.** No score, no `effectiveWeight`, no
+`rawTier` is affected — confirmed in the reproduction above. The list is a SET
+of suppression IDs whose order carries no meaning. What it does affect is
+byte-comparison: `passresult.contract.v1.ts` P-13 requires replay to reproduce
+"identical scoring", which is a byte comparison, and a Pass Result whose
+`suppressionsApplied` ordering varies is not byte-identical.
+
+**How it was found — worth recording.** Not by inspection. It was the first
+failure of the B1.5 property test on its first run, before any deliberate
+sabotage. Every example-based test in this package passed against it, because
+each supplies applications in one fixed order.
+
+**Fix:** `.sort()` appended to the projection. SuppressionIds are unique within
+a rule set (V-4), so lexicographic order is total and needs no tie-breaker.
+
+**Verified by negative control**, not by the fix passing once: reverting the
+`.sort()` makes the property fail, shrunk over 43 steps to the minimal case —
+ONE finding with TWO applied suppressions (`S-01`, `S-02`, both
+`declaredReduction: 0.0001`), failing on "per-finding scoring entries must be
+permutation-invariant". Restored; byte-identical to the fixed file; green.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/stage5-6.ts`, with the
+  regression property in `packages/engine/b1-5.properties.test.ts`.
+
+---
+
+## DEFECT-27 — score/`primarySum` were order-dependent through floating-point summation (found and FIXED 2026-08-29)
+
+Finding: `computeScoringAndAggregation` accumulated `primarySum` and
+`aggravatorSum` inside its per-finding loop, i.e. **in input order**. IEEE-754
+addition is not associative, so the same finding set permuted produced a
+different score in the final bits. Measured on the generated counterexample:
+
+```
+primarySum   base=139.93345381530986   permuted=139.93345381530983
+score        base=169.93345381530986   permuted=169.93345381530983
+rawTier      High                      High
+```
+
+**Severity: higher than DEFECT-26 — this is a determinism failure, and the
+mechanism it undermines is the verification mechanism itself.**
+
+§9.1 requires aggregation to be "a pure function over the complete finding
+set... SHALL NOT be implemented as an incremental accumulator". P-13 requires
+replay to reproduce identical scoring. **Gate G-10 is the deterministic-replay
+gate.** The consequence is specific and worth stating plainly: a rule set that
+has not changed at all, replayed against the same evaluations, could FAIL
+replay purely because the findings or applications were reordered in
+persistence, serialisation, or any future parallel or streaming
+implementation. The failure would not indicate a wrong score — it would
+indicate nothing at all, while looking exactly like a genuine replay
+divergence. That corrupts confidence in G-10 rather than merely producing a
+wrong number, which is why this is filed above DEFECT-26.
+
+**Tier-flip: possible in principle, NOT demonstrated.** The observed
+divergence is ~3e-14 on a score of ~170. Flipping `rawTier` would require the
+score to fall within that distance of `threshold_medium` (30) or
+`threshold_high` (60). With integer thresholds and real-valued reductions this
+is not impossible, but no such case was constructed and none is claimed.
+
+**Reachability today: latent, not live.** `stage3.ts` emits findings in
+rule-set order and `stage4.ts` emits applications from a deterministic nested
+loop, so within a single pipeline run the order is stable and the four
+committed fixtures are unaffected. It becomes live wherever order can vary
+between the original pass and its replay.
+
+**How it was found.** Generated input, not inspection — and notably, a
+hand-built reproduction attempt FAILED to expose it: five weights across all
+120 orderings produced one distinct sum, spread 0. It took `fast-check`'s
+generated values to surface. This is the concrete justification for DEC-22's
+argument that shrinking and seeding, not popularity, were the reasons to
+adopt a property-testing library.
+
+**Fix:** summation moved out of the per-finding loop into a separate pass over
+a `findingId`-sorted copy of the scoring entries. Sorted by `findingId`
+specifically, NOT by `effectiveWeight`: ties in weight are real and common
+(two findings of the same rule, unsuppressed), so a weight sort would fall
+back to input order for exactly those entries and silently reintroduce the
+bug. `findingId` is a UUIDv4 minted per finding (`packages/engine/id.ts`) and
+the PRIMARY KEY of `skr.correlation_finding` in the Logical Database Design
+Specification §5.17 — genuinely unique, so the order is total with no
+tie-breaker.
+
+**Verified by negative control:** reverting to input-order summation makes the
+property fail, shrunk over 39 steps, on "§9.1: aggregation is a pure function
+over the SET — order must not matter", with the diff
+`primarySum: 104.99315299414123` vs `104.99315299414124`. Restored; green.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/stage5-6.ts`, with the
+  regression property in `packages/engine/b1-5.properties.test.ts`.
+
+---
+
+## DEFECT-28 — §9.3's aggravator parent-qualification is ambiguous when several findings share the parent rule (found 2026-08-29; UNREACHABLE today, deliberately OPEN)
+
+Finding: `packages/engine/stage5-6.ts` resolves an aggravator's parent with
+
+```ts
+const parentFinding = findings.find((f) => f.ruleId === parentRuleId);
+```
+
+`Array.prototype.find` returns the FIRST match in input order. Where two
+findings share the parent rule and differ in qualification, the aggravator's
+`parentQualified` — and therefore the score — depends on which one appears
+first. Minimal reproduction, one aggravator (weight 15) and two findings of
+its parent rule, one suppressed to zero and one healthy:
+
+```
+suppressed-parent FIRST : parentQualified = false  aggravatorSum = 0   score = 40
+healthy-parent    FIRST : parentQualified = true   aggravatorSum = 15  score = 55
+
+SCORE DIFFERS BY : 15   — a whole aggravator weight, not floating-point noise
+```
+
+**This is a different root cause from DEFECT-26/27 and is NOT fixed by their
+fixes.** Those were ordering/canonicalisation defects with a single correct
+answer. This is a CARDINALITY ambiguity: §9.3 states an aggravator contributes
+"only where its parent is present, unsubsumed, and has non-zero effective
+weight", and says nothing about which parent applies when several exist.
+Choosing one silently would be inventing aggregation semantics the
+specification does not state.
+
+**UNREACHABLE today — established by construction, not by "seems unlikely":**
+
+- `packages/engine/stage2.ts`'s `matchAllRules` returns
+  `ruleSet.rules.map(...)` — exactly one `RuleMatchResult` per rule in the
+  rule set, never two.
+- `packages/engine/stage3.ts`'s `generateCorrelationFindings` iterates those
+  results and emits at most ONE `CorrelationFinding` per MATCHED result.
+- Therefore a finding set containing two findings of the same rule cannot be
+  produced by the pipeline at all.
+- Confirmed empirically as well as by reading: `clean-login` yields `[]`;
+  `off-origin-post` yields `[CRED-01]`. Both distinct.
+
+The defect was surfaced only because the B1.5 property generator initially
+produced finding sets with duplicate `ruleId`s — input the pipeline cannot
+emit. That generator has since been constrained to unique `ruleId` per
+finding, matching Stage 3's real contract, with a comment pointing here so the
+constraint is not mistaken for concealment.
+
+**Two readings, NEITHER chosen here:**
+
+- **(a) Existential** — any qualifying parent finding suffices; implemented as
+  `.some(...)` over all findings of the parent rule. Order-independent by
+  construction.
+- **(b) Canonical selection** — pick a specific parent deterministically, e.g.
+  the lowest `findingId`. Deterministic, but the choice among genuinely
+  different parents is arbitrary and carries no real-world meaning.
+
+**LEANING TOWARD (a), LABELLED EXPLICITLY AS A LEANING FOR A FUTURE RULING,
+NOT A DECISION MADE HERE.** The rationale: this rule set already expresses
+"does any member satisfy this" existentially elsewhere — `ruleset.format.v1.ts`'s
+`exists` operator, used by CRED-01, CRED-07 and S-02's guard, quantifies over
+a collection and matches when ANY item qualifies. Reading §9.3's "parent is
+present" the same way is consistent with the format's own established idiom,
+where (b) would introduce a selection rule that appears nowhere else. This is
+an argument for a ruling, not the ruling.
+
+**What would make this live:** per-instance findings — one finding per login
+form, or per download, rather than one per matched rule. Nothing in the
+current design does that, and nothing in scope proposes it. If it is ever
+introduced, this becomes a live score-correctness defect immediately, which is
+why it is recorded now rather than left for rediscovery.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, deliberately unresolved. Not a work item unless and until
+  per-instance findings make it reachable. Requires an Architecture Owner
+  ruling on §9.3's meaning, not a code fix chosen by an implementer.
+
+---
+
+## DEFECT-29 — G-9's `--if-present` made the gate pass vacuously if `test:properties` were removed (found and FIXED 2026-08-29)
+
+Finding: `.github/workflows/ci.yml`'s G-9 step invoked
+`npm run test:properties --if-present`. That flag makes `npm run` exit 0 when
+the named script does not exist. So deleting `test:properties` from
+`package.json` — by accident, by a bad merge, or by someone removing a script
+they thought was still the old stub — would leave G-9 **green while running
+nothing at all**.
+
+Measured, not assumed:
+
+```
+npm run <missing-script>                 -> exit 1   (build fails, correct)
+npm run <missing-script> --if-present    -> exit 0   (silent pass, the defect)
+```
+
+**This is DEFECT-1's shape.** That entry recorded G-1 as "wired into CI,
+always green, verifying nothing"; the pre-Step-8 G-7 was the same, and
+DEFECT-17 was the same principle at the validator level — `compute-ruleset-digest.mjs`
+could verify an `integrityDigest`, but nothing on the CI path called it, so
+G-8 reported CONFORMANT regardless. V-14 closed that by making the check run
+where it matters. The principle each of those converges on: **a check that
+cannot fail is not a check.** `--if-present` is that failure mode expressed as
+a CLI flag.
+
+**Severity: latent, and specifically a gate-integrity defect rather than an
+engine defect.** No score, tier, or finding is affected. What is affected is
+the trustworthiness of G-9's green — the same category of harm DEFECT-27
+records for G-10, one layer up: the signal stops meaning what a reader takes
+it to mean.
+
+**Found during B1.5 closure**, while confirming the G-9 wiring ran the real
+`test:properties` script rather than the stub it replaced. It was noticed
+precisely because the stub had just been replaced — the flag had been harmless
+for as long as the script was a no-op `echo`, and became a hole the moment the
+script started carrying a real gate.
+
+**Fix:** `--if-present` removed from the G-9 step only. The script now exists
+and is REQUIRED to exist; its absence fails the build.
+
+**Deliberately NOT changed — the other `--if-present` in this file.** The
+"Unit tests" step (`npm test --if-present -- --coverage`) relies on the
+silent-skip genuinely: no `test` script exists in `package.json`, and that
+step's own comment records the omission as intentional ("No unit-test suite
+exists yet — that's Stage 1b scope... Placeholder that no-ops honestly rather
+than failing on a script never meant to exist yet"). Removing the flag there
+would fail every build immediately. Verified before editing: `package.json`
+has no `test` script, and G-9's step is the only other use. The distinction is
+recorded inline in `ci.yml` so the two are not "tidied" into consistency
+later.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `.github/workflows/ci.yml`.
+
+---
+
+## DEFECT-30 — `runAnalysisPass` dispatches Stage 1 twice, minting two sets of `evaluationId`s for one logical pass (found and FIXED 2026-08-29)
+
+Finding: `packages/engine/pass.ts` calls both Stage 1 entry points:
+
+```ts
+const evaluations = await assembleEvaluationSet(evidence, storeReader);
+const dispatch    = await evaluateAllModules(evidence, storeReader);
+```
+
+Each runs the full ten-module dispatch independently, and `evaluateModule`
+mints a fresh `evaluationId` per call (`packages/engine/id.ts` —
+`randomUUID()`, DEC-15's resolution). So a single logical pass produces **two
+distinct sets of ten `evaluationId`s** for the same ten module evaluations.
+
+**Why both calls exist.** They return different things, and both are needed:
+
+- `assembleEvaluationSet` produces the ten complete `SecurityEvaluation`
+  envelopes — E-8's unit ("Exactly one evaluation per module per pass"), and
+  what a persisted `AnalysisPassResult` references.
+- `evaluateAllModules` produces `ModuleDispatchResult`s, which is what Stages
+  2–4 actually consume. DEC-15's Stage 2 dependency check established this
+  directly: `FindingPath` "MUST resolve against D0.2's FindingsByModule",
+  never the surrounding envelope, so predicate matching needs only
+  `moduleId` + `result`.
+
+**Currently harmless — stated precisely, not hand-waved.** Nothing downstream
+compares an envelope's `evaluationId` against anything else.
+`CorrelationFinding.evaluationRefs` is built in `stage3.ts` from the DISPATCH
+results (`evaluations[moduleId].evaluationId`), consistently, so findings
+reference a coherent set. The envelopes' ids are simply never read by Stages
+2–8. All four fixtures produce identical scores and tiers with the duplication
+in place.
+
+**The real risk, precisely:**
+
+1. **Cross-reference breakage.** The moment anything correlates a persisted
+   `SecurityEvaluation.evaluationId` with a `CorrelationFinding.evaluationRefs`
+   entry — which is exactly what
+   `spec/Logical-Database-Design-Specification-v1_1.md`'s
+   `finding_evaluation: (finding_id, evaluation_id)` join table exists to do —
+   the two will not match. Findings would reference evaluationIds that appear
+   nowhere in the pass's own persisted evaluations. That is a referential
+   integrity failure at the storage layer, not a cosmetic one.
+2. **Wasted computation, at minimum.** Every module runs twice per pass. Today
+   that is ten extra pure function calls; once `authContext` has a real store
+   behind it (A1.3), it is a second store round-trip per pass — against
+   §13.4's Tier 2 latency budget (≤200 ms local, ≤1000 ms p95 with backend).
+3. **P-13/G-10 exposure is NOT claimed here.** Replay compares a persisted
+   Pass Result against a recomputation; since `evaluationId` is a random
+   UUIDv4 by design (DEC-15), it can never be reproduced by replay regardless
+   of this defect. This entry does not assert a G-10 impact — that is a
+   separate, already-known consequence of non-deterministic ids.
+
+**Fix, deliberately OUT OF SCOPE for the commit that introduced this.** The
+correct shape is to dispatch once and thread the results into envelope
+assembly — `assembleSecurityEvaluation` would take a `ModuleDispatchResult`
+rather than re-dispatching internally. That changes `orchestrator.ts`'s public
+signature, which is a change to an existing, tested boundary and belongs in
+its own commit with its own verification, not folded into the first wiring of
+the pipeline. Recorded here at the moment it was introduced rather than
+discovered later.
+
+**FIX, 2026-08-29 — the architectural change named above, not a relabelling.**
+Stage 1 now runs **exactly once per pass**, threaded rather than duplicated.
+
+Mechanism, precisely:
+
+- `assembleSecurityEvaluation(evidence, dispatch: ModuleDispatchResult)` — no
+  longer takes `moduleId` or `storeReader`, and no longer calls
+  `evaluateModule` internally. `moduleId` comes from `dispatch.moduleId`.
+- `assembleEvaluationSet(evidence, dispatch: Readonly<Record<ModuleId,
+  ModuleDispatchResult>>)` — maps over the supplied dispatch one-to-one
+  instead of re-dispatching per module.
+- **Both became SYNCHRONOUS.** With dispatch threaded in, neither function
+  touches the store, so neither needs to be `async` — the signature now states
+  what the function actually does rather than carrying a vestigial `Promise`.
+- `pass.ts` calls `evaluateAllModules` ONCE and feeds that single result set
+  into both envelope assembly and Stages 2-4.
+
+Dispatch count per pass: **20 → 10.**
+
+**POSITIVE PROOF, asserted directly rather than inferred from tests still
+passing** (`packages/engine/pass.fixture.test.ts`, all four fixtures): every
+`CorrelationFinding.evaluationRefs` entry must be found among the ten
+`SecurityEvaluation.evaluationId`s in the same pass's envelopes. Those two
+come from opposite ends of the pipeline — `stage3.ts` builds refs from the
+DISPATCH results, while the envelopes are built by `assembleEvaluationSet` —
+so before this fix they were drawn from two independent dispatches and could
+never intersect. Their agreement now IS the duplication being gone, observed
+rather than assumed.
+
+The proof was verified to actually fire: reintroducing a second dispatch makes
+it fail with
+`off-origin-post: finding CRED-01 references evaluationId 67a5192d-…, which is
+in NO envelope — Stage 1 dispatched more than once (DEFECT-30)`. Restored and
+re-verified green.
+
+A second, narrower assertion covers the single-module level in
+`orchestrator.fixture.test.ts`: an envelope's `evaluationId` equals that of the
+dispatch it was built from.
+
+**E-8 is now satisfied BY CONSTRUCTION, not empirically.** A single
+`evaluateAllModules` call yields exactly one `ModuleDispatchResult` per
+`ModuleId`, and `assembleEvaluationSet` maps those one-to-one — no code path in
+`runAnalysisPass` can produce a second evaluation for any module. Stated in a
+comment at the E-8 assertion, which is retained regardless: a structural
+guarantee nothing checks is one refactor away from being untrue.
+
+**All six call sites updated**, none left on the old signature:
+`orchestrator.ts` (inside `assembleEvaluationSet`),
+`orchestrator.fixture.test.ts` ×4, `e2e.sso-flow.fixture.test.ts` ×1,
+`pass.ts` ×1.
+
+One test assertion was RELOCATED rather than deleted, and the distinction
+matters: `orchestrator.fixture.test.ts` asserted that two envelope assemblies
+produce different `evaluationId`s. Envelope assembly no longer mints ids —
+`evaluateModule` does — so the same property is now asserted against two
+`evaluateModule` calls, where the behaviour actually lives. Its original
+intent, that an id is generated fresh per dispatch and never derived from the
+evidence, is intact; two further assertions were added confirming each
+envelope faithfully carries its own dispatch's id.
+
+**Zero behaviour change.** All four fixtures unchanged: `clean-login` 0/Low,
+`no-credential` 0/Low, `off-origin-post` 45/Medium, `sso-flow` 0/Low. Full
+suite green — `tsc -b`, 10/10 module tests, 10/10 engine tests, G-7 7/7, G-8
+CONFORMANT, G-9 property tests green.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** RESOLVED 2026-08-29 in `packages/engine/orchestrator.ts` and
+  `packages/engine/pass.ts`, with the positive proof in
+  `packages/engine/pass.fixture.test.ts`.
+
+---
+
+## DEFECT-31 — `FABRICATION_FORCED_BY_SHAPE`: `Observation<T[]>` cannot express a per-element capability gap, so a producer must assert facts it cannot observe (found 2026-08-29)
+
+Finding: `LoginFormObservation` places runtime-only facts as **plain
+non-nullable fields inside an array element**, while the tri-state that would
+let a producer decline to answer sits on the array as a whole
+(`evidence.contract.v1.ts:215-222`, `:245`):
+
+```ts
+export interface LoginFormObservation {
+  readonly fields: readonly CredentialField[];
+  readonly method: FormMethod;
+  readonly actionUrl: string | null;
+  readonly actionRegistrableDomain: string | null;
+  readonly injectedAfterLoad: boolean;            // <- plain boolean
+  readonly injectingScriptOrigin: string | null;  // <- plain union
+}
+
+readonly forms: Observation<readonly LoginFormObservation[]>;   // tri-state HERE
+```
+
+`injectedAfterLoad` is a runtime observation — whether the form appeared
+after `load` fired. A static extractor working from a serialised post-render
+DOM cannot know it. **There is no position at which to write
+`notCollected`**, and no `NotCollectedReason` applies, because the field is
+not an `Observation`.
+
+### Why this is a NEW category, not an instance of DEFECT-15/18/19
+
+Those three are all *"the value is unavailable or ungroundable"* —
+DEFECT-19's `initialRegistrableDomain` is permanently `null`, and `null`
+reads honestly as "not established".
+
+This is different in kind: **the value is unavailable AND the contract
+offers no way to say so**, so the producer must emit a positive truth-claim
+it cannot support. `injectedAfterLoad: false` does not read as "unknown"; it
+reads as *verified not injected*. That is the exact I-2 failure the contract
+warns against in `homograph.ts`'s header — "conflating them silently converts
+a capability gap into a clean bill of health" — except here it is **forced by
+the contract's own shape**, not chosen by a careless producer.
+
+Naming it: `FABRICATION_FORCED_BY_SHAPE`. The tri-state discipline is applied
+at the wrong GRANULARITY — array-level, when the capability gaps are
+element-level and per-field.
+
+### The three options, and why option 3 is taken
+
+1. **Emit `false`.** Fabricates. The I-2 conflation above.
+2. **Make the whole `forms` observation `notCollected`.** Honest, and
+   destroys `fields`, `method` and `actionRegistrableDomain` along with it —
+   which kills CRED-01, CRED-06 and CRED-07, the rules the corpus exists to
+   validate. Not viable.
+3. **Emit `false`, record the limitation out-of-band** via `extractorVersion`
+   and a documented convention. **Taken**, because 2 is worse and 1-without-a-
+   record is worst.
+
+### Affected fields, verified against the rule set — not assumed
+
+Each consumer below was confirmed by scanning every rule in
+`rulesets/rules-v0.1.0.json`, not by recollection.
+
+| Field | Only consumer | Consumer live? |
+|---|---|---|
+| `injectedAfterLoad` | **CRED-A1** | ❌ [[DEC-14]] non-functional |
+| `injectingScriptOrigin` | **CRED-A1** | ❌ [[DEC-14]] non-functional |
+| `CredentialField.hidden` | **CRED-07** | ⚠️ **LIVE and corpus-validatable** |
+| `CredentialField.autocompleteDisabled` | *(none)* | — |
+
+**`injectedAfterLoad` / `injectingScriptOrigin` — real but NOT urgent.**
+CRED-A1 is their **only** consumer (exhaustive scan of all rules; both fields
+appear in exactly one rule body). DEC-14, signed 2026-08-25, accepts CRED-A1
+as **non-functional for Phase I**. So the fabricated `false` currently
+corrupts no live rule — it is latent, and becomes load-bearing the moment
+DEC-14 is revisited. Severity is "real but not urgent" for that specific
+reason, and for no other: the defect is fully present, only its consumer is
+switched off.
+
+⚠️ **`CredentialField.hidden` is the exception, and it is worse than the
+other two.** Verified: `loginForm.ts:71` computes
+`hasHiddenCredentialField: form.fields.some((f) => f.hidden)`, and CRED-07's
+predicate reads `$.hasHiddenCredentialField`. **CRED-07 is live, enabled, and
+one of the four rules DEC-26 identifies as fully corpus-validatable.**
+
+`hidden` is only PARTIALLY derivable statically. `type="hidden"`, the `hidden`
+attribute and inline `style="display:none"` are all detectable from
+serialised markup; **hiding via a stylesheet rule or CSS class is not**,
+because `raw.renderedDom` carries markup, not computed styles. Emitting
+`false` where the extractor cannot tell means **under-reporting hidden
+fields, i.e. false negatives on CRED-07 — measured on the very corpus being
+used to establish CRED-07's recall.** That is a measurement-validity problem
+for CP-2, not only a contract-shape complaint.
+
+This raises the defect's practical severity above what the CRED-A1 analysis
+alone would suggest, and it is recorded here rather than filed separately
+because it is the same root cause: a fact the producer cannot fully observe,
+with no contractual way to say so.
+
+### Shared pattern: `STATIC_EXTRACTION_RECALL_FLOOR` (named 2026-08-29)
+
+`hidden`'s markup-only derivation is one instance of a pattern that is not
+specific to this defect: **static extraction structurally cannot observe some
+sophisticated attack techniques that a live browser can.**
+
+| Instance | Technique invisible to static extraction | Rule affected |
+|---|---|---|
+| `CredentialField.hidden` (here) | CSS/JS-based concealment — stylesheet rules, injected classes, scripted `display:none` | **CRED-07** |
+| `confusableSkeleton` ([[DEFECT-23]]) | confusables outside the bounded Cyrillic/Greek core — Armenian, Cherokee, fullwidth | **CRED-03** |
+
+**The bias is one-directional in both cases.** Markup-only `hidden` detection
+misses concealed fields but never invents them; the bounded confusable map
+misses skeletons but every entry it has is genuine. Neither over-detects.
+So both **understate** recall — measured numbers are a **FLOOR** for the
+affected attack subtypes, never a true measurement.
+
+The sophistication correlation is what makes this matter rather than being a
+rounding error: the attacks these misses hide are precisely the *more*
+sophisticated ones. An attacker concealing a credential field through a
+stylesheet, or building a homograph from a less common script, is doing
+something more advanced than the baseline the corpus will happily measure. So
+the error is not merely downward — it is concentrated in the subpopulation a
+detection system most needs to be judged on.
+
+⚠️ **Any future CP-2 report of CRED-07's or CRED-03's recall MUST cite this
+limitation alongside the number.** Publishing either figure without it would
+overstate what the corpus establishes, in the direction that flatters the
+system.
+
+### Fix paths (none taken here — this is a contract-shape issue)
+
+1. **Contract amendment** — make the affected fields `Observation<T>` at
+   element level. Correct, and touches FROZEN `packages/contracts/`, so it is
+   an Annex A amendment by hand, never by tooling.
+2. **A per-element capability descriptor** alongside `forms`, saying which
+   element fields the producer could actually observe. Avoids re-typing the
+   existing fields.
+3. **Status quo + convention**, as option 3 above. What ships today.
+
+### Priority — TWO DIFFERENT PRIORITIES, deliberately not averaged
+
+This defect has one root cause and two consequences of very different weight.
+Collapsing them into a single severity would either overstate the dead half or
+bury the live one, so they are tracked separately.
+
+**🟢 LOW — `injectedAfterLoad`, `injectingScriptOrigin`**
+
+Sole consumer is **CRED-A1** (confirmed by exhaustive scan of every rule in
+`rulesets/rules-v0.1.0.json`; both fields appear in exactly one rule body).
+CRED-A1 is **[[DEC-14]] non-functional for Phase I**, signed 2026-08-25.
+
+The fabricated `false`/`null` therefore corrupts **no live rule today**. The
+defect is fully present — the producer still asserts a runtime fact it cannot
+observe — but its only consumer is switched off. Severity is low **for that
+specific reason and no other**: not because the fabrication is acceptable, but
+because nothing currently reads it. It becomes live the moment DEC-14 is
+revisited, and DEC-14's reviewer should be pointed here.
+
+**🟠 TRACKED — REQUIRED CAVEAT — `CredentialField.hidden`**
+
+Consumer is **CRED-07**, which is **enabled, live, and one of the four rules
+[[DEC-26]] identifies as fully corpus-validatable**. Verified chain:
+`loginForm.ts:71` computes `hasHiddenCredentialField: form.fields.some((f) =>
+f.hidden)`; CRED-07's predicate reads `$.hasHiddenCredentialField`.
+
+This is not a latent issue. It has a **measurement-validity impact on CP-2**:
+markup-only derivation cannot see stylesheet- or class-based concealment, so
+CRED-07's measured recall carries an unquantified false-negative floor,
+concentrated in the more sophisticated attacks (see
+`STATIC_EXTRACTION_RECALL_FLOOR` above).
+
+**The required caveat is the deliverable here, not a code fix.** Until the
+contract shape changes, the obligation is that **CP-2 MUST publish CRED-07's
+recall with this limitation cited alongside the number.** A fix would need
+either computed-style capture (a CAPTURE-stage change) or the contract
+amendment in fix path 1 — neither is in scope tonight, and neither is required
+for the caveat to be discharged.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, split priority as above — 🟢 LOW for the CRED-A1 pair
+  (dead consumer), 🟠 TRACKED with a required CP-2 caveat for `hidden` (live
+  consumer, real measurement-validity impact). Recorded BEFORE `loginInterface`
+  extraction is written, so the emit-`false` convention is a documented choice
+  rather than an accident discovered later.
+- **Related:** [[DEC-14]] (CRED-A1 non-functional), [[DEC-26]] (extraction
+  scope), [[DEC-27]] (extraction toolchain), [[DEFECT-19]] (the
+  ungroundable-value category this is distinguished from), [[DEFECT-23]] (the
+  CRED-03 instance of `STATIC_EXTRACTION_RECALL_FLOOR`).
+
+---
+
+## DEFECT-32 — `CredentialField.kind` is heuristic, and its error is BIDIRECTIONAL — it can inflate `credentialFormPresent`, which gates 6 of 11 rules (found 2026-08-29)
+
+Finding: `CredentialFieldKind` is a closed union —
+`'password' | 'otp' | 'pin' | 'username' | 'email'` — but nothing in the
+captured material declares which one a given `<input>` is. The extractor must
+INFER it from `type`, `autocomplete`, `name` and `id` attributes. That
+inference is a heuristic, and no part of the contract, the rule set or the
+corpus constrains it.
+
+### Why this is filed separately from DEFECT-31, and not folded into it
+
+[[DEFECT-31]]'s `STATIC_EXTRACTION_RECALL_FLOOR` covers `CredentialField.hidden`
+and `confusableSkeleton`, whose errors are **one-directional**: markup-only
+detection misses concealed fields but never invents them, and the bounded
+confusable map misses skeletons but every entry it has is genuine. Because
+they only ever under-report, a measured figure derived from them is a FLOOR —
+imprecise, but with a known direction, and safe to publish as a lower bound.
+
+**`kind` has no such guarantee. Its error runs BOTH WAYS:**
+
+| Direction | Mechanism | Effect |
+|---|---|---|
+| **Over-classification** | a non-credential field matched by a name/id pattern — a search box named `user_query`, a hidden `pin` tracking parameter, a newsletter `email` capture | a field is wrongly classified as credential-bearing, so `credentialFormPresent` is **INFLATED** |
+| **Under-classification** | a genuine credential field the patterns miss — obfuscated or randomised `name`/`id` (common in kits), a custom widget not using `<input type=password>`, a non-English attribute | a real credential interface is missed, so `credentialFormPresent` is **DEFLATED** |
+
+A floor is a usable number. A figure with unbounded error in **both**
+directions is not a floor at all, and must not be reported as one. This is
+why it is a separate defect rather than another row in DEFECT-31's table: the
+mitigation is different (empirical validation, not a reporting caveat) and the
+reporting obligation is different (cannot be published as a bound).
+
+### The stakes — precisely
+
+`credentialFormPresent` is **the single highest-leverage field in the entire
+extractor**. Verified by scanning every rule in `rulesets/rules-v0.1.0.json`:
+
+| Rule | Reads `credentialFormPresent` |
+|---|---|
+| CRED-01 | ✅ |
+| CRED-02 | ✅ |
+| CRED-03 | ✅ |
+| CRED-04 | ✅ |
+| CRED-06 | ✅ |
+| CRED-07 | ✅ (via `forms[]`, gated on the same classification) |
+
+**Six of eleven rules.** Every rule DEC-26 identifies as fully
+corpus-validatable — CRED-01, CRED-03, CRED-06, CRED-07 — is downstream of
+this one boolean, and the boolean is downstream of a heuristic.
+
+A misclassification does not degrade one field's precision; it changes whether
+the rules fire at all for that snapshot. Over-classification manufactures
+false positives across six rules simultaneously; under-classification
+manufactures false negatives across the same six. Both corrupt CP-2's
+confusion matrix in ways that no per-rule analysis would separate, because the
+error is upstream of all of them.
+
+Compounding it: only **76 of 617 snapshots (12.3%)** carry a credential
+interface at all ([[DEC-27]] §4). With a credential-bearing negative class of
+roughly 14 benign snapshots, a handful of misclassifications is not noise — it
+is a material fraction of the measured population.
+
+### ⚠️ Required: EMPIRICAL validation, not design review
+
+**The heuristic must not be assumed correct from its design.** Reading the
+patterns and agreeing they look sensible establishes nothing about their
+behaviour on real phishing markup, which is adversarial, frequently
+obfuscated, and often non-English. The classification rules were written by
+reasoning about well-formed login pages; the corpus is largely not that.
+
+**Concrete C1.5-adjacent validation task — a work item, not a note:**
+
+1. Run the completed extractor across a corpus sample.
+2. Draw a stratified sample of classified fields — both labels, and
+   deliberately including forms where the classifier found NO credential field
+   (the under-classification arm is invisible if you only inspect positives).
+3. Hand-label each against the rendered markup as ground truth.
+4. Report a confusion matrix **for the classifier itself**, per
+   `CredentialFieldKind` value, with the over- and under-classification arms
+   reported **separately** — a single accuracy figure would hide the
+   direction, which is the whole point of this defect.
+5. Feed the result into CP-2 as a stated error bound on
+   `credentialFormPresent`, not as a footnote.
+
+Step 2 is the part most likely to be skipped and the part that matters most:
+sampling only what the classifier flagged measures precision and is blind to
+recall.
+
+**Sequencing.** This cannot be done before extraction runs, so it is not a
+blocker on building `loginInterface` — it is a blocker on **trusting the
+numbers that come out of it.** Recorded now so that it is scheduled, rather
+than discovered when CP-2's figures are already circulating.
+
+### ⚠️ EMPIRICAL CONFIRMATION, same day — the over-classification arm is real and measurable
+
+The extractor was built and run across the 617-snapshot store immediately
+after this entry was written. **The predicted over-classification appeared at
+once, and it is not marginal.**
+
+| | benign | phishing |
+|---|---|---|
+| `credentialFormPresent = true` | 22 | 85 |
+| — has `password`/`otp`/`pin` | 14 | 66 |
+| — **`email`-ONLY** | **8 (36% of positives)** | **16 (19% of positives)** |
+| — `username`-only | 0 | 3 |
+
+**24 of 107 positives (22%) carry no password, OTP or PIN field at all** — just
+an email input. Those are overwhelmingly newsletter signups and contact forms,
+not login interfaces.
+
+**The bias falls in the worst possible direction.** It is nearly twice as
+concentrated in the BENIGN class (36% of benign positives vs 19% of phishing),
+so it inflates precisely the negative class that CRED-01/03/06/07 are measured
+against — manufacturing false positives across six rules simultaneously, on a
+class that only contains ~14–22 snapshots to begin with.
+
+**Cross-validation, which makes the finding trustworthy rather than an
+artifact:** the `password`-bearing counts (14 benign / 66 phishing) match an
+independent regex probe run before the extractor existed (14 / 62) almost
+exactly. Password detection is sound; the divergence is entirely in the
+`email` tier.
+
+**The root question this exposes is semantic, not a coding error.**
+`CredentialFieldKind` includes `'email'`, so classifying `<input type="email">`
+as an email credential field is contract-CORRECT. What is unsettled is whether
+a form containing ONLY an email field constitutes a *credential interface* for
+`credentialFormPresent`'s purposes. Nothing in the contract, the rule set or
+§7 says. The extractor currently says yes, by taking the contract literally.
+
+**RULED 2026-08-29 (Architecture Owner): option 2 adopted and APPLIED.**
+`credentialFormPresent` is now true only if some field has kind in
+`{password, otp, pin}`. `email`- and `username`-only forms no longer count.
+Implemented in `apps/harness/extract/loginInterface.ts` with the reasoning
+recorded at the site.
+
+Re-measured immediately after: `credentialFormPresent` fell from **107 to 80**
+across the 617-snapshot store (17.3% → 13.0%), benign from 22 → **14**,
+phishing from 85 → **66**. All 24 email/username-only positives were removed;
+the password/otp/pin-bearing counts are unchanged, as intended.
+
+The classification of individual fields is UNCHANGED — `forms[].fields` still
+records `email` and `username` kinds, so CRED-01 and CRED-07 still see them.
+What changed is only the page-level question the boolean answers.
+
+**This narrows DEFECT-32 but does not close it.** The largest measured
+instance of over-classification is gone. Two things remain: tier-3 name/id
+matching can still over-classify WITHIN the secret kinds (a field named `pin`
+that is a postal PIN), and the **under-classification arm is still entirely
+unmeasured** — it is invisible from the classifier's own output and needs the
+hand-labelling task below.
+
+The three options as they stood when the ruling was made:
+
+1. **Status quo.** `credentialFormPresent` is true for any credential-kind
+   field. Contract-literal; over-reports by ~22%.
+2. **Require a secret-bearing field** — `password`, `otp` or `pin`. A form
+   asking only for an email address is not asking for a credential. Would cut
+   benign positives from 22 to 14.
+3. **Require ≥2 credential kinds, or one secret-bearing field.** Catches
+   username+password and email+password, excludes lone-email, but also
+   excludes genuine single-field password prompts (step-two login pages),
+   which phishing kits do use.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN. Not a code defect — the heuristic is the best available
+  approach from static markup and no alternative is proposed. What is OPEN is
+  the **validation obligation**: until the empirical check above is run,
+  `credentialFormPresent`'s error rate is unknown in both directions, and any
+  CP-2 figure downstream of it carries that unquantified uncertainty. Distinct
+  from [[DEFECT-31]], whose one-directional errors at least yield a publishable
+  bound. **The over-classification arm was measured and then RULED ON — see the
+  RULED block above: option 2 adopted and applied, `credentialFormPresent`
+  now benign 14 / phishing 66, with zero email- or username-only positives
+  remaining. The under-classification arm
+  remains unmeasured** and needs the hand-labelling task, since it is invisible
+  from the classifier's own output.
+- **Related:** [[DEFECT-31]] (`STATIC_EXTRACTION_RECALL_FLOOR`, one-directional
+  by contrast), [[DEC-26]] (which rules are corpus-validatable), [[DEC-27]] §4
+  (the 12.3% population rate that amplifies this).
+
+---
+
+## DEFECT-33 — `readSnapshot`'s unchecked cast asserted `scriptRuntimeObservations: null` over 26,700 snapshots where the key was ABSENT — correct only by an unrelated guard's incidental strictness (found and FIXED 2026-08-29)
+
+Finding: `RawMaterial.scriptRuntimeObservations` is declared `{...} | null`,
+and its own docstring states "null for every snapshot captured before this
+field existed". **On disk that was false.** Pre-amendment snapshots have no
+such key at all, so the runtime value was `undefined`, not `null`.
+
+Verified directly against a real snapshot rather than assumed — `raw` carries
+exactly nine keys:
+
+```
+dnsRecords, domContentHash, finalUrl, redirectChain, renderedDom,
+requestedUrl, responseHeaders, screenshotRef, tlsCertificateChain
+```
+
+`scriptRuntimeObservations` is not among them, on any of the 26,700 entries
+the committed index describes.
+
+The gap was invisible because `apps/harness/extract/snapshot-store.ts:34` read
+the file through an unchecked assertion:
+
+```ts
+return JSON.parse(gunzipSync(readFileSync(path)).toString('utf8')) as Snapshot;
+```
+
+An `as` cast performs no runtime check. TypeScript therefore believed every
+snapshot satisfied the amended contract, and every consumer downstream was
+type-checked against a promise the data did not keep.
+
+### Why nothing broke — and why that is the actual defect
+
+Behaviour was correct. `scriptRuntime.ts`'s `isObservations()` guard rejects
+`undefined` for the same reason it rejects a malformed object, so extraction
+returned `notCollected` and the S-6 tests passed.
+
+**But it was correct because an unrelated guard happened to be strict enough,
+not because anything guaranteed it.** Had `isObservations()` been written as a
+truthiness check, or had any future consumer read
+`raw.scriptRuntimeObservations?.transmissionEndpoints ?? []` and treated the
+empty array as an observation, the bug would have surfaced as silently wrong
+evidence rather than as an error.
+
+**This is the same shape this project has flagged repeatedly, not a new
+pattern** — a check that passes for a reason other than the one it appears to
+test:
+
+- [[DEFECT-1]] / the `tsc --noEmit` vacuity: a gate that type-checked ZERO
+  files and passed.
+- [[DEFECT-17]]: `integrityDigest` had a documented algorithm and nothing
+  verified it; a stale digest passed CONFORMANT. Closed by V-14.
+- [[DEFECT-29]]: V-15's own first draft reported OK when `version.ts` was
+  absent — a green check that had verified nothing.
+- [[DEFECT-30]]: E-8 held "in the sense that ten envelopes existed", while
+  Stage 1 was dispatching twice.
+
+Each was found by asking *why* something passed rather than *whether* it
+passed. This one was found the same way, while enumerating the compile errors
+the amendment produced.
+
+### Fix
+
+`readSnapshot` now NORMALISES at the boundary: if `raw.scriptRuntimeObservations`
+is `undefined` after parsing, it is set to `null`. Every consumer then sees
+what the type promises, and the promise is kept once, in one place.
+
+**Widening the type to `{...} | null | undefined` was explicitly REJECTED.**
+That would encode the gap rather than close it, and it would blur "we did not
+look" against "we looked and there is nothing" — the exact distinction S-7 and
+I-2 exist to keep sharp.
+
+**Present-but-MALFORMED is deliberately left alone.** Only `undefined` becomes
+`null`. A key that exists with the wrong shape is a PRODUCER BUG, not a version
+gap; it must reach `isObservations()` and degrade to `notCollected` rather than
+being quietly rewritten to `null`, which would disguise a broken producer as an
+ordinary pre-amendment snapshot.
+
+### Proof, not inference
+
+`apps/harness/extract/read-boundary.test.ts` asserts
+`snap.raw.scriptRuntimeObservations === null` **directly on the parsed
+snapshot**, over 20 real snapshots.
+
+It deliberately does NOT test through `extractEvidence`: that path returns
+`notCollected` whether the normalisation exists or not, so it would pass
+either way — precisely the inference this defect is about. The test also
+establishes its own premise first, by reading the raw JSON and confirming the
+key is genuinely absent (20/20), so it reports honestly rather than asserting
+a normalisation with nothing to normalise if the store is ever re-captured.
+
+Negative controls, both confirmed to fire:
+
+| Seeded fault | Caught |
+|---|---|
+| Revert to the unchecked cast | ✅ "must normalise … not leave it undefined" |
+| Normalise malformed input to null too | ✅ "must be left ALONE … so a producer bug stays visible" |
+
+### ⚠️ Residual gap, NOT fixed here
+
+Only the amendment field is normalised. The remaining `as Snapshot` still
+asserts the REST of the shape unchecked — a snapshot with a missing
+`capturedOn`, a malformed `fetch` record, or a `redirectChain` that is not an
+array would still pass unnoticed. A full runtime validator for D0.5 is a
+larger piece of work and is deliberately out of scope for this fix.
+
+That gap is the same class as this defect and should be treated as open: the
+corpus is an on-disk artifact written by tooling that has changed over time,
+and nothing validates it at the point of read.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** FIXED 2026-08-29 in `apps/harness/extract/snapshot-store.ts`,
+  proven by `apps/harness/extract/read-boundary.test.ts`
+  (`npm run test:readboundary`) with two negative controls. ⚠️ The residual
+  whole-Snapshot validation gap above remains **OPEN** and is not addressed by
+  this fix.
+- **Related:** [[DEC-29]] / [[DEC-30]] (the Tier 1 amendment that exposed it),
+  [[DEFECT-17]] and [[DEFECT-29]] (the V-14/V-15 "verified nothing" precedents),
+  [[DEFECT-30]] (invariant holding for the wrong reason).
+
+---
+
+## DEFECT-34 — PSL CONFIGURATION divergence: the extractor ran ICANN-only while `capture.py` runs private-domains-included, disagreeing on 32.5% of phishing snapshots — and the V-15 conformance fixture passed anyway (found and FIXED 2026-08-29)
+
+Finding: `tools/capture/capture.py:86-92` constructs its PSL extractor with
+`include_psl_private_domains=True`, deliberately and with a documented
+rationale. `apps/harness/extract/psl.ts` used `tldts` at its LIBRARY DEFAULT,
+which is ICANN-only. The two therefore computed different registrable domains
+for exactly the hosting platforms phishing depends on.
+
+```
+                                        capture.py            extractor (before)
+cancelcardiffbahora.vercel.app   cancelcardiffbahora.vercel.app   vercel.app
+qg77.chris-x.workers.dev         chris-x.workers.dev              workers.dev
+facebook-qa.blogspot.com         facebook-qa.blogspot.com         blogspot.com
+evil1.github.io                  evil1.github.io                  github.io
+```
+
+`capture.py`'s own rationale, verbatim, and it is the correct one:
+
+> "Without it every `*.github.io`, `*.web.app`, `*.pages.dev` and
+> `*.blogspot.com` host collapses to the platform domain — placing every
+> phishing page hosted on that platform, and every legitimate one, into a
+> single split. Phishing leans heavily on these platforms, so the ICANN-only
+> view produces a badly-grouped corpus."
+
+**Measured blast radius on the 617-snapshot corpus: the two configurations
+disagree on 32.5% of phishing snapshots (111/342) and 4.0% of benign
+(5/126).** Re-measured after the fix across all snapshots including those
+without a DOM: **147 snapshots changed registrable domain**, 19 of which carry
+a credential form.
+
+**Two independent consequences, both real:**
+
+1. **`notSameSite` was computed on the wrong notion of "site".** A credential
+   form on `evil.vercel.app` posting to `attacker.vercel.app` is cross-domain
+   under `capture.py`'s view and SAME-SITE under the extractor's — so CRED-01
+   would silently not fire. Same for CRED-05's `transmissionEndpointDomains`
+   and CRED-07's action comparison.
+2. **The extractor's "site" disagreed with the corpus SPLIT KEY.** `capture.py`
+   computes `splitKey = registrable_domain(url)` with private domains
+   included. Split independence (D0.5 §3, S-2) was therefore being reasoned
+   about on one definition while findings were computed on another.
+
+---
+
+### ⚠️ The meta-defect: the conformance fixture built to prevent this PASSED
+
+This is the more important half, and it is why this is filed separately from
+[[DEFECT-33]] despite sharing a family.
+
+`tools/ci/psl-reference.py` called `tldextract.extract()` at **library
+defaults**. `psl.ts` called `tldts` at **library defaults**. The fixture
+compared them, found agreement, and reported:
+
+```
+PSL conformance: LIVE CROSS-CHECK passed — tldts vs tldextract 5.3.0,
+5 boundary cases agree, pinned baseline re-validated.
+```
+
+Every word of that was true. It was also worthless. Its `user.github.io ->
+github.io` assertion recorded what BOTH libraries return at defaults, while
+the producer this project actually runs returns `evil1.github.io`.
+
+**The gate verified internal consistency between two things that were both
+wrong in the same way.**
+
+### The recurring shape, named
+
+**"A verification mechanism confirms internal consistency between two things
+that both happen to be wrong the same way, rather than confirming either one
+matches the actual authoritative configuration."**
+
+This is the fourth instance:
+
+| Defect | What was compared | What was never checked |
+|---|---|---|
+| [[DEFECT-17]] | `integrityDigest` present and well-formed | whether it matched a fresh recomputation |
+| [[DEFECT-29]] | V-15 returned "no violations" | whether the extractor it checks even existed |
+| [[DEFECT-33]] | types agreed across the codebase | whether the DATA matched the type |
+| **DEFECT-34** | tldts-default vs tldextract-default | whether either matched **`capture.py`'s runtime configuration** |
+
+In each case the check was internally coherent and externally ungrounded.
+
+### 📌 STANDING PRINCIPLE for every future gate in this project
+
+> **A conformance check MUST verify against the PRODUCER'S ACTUAL RUNTIME
+> CONFIGURATION — never against a second implementation's default, however
+> reasonable that default looks in isolation.**
+>
+> Two defaults agreeing with each other proves only that two libraries ship
+> the same opinion. It says nothing about what this system runs. Where a
+> producer takes configuration, the check must read or assert that
+> configuration explicitly, and must FAIL when it cannot.
+
+Applies to V-1…V-15 and to anything added after them.
+
+### Fix
+
+- **`apps/harness/extract/psl.ts`** — `PSL_OPTIONS = { allowPrivateDomains: true }`,
+  pinned to `capture.py:86-92` with a comment forbidding reversion to a
+  library default.
+- **`tools/ci/psl-reference.py`** — now builds
+  `tldextract.TLDExtract(suffix_list_urls=(), fallback_to_snapshot=True,
+  include_psl_private_domains=True)`, matching `capture.py` exactly, and
+  ECHOES `includePrivateDomains: true` in its JSON output.
+- **`psl-conformance.fixture.test.ts`** — asserts `ref.includePrivateDomains
+  === true`, so a default-configured oracle FAILS rather than silently
+  verifying the wrong question. Its boundary table now leads with four
+  PSL-PRIVATE cases chosen because they fail if either side reverts, with a
+  comment saying not to "simplify" them back to the ICANN answers.
+
+Three negative controls, all confirmed to fire:
+
+| Seeded fault | Caught by |
+|---|---|
+| `psl.ts` reverted to default | ✅ boundary assertion |
+| **BOTH sides reverted to defaults** — the exact original bug | ✅ boundary assertion (**the old fixture PASSED here**) |
+| Only the oracle mis-configured | ✅ the new `includePrivateDomains` assertion |
+
+### ⚠️ Effect on the corpus metrics: NONE, and the reason matters
+
+The full 617-snapshot confusion matrix is **byte-identical after the fix** —
+still 9 TP / 0 FP / 57 FN, CRED-06 the only rule firing.
+
+**CRED-01 did not begin firing on any of the 111 previously-miscategorised
+snapshots.** Measured directly:
+
+```
+credential forms with OFF-SITE action  BEFORE(icann): 0
+credential forms with OFF-SITE action  AFTER (fixed): 0
+credential forms with NULL action (no <form>)       : 11
+```
+
+The reason is [[DEC-28]]'s finding, not this one: **no credential form in the
+corpus declares an off-site action at all.** Every action is absent or
+relative, so both sides of the `notSameSite` comparison move together — a
+relative action resolves against the page URL, so `actionRegistrableDomain`
+equals `url.registrableDomain` under ANY PSL configuration.
+
+**So this defect was real, load-bearing, and currently latent.** It would have
+corrupted results the moment a form with an absolute cross-platform action
+appeared — and on shared hosting, where attacker and victim pages sit on the
+same platform suffix, that is exactly the case ICANN-only cannot see. It also
+means split-independence reasoning was being done on a different definition
+than findings, which no metric would have revealed.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** FIXED 2026-08-29 in `apps/harness/extract/psl.ts`,
+  `tools/ci/psl-reference.py` and
+  `apps/harness/extract/psl-conformance.fixture.test.ts`, with three negative
+  controls. ✅ **`rulesets/rules-v0.1.0.json`'s `pslVersion` string NOW RECORDS
+  the configuration**, as of `409171d`: it reads `tldextract==5.3.0
+  include_psl_private_domains=true (bundled snapshot sha256:b693…)`. [[DEC-31]]
+  drafted that correction and it was hand-typed into the frozen path by Jayanth
+  (Architecture Owner) per [[DEC-7]], with `integrityDigest` recomputed and
+  V-14 verified. V-15 gates the configuration clause for free, as DEC-31
+  predicted, because it already compares the declaration against the
+  extractor's `PSL_RECONCILED_AGAINST` for exact equality.
+  *(This line previously read "still does NOT record WHICH configuration … the
+  file is frozen, so it is drafted only" — true when written, false from
+  `409171d` onward. Corrected rather than left standing.)*
+- **Related:** [[DEFECT-17]], [[DEFECT-29]], [[DEFECT-33]] (same pattern
+  family), [[DEC-27]] (V-15 and the conformance fixture this corrects),
+  [[DEC-28]] (why CRED-01 still does not fire).

@@ -5,10 +5,10 @@
  * off-origin-post, sso-flow) through the full multi-category dispatch —
  * not single-module fixtures like every other *.fixture.test.ts in this
  * package — and confirms every one of the 10 resulting dispatch results is
- * well-formed. Also confirms `assembleSecurityEvaluation` throws
- * Stage1EnvelopeBlockedError (DEC-15) with a correctly-populated
- * diagnostic payload, for every module, rather than silently succeeding
- * or silently returning something malformed.
+ * well-formed. Also confirms `assembleSecurityEvaluation` returns a
+ * COMPLETE, type-conformant SecurityEvaluation<M> for every module (all
+ * thirteen fields populated — DEC-15 and DEC-21 fully resolved), and that
+ * `assembleEvaluationSet` satisfies invariant E-8.
  *
  * Run directly:
  *   node --experimental-strip-types packages/engine/orchestrator.fixture.test.ts
@@ -29,8 +29,9 @@ import {
   evaluateModule,
   evaluateAllModules,
   assembleSecurityEvaluation,
-  Stage1EnvelopeBlockedError,
+  assembleEvaluationSet,
 } from './orchestrator.ts';
+import { assessConsistency } from './consistency.ts';
 import { MODULE_VERSIONS } from './module-versions.ts';
 
 const ALL_MODULE_IDS: readonly ModuleId[] = [
@@ -142,84 +143,127 @@ if (authContextResult.moduleId === 'authContext' && authContextResult.result.sta
 // evaluateModule constructed the Origin from url.fullUrl, not registrableDomain.
 assert.equal(lookupCalledWithOrigin, 'https://accounts.example.com');
 
-// --- Part 3: assembleSecurityEvaluation always throws Stage1EnvelopeBlockedError
+// --- Part 3: assembleSecurityEvaluation returns a COMPLETE SecurityEvaluation
+//
+// REWRITTEN 2026-08-28. This block previously asserted the function always
+// THREW Stage1EnvelopeBlockedError. All thirteen envelope fields are now
+// genuinely constructed (DEC-15 fully resolved; `consistency` via DEC-21),
+// so it returns a real, type-conformant SecurityEvaluation<M>.
 
 for (const moduleId of ALL_MODULE_IDS) {
-  let caught: unknown;
-  try {
-    await assembleSecurityEvaluation(cleanLogin, moduleId, uncalledStoreReader);
-    assert.fail(`${moduleId}: assembleSecurityEvaluation should have thrown`);
-  } catch (err) {
-    caught = err;
-  }
+  // DEFECT-30: envelope assembly now takes an already-computed dispatch
+  // rather than re-dispatching internally, so the caller controls how many
+  // times Stage 1 runs.
+  const dispatchForModule = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
+  const evaluation = assembleSecurityEvaluation(cleanLogin, dispatchForModule);
 
-  assert.ok(caught instanceof Stage1EnvelopeBlockedError, `${moduleId}: wrong error type thrown`);
-  const blocked = caught as Stage1EnvelopeBlockedError;
-  assert.equal(blocked.moduleId, moduleId);
-  // NARROWED 2026-08-27 by Architecture Owner ruling. evaluationId was
-  // resolved 2026-08-26; moduleVersion, indicators and summary were resolved
-  // 2026-08-27. `consistency` alone remains open — no placeholder is stamped
-  // because 'indeterminate' means "insufficient evidence to assess
-  // coherence" (evaluation.contract.v1.ts:76), a substantive claim that
-  // would be false on a fully-evidenced evaluation. See DEC-21.
-  assert.deepEqual([...blocked.missingFields].sort(), ['consistency']);
-
-  // The three newly-resolved fields must be genuinely populated — asserted
-  // here per module, so "resolved" means computed, not merely delisted.
-  assert.equal(blocked.mechanicalFields.moduleVersion, MODULE_VERSIONS[moduleId],
-    `${moduleId}: moduleVersion comes from the per-module table, not a shared constant`);
-  assert.deepEqual(blocked.mechanicalFields.indicators, [],
-    `${moduleId}: indicators is the LDD's sanctioned empty default`);
-  assert.match(blocked.mechanicalFields.summary, /^\[DEC-15 UNRESOLVED\]/,
-    `${moduleId}: summary must be an explicitly-labelled placeholder`);
-  assert.ok(blocked.mechanicalFields.summary.includes(`"${moduleId}"`),
-    `${moduleId}: summary must name its own module`);
-
-  // The mechanical fields ARE genuinely correct, not placeholder values.
-  assert.equal(blocked.mechanicalFields.moduleId, moduleId);
-  assert.equal(blocked.mechanicalFields.contractVersion, '1.1.0');
+  // All thirteen fields present and correct — asserted field by field, so
+  // "constructs for real" means populated, not merely type-checked.
+  assert.equal(evaluation.moduleId, moduleId);
+  assert.equal(evaluation.contractVersion, '1.1.0');
   assert.match(
-    blocked.mechanicalFields.evaluationId,
+    evaluation.evaluationId,
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     `${moduleId}: evaluationId must be a well-formed UUIDv4`,
   );
-  assert.equal(blocked.mechanicalFields.targetResourceId, cleanLogin.targetResourceId);
-  assert.equal(blocked.mechanicalFields.analysisSessionId, cleanLogin.analysisSessionId);
-  assert.equal(blocked.mechanicalFields.passOrdinal, cleanLogin.collectionContext.passOrdinal);
-  assert.equal(blocked.mechanicalFields.evidenceRefs.length, 1);
-  assert.equal(blocked.mechanicalFields.evidenceRefs[0]?.evidenceId, cleanLogin.evidenceId);
-  assert.deepEqual(blocked.mechanicalFields.collectionContext, cleanLogin.collectionContext);
+  assert.equal(evaluation.targetResourceId, cleanLogin.targetResourceId);
+  assert.equal(evaluation.analysisSessionId, cleanLogin.analysisSessionId);
+  assert.equal(evaluation.passOrdinal, cleanLogin.collectionContext.passOrdinal);
+  assert.equal(evaluation.moduleVersion, MODULE_VERSIONS[moduleId],
+    `${moduleId}: moduleVersion comes from the per-module table, not a shared constant`);
+  assert.equal(evaluation.evidenceRefs.length, 1);
+  assert.equal(evaluation.evidenceRefs[0]?.evidenceId, cleanLogin.evidenceId);
+  assert.ok(evaluation.result.status === 'evaluated' || evaluation.result.status === 'unevaluable');
+  assert.deepEqual(evaluation.indicators, [], `${moduleId}: indicators is the LDD's sanctioned empty default`);
+  assert.ok(['consistent', 'inconsistent', 'indeterminate'].includes(evaluation.consistency),
+    `${moduleId}: consistency must be a real ConsistencyAssessment value`);
+  assert.match(evaluation.summary, /^\[DEC-15 UNRESOLVED\]/,
+    `${moduleId}: summary must be an explicitly-labelled placeholder`);
+  assert.ok(evaluation.summary.includes(`"${moduleId}"`), `${moduleId}: summary must name its own module`);
+  assert.deepEqual(evaluation.collectionContext, cleanLogin.collectionContext);
+
+  // The consistency verdict must agree with the standalone assessor run
+  // against a fresh dispatch of the same evidence — i.e. it was genuinely
+  // computed from this module's findings, not stamped.
+  // The envelope's consistency must equal the assessor's verdict on the very
+  // dispatch it was built from — now the SAME object, not an equivalent one.
+  assert.equal(evaluation.consistency, assessConsistency(dispatchForModule),
+    `${moduleId}: envelope consistency must match the assessor's own verdict`);
+  // DEFECT-30's core claim, at the single-module level: the envelope carries
+  // the id of the dispatch it was built from, not a second one.
+  assert.equal(evaluation.evaluationId, dispatchForModule.evaluationId,
+    `${moduleId}: envelope evaluationId IS the dispatch's — one id per module per pass`);
+  const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
+
+  // unevaluable => indeterminate, unconditionally (the 2026-08-28 ruling).
+  if (evaluation.result.status === 'unevaluable') {
+    assert.equal(evaluation.consistency, 'indeterminate',
+      `${moduleId}: an unevaluable result must always be indeterminate`);
+  } else {
+    assert.notEqual(evaluation.consistency, 'indeterminate',
+      `${moduleId}: an evaluated result must never be indeterminate`);
+  }
 
   // The real module result is genuinely attached, matching direct dispatch
-  // in everything EXCEPT evaluationId — each call to evaluateModule mints
-  // its own fresh one (this is a separate dispatch invocation, correctly
-  // getting its own identity, not the same one assembleSecurityEvaluation
-  // used internally).
-  const directDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
-  assert.equal(blocked.moduleResult.moduleId, directDispatch.moduleId);
-  assert.deepEqual(blocked.moduleResult.result, directDispatch.result);
-  assert.notEqual(
-    blocked.moduleResult.evaluationId, directDispatch.evaluationId,
-    'two separate evaluateModule calls must not share an evaluationId',
-  );
-  // blocked.mechanicalFields.evaluationId IS the same as blocked.moduleResult's
-  // — the same dispatch call's ID flowed through, not a second independent one.
-  assert.equal(blocked.mechanicalFields.evaluationId, blocked.moduleResult.evaluationId);
+  // in everything EXCEPT evaluationId — each evaluateModule call mints its
+  // own fresh one.
+  assert.deepEqual(evaluation.result, directDispatch.result);
+  assert.notEqual(evaluation.evaluationId, directDispatch.evaluationId,
+    'two separate evaluateModule calls must not share an evaluationId');
 }
 
 // --- Part 3b: evaluationId is freshly generated per call, not cached/fixed
 
-const firstCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader).catch(
-  (err: unknown) => err as Stage1EnvelopeBlockedError,
-);
-const secondCall = await assembleSecurityEvaluation(cleanLogin, 'url', uncalledStoreReader).catch(
-  (err: unknown) => err as Stage1EnvelopeBlockedError,
-);
+// RELOCATED, not weakened (DEFECT-30). This asserted that two envelope
+// assemblies produce different evaluationIds. Envelope assembly no longer
+// mints ids at all — `evaluateModule` does — so the same property is asserted
+// where the behaviour now lives. The original intent is intact: an
+// evaluationId is generated fresh per dispatch, never fixed or derived from
+// the evidence.
+const firstDispatch = await evaluateModule(cleanLogin, 'url', uncalledStoreReader);
+const secondDispatch = await evaluateModule(cleanLogin, 'url', uncalledStoreReader);
 assert.notEqual(
-  firstCall.mechanicalFields.evaluationId,
-  secondCall.mechanicalFields.evaluationId,
-  'evaluationId must be generated fresh per envelope assembly, not fixed or derived from the evidence',
+  firstDispatch.evaluationId,
+  secondDispatch.evaluationId,
+  'evaluationId must be generated fresh per dispatch, not fixed or derived from the evidence',
 );
+// And each envelope faithfully carries its own dispatch's id — two assemblies
+// over two dispatches stay distinct, while an assembly over ONE dispatch
+// reuses it (asserted in Part 3c below).
+assert.equal(assembleSecurityEvaluation(cleanLogin, firstDispatch).evaluationId, firstDispatch.evaluationId);
+assert.equal(assembleSecurityEvaluation(cleanLogin, secondDispatch).evaluationId, secondDispatch.evaluationId);
+
+// --- Part 3c: E-8 — "Exactly one evaluation per module per pass.
+//     Never zero, never two." (evaluation.contract.v1.ts:307)
+//
+// TESTABLE FOR THE FIRST TIME as of 2026-08-28. E-8 is stated about
+// SecurityEvaluation, which could not be constructed until `consistency` was
+// resolved; every earlier version of this suite could only assert the weaker
+// "one ModuleDispatchResult per module".
+
+for (const [fixtureName, evidence] of Object.entries(FIXTURES)) {
+  const dispatchSet = await evaluateAllModules(evidence, uncalledStoreReader);
+  const set = assembleEvaluationSet(evidence, dispatchSet);
+  const keys = Object.keys(set);
+
+  // Never zero, never two: exactly ten keys, one per ModuleId, no duplicates.
+  assert.equal(keys.length, 10, `${fixtureName}: E-8 — expected exactly 10 evaluations`);
+  assert.deepEqual([...keys].sort(), [...ALL_MODULE_IDS].sort(),
+    `${fixtureName}: E-8 — exactly one evaluation per ModuleId, no more, no fewer`);
+
+  for (const moduleId of ALL_MODULE_IDS) {
+    const evaluation = set[moduleId];
+    assert.ok(evaluation !== undefined, `${fixtureName}/${moduleId}: E-8 — never zero`);
+    // E-1: one evaluation originates from exactly one module. The slot's key
+    // and the evaluation's own moduleId must agree.
+    assert.equal(evaluation.moduleId, moduleId,
+      `${fixtureName}/${moduleId}: E-1 — evaluation is filed under the wrong module`);
+  }
+
+  // Distinct identities — ten evaluations, ten evaluationIds.
+  const ids = ALL_MODULE_IDS.map((m) => set[m].evaluationId);
+  assert.equal(new Set(ids).size, 10, `${fixtureName}: E-8 — evaluationIds must be distinct`);
+}
 
 // --- Part 4: evidenceRefs.category correctly diverges from moduleId -------
 // (ssl -> transport, loginForm/authContext -> loginInterface, not identity)
@@ -236,13 +280,10 @@ for (const [moduleId, expectedCategory] of [
   ['downloadContext', 'downloadContext'],
   ['permissionContext', 'permissionContext'],
 ] as const) {
-  try {
-    await assembleSecurityEvaluation(cleanLogin, moduleId, uncalledStoreReader);
-    assert.fail('unreachable');
-  } catch (err) {
-    assert.ok(err instanceof Stage1EnvelopeBlockedError);
-    assert.equal((err as Stage1EnvelopeBlockedError).mechanicalFields.evidenceRefs[0]?.category, expectedCategory);
-  }
+  const catDispatch = await evaluateModule(cleanLogin, moduleId, uncalledStoreReader);
+  const evaluation = assembleSecurityEvaluation(cleanLogin, catDispatch);
+  assert.equal(evaluation.evidenceRefs[0]?.category, expectedCategory,
+    `${moduleId}: evidenceRefs.category must be the EVIDENCE category, not the moduleId`);
 }
 
 console.log('all orchestrator fixture assertions passed');

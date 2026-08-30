@@ -272,4 +272,120 @@ for (const [name, fixtureEvidence] of Object.entries(FIXTURES)) {
   }
 }
 
+// --- B1.3-1: determinism — byte-identical recomputation ------------------
+//
+// NOT "good practice" — a CONTRACT requirement. passresult.contract.v1.ts's
+// invariant P-13: "Replay of a Pass Result under its recorded ruleSetVersion,
+// against its referenced evaluations, MUST reproduce identical scoring,
+// identical findings, and an identical effectiveTier (§12.4, §17.2)." §9.1
+// backs it from the other side: aggregation is "a pure function over the
+// complete finding set... SHALL NOT be implemented as an incremental
+// accumulator". Replay is only meaningful if recomputation is bit-stable, so
+// this asserts the serialised output, not a field-by-field spot check.
+
+{
+  const findings = [
+    fakeFinding({ findingId: 'det-1' as CorrelationFinding['findingId'], ruleId: 'PARENT-RULE' }),
+    fakeFinding({ findingId: 'det-2' as CorrelationFinding['findingId'], ruleId: 'CHILD-RULE' }),
+    fakeFinding({ findingId: 'det-3' as CorrelationFinding['findingId'], ruleId: 'AGG-RULE' }),
+  ];
+  const applications: readonly SuppressionApplication[] = [{
+    suppressionId: 'S-01', targetFindingId: 'det-1', targetRuleId: 'PARENT-RULE',
+    guardEvaluations: [{ guardIndex: 0, held: true }], blockedByRuleId: null,
+    applied: true, declaredReduction: 0.5,
+  }];
+
+  const first = computeScoringAndAggregation(findings, applications, testRuleSet);
+  const second = computeScoringAndAggregation(findings, applications, testRuleSet);
+
+  assert.equal(
+    JSON.stringify(first), JSON.stringify(second),
+    'P-13: recomputation over the same finding set must be byte-identical',
+  );
+  // Guard against the assertion passing vacuously on empty output.
+  assert.ok(first.scoring.length > 0, 'determinism check must run over a non-empty result');
+  assert.ok(first.aggregation.score > 0, 'determinism check must run over a non-zero score');
+
+  // Order-independence is the same property from §9.1's other side: a pure
+  // function over the SET, so a reordered input must give the same score.
+  const reordered = computeScoringAndAggregation([...findings].reverse(), applications, testRuleSet);
+  assert.equal(reordered.aggregation.score, first.aggregation.score,
+    '§9.1: score must not depend on finding order');
+}
+
+// --- B1.3-2: empty finding table -----------------------------------------
+//
+// Zero matched rules is an ordinary outcome, not an error: three of the four
+// committed fixtures produce it. It must yield a valid zero-score result.
+
+{
+  const { scoring, aggregation } = computeScoringAndAggregation([], noApplications, realRuleSet);
+
+  assert.deepEqual(scoring, [], 'no findings -> no scoring entries');
+  assert.equal(aggregation.primarySum, 0);
+  assert.equal(aggregation.aggravatorSum, 0);
+  assert.equal(aggregation.score, 0, 'empty finding set scores zero, not NaN or undefined');
+  assert.equal(aggregation.rawTier, 'Low', 'zero score is below threshold_medium -> Low');
+  assert.deepEqual(aggregation.subsumptionApplied, [], 'nothing fired, so nothing subsumes');
+  assert.equal(aggregation.ruleSetVersion, realRuleSet.ruleSetVersion);
+  // Empty must also be deterministic — the degenerate case of P-13.
+  assert.equal(
+    JSON.stringify(computeScoringAndAggregation([], noApplications, realRuleSet)),
+    JSON.stringify({ scoring, aggregation }),
+    'P-13 holds for the empty case too',
+  );
+}
+
+// --- B1.2-2: suppression may only REDUCE — engine-side range check --------
+//
+// V-7 (validate-ruleset.py) already constrains every declared `reduction` to
+// (0, 1], which makes effectiveWeight necessarily within [0, baseWeight]. This
+// asserts the ENGINE catches a violation independently, on its own execution
+// path, rather than trusting that single point.
+//
+// The precedent is DEFECT-17: compute-ruleset-digest.mjs could verify a rule
+// set's integrityDigest, but validate-ruleset.py never called it, so a
+// hand-edited digest passed G-8 CONFORMANT regardless. Verification that
+// exists somewhere is not verification that runs where it matters. V-14 closed
+// that; this is the same reasoning applied to `reduction`.
+//
+// Both directions are exercised: a NEGATIVE reduction (suppression increasing
+// weight — the property B1.2-2 names) and a reduction ABOVE 1 (driving
+// effectiveWeight negative). The rule set is bypassed deliberately: these
+// values could never come from a G-8-conformant rule set, which is the point.
+
+for (const [label, badReduction] of [
+  ['negative reduction (would INCREASE weight)', -0.5],
+  ['reduction above 1 (would drive weight negative)', 1.5],
+] as const) {
+  const applications: readonly SuppressionApplication[] = [{
+    suppressionId: 'S-BAD', targetFindingId: 'finding-1', targetRuleId: 'PARENT-RULE',
+    guardEvaluations: [{ guardIndex: 0, held: true }], blockedByRuleId: null,
+    applied: true, declaredReduction: badReduction,
+  }];
+
+  assert.throws(
+    () => computeScoringAndAggregation(
+      [fakeFinding({ ruleId: 'PARENT-RULE' })], applications, testRuleSet,
+    ),
+    /Suppression may only reduce weight/,
+    `engine must reject ${label} independently of V-7`,
+  );
+}
+
+// Control: the boundary values V-7 DOES permit must still pass cleanly.
+for (const goodReduction of [0.0001, 0.5, 1] as const) {
+  const applications: readonly SuppressionApplication[] = [{
+    suppressionId: 'S-OK', targetFindingId: 'finding-1', targetRuleId: 'PARENT-RULE',
+    guardEvaluations: [{ guardIndex: 0, held: true }], blockedByRuleId: null,
+    applied: true, declaredReduction: goodReduction,
+  }];
+  const { scoring } = computeScoringAndAggregation(
+    [fakeFinding({ ruleId: 'PARENT-RULE' })], applications, testRuleSet,
+  );
+  const entry = scoring[0]!;
+  assert.ok(entry.effectiveWeight <= entry.baseWeight && entry.effectiveWeight >= 0,
+    `reduction ${goodReduction} must stay within [0, baseWeight]`);
+}
+
 console.log('all stage5-6 fixture assertions passed');

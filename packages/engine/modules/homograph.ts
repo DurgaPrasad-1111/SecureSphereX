@@ -43,9 +43,23 @@ import type { HomographFindings, Evaluability } from '../../contracts/evaluation
  * means notCollected... conflating them silently converts a capability gap
  * into a clean bill of health"). This applies equally to scriptsUsed even
  * though it is an array: `scriptsUsed: present([])` is the correct way for a
- * producer to report "observed, zero non-default scripts"; `absent()` is not
- * an unstated synonym for that — same reasoning as loginForm.ts's `forms`
+ * producer to report "observed, and the script set is empty"; `absent()` is
+ * not an unstated synonym for that — same reasoning as loginForm.ts's `forms`
  * field precedent, not url.ts's registrableDomain precedent.
+ *
+ * SEMANTICS OF scriptsUsed, settled by DEFECT-24 (resolved 2026-08-29):
+ * the array lists EVERY Unicode script present in the domain, INCLUDING the
+ * default/ASCII one. A pure-ASCII domain is `present(['Latin'])`, not
+ * `present([])`. This paragraph previously read "zero non-default scripts",
+ * which was an incidental phrasing inside the I-2 argument above rather than
+ * a considered ruling, and it contradicted all four committed fixtures.
+ * The fixtures' reading was adopted for three reasons: "non-default" is
+ * undefined anywhere in the repository (default relative to the TLD? the
+ * locale? Latin?) and so is unimplementable; "Unicode script names" is what
+ * the contract plainly says and what script-property APIs return; and it
+ * makes `isMixedScript` definitionally checkable as `scriptsUsed.length >= 2`,
+ * which `consistency.ts` now encodes. The I-2 point above is unaffected and
+ * remains correct: `present([])` and `absent()` are still not synonyms.
  *
  * confusableSkeleton is the one exception: HomographFindings types it
  * `string | null`, so `absent` (a domain genuinely has no confusable

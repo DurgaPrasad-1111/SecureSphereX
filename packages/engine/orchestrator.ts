@@ -3,50 +3,37 @@
  * SecurityEvidence object to each of the 10 modules' compute*Findings
  * functions and assembles their SecurityEvaluation<M> envelopes.
  *
- * PARTIAL BY DESIGN — see DECISIONS.md DEC-15 (CANDIDATE, open; amended
- * 2026-08-26). Of SecurityEvaluation<M>'s THIRTEEN fields, TWELVE are now
- * constructed for real: `contractVersion`, `targetResourceId`,
- * `analysisSessionId`, `passOrdinal`, `moduleId`, `evidenceRefs`,
- * `collectionContext` (mechanical from the start) plus `evaluationId`
- * (resolved 2026-08-26 — a random UUIDv4, minted once per module dispatch
- * in `evaluateModule` (see id.ts's `mintEvaluationId()`), not inside this
- * function — Stage 3 needs a real one per module and can't wait for a
- * complete envelope;
- * see DEC-15's amendment for the LDD evidence this is based on) — and
- * `result`, which is exactly what each module's own compute*Findings
- * function already returns — plus, as of the Architecture Owner's
- * 2026-08-27 ruling, `moduleVersion` (per-module, `module-versions.ts`),
- * `indicators` (`[]`, the LDD's own sanctioned schema default), and
- * `summary` (an explicitly-labelled interim placeholder, DEC-5's
- * "conformant stub" precedent).
+ * COMPLETE as of 2026-08-28 — see DECISIONS.md DEC-15 and DEC-21. All
+ * THIRTEEN of SecurityEvaluation<M>'s fields are now genuinely constructed:
+ * `contractVersion`, `targetResourceId`, `analysisSessionId`, `passOrdinal`,
+ * `moduleId`, `evidenceRefs`, `collectionContext` (mechanical from the
+ * start); `result` (exactly what each module's compute*Findings returns);
+ * `evaluationId` (2026-08-26 — a random UUIDv4, minted once per module
+ * dispatch in `evaluateModule`, see id.ts); `moduleVersion` (2026-08-27 —
+ * per-module, `module-versions.ts`); `indicators` (2026-08-27 — `[]`, the
+ * LDD's own sanctioned schema default); `summary` (2026-08-27 — an
+ * explicitly-labelled interim placeholder, DEC-5's "conformant stub"
+ * precedent); and `consistency` (2026-08-28 — `consistency.ts`'s per-module
+ * internal-coherence relations, DEC-21).
  *
- * ONE REMAINS BLOCKED: `consistency`. Its stated source — "Domain Model
- * §7.3 / §8.3.5" — is a document that is not among the 46 files in spec/,
- * and no amount of re-checking the corpus turned up a coherence-assessment
- * scheme (DEC-15's amendment records the exhaustive re-check in full; it is
- * not re-derived here). Unlike `summary`, it cannot take a self-evidently
- * fake placeholder: `ConsistencyAssessment` admits only three values, and
- * the nearest candidate is defined as a substantive claim —
- * `'indeterminate'  // insufficient evidence to assess coherence` — which
- * would be FALSE on an evaluation whose evidence was complete. See DEC-21
- * and Stage1EnvelopeBlockedError's header.
+ * This file therefore has three parts:
  *
- * Rather than guess a convention for that one (exactly what DEC-15 says
- * not to do), this file is split into two honest pieces:
+ *   `evaluateModule` / `evaluateAllModules` — the dispatch layer. Given a
+ *   SecurityEvidence object, calls the correct module function with the
+ *   correct evidence slice and returns its genuine Evaluability<F> result.
+ *   This is what §4.2 literally defines Stage 1 as ("each module... emits
+ *   one Security Evaluation") — module evaluation, without the D0.2
+ *   envelope around it. Stage 2 needs only this much (DEC-15's Stage 2
+ *   dependency check), which is why it is kept separate.
  *
- *   `evaluateModule` / `evaluateAllModules` — the dispatch layer. Fully
- *   real, fully working, no blocking: given a SecurityEvidence object,
- *   calls the correct module function with the correct evidence slice and
- *   returns its genuine Evaluability<F> result. This is what §4.2
- *   literally defines Stage 1 as ("each module... emits one Security
- *   Evaluation") — module evaluation, not yet the D0.2 envelope around it.
+ *   `assembleSecurityEvaluation` — the full SecurityEvaluation<M> envelope
+ *   for one category. Returns a real, complete evaluation; it no longer
+ *   throws.
  *
- *   `assembleSecurityEvaluation` — attempts the full SecurityEvaluation<M>
- *   envelope. Builds the twelve resolved fields for real, then throws
- *   Stage1EnvelopeBlockedError before fabricating `consistency` — the
- *   error carries the genuinely-computed module result and resolved
- *   fields as its payload, so a caller (or a future resumption once
- *   DEC-21 is resolved) can see exactly how far assembly got.
+ *   `assembleEvaluationSet` — the complete Stage 1 output for one pass: one
+ *   evaluation per module. This is what invariant E-8 ("Exactly one
+ *   evaluation per module per pass. Never zero, never two.") is stated
+ *   about, and it became testable only when `consistency` was resolved.
  *
  * Not itself one of the ten modules (§2.6) — it is the layer above them,
  * so unlike a module it is allowed to read across evidence categories
@@ -63,11 +50,13 @@
 // file's established convention exactly.
 import { mintEvaluationId } from './id.ts';
 import { MODULE_VERSIONS } from './module-versions.ts';
+import { assessConsistency } from './consistency.ts';
 import { toOrigin } from '../contracts/evidence.contract.v1.ts';
 import type { SecurityEvidence } from '../contracts/evidence.contract.v1';
 import { EVALUATION_CONTRACT_VERSION } from '../contracts/evaluation.contract.v1.ts';
 import type {
   ModuleId, Evaluability, FindingsByModule, EvidenceRef, SecurityIndicator,
+  SecurityEvaluation, AnySecurityEvaluation, EvaluationSet, ConsistencyAssessment,
 } from '../contracts/evaluation.contract.v1';
 import type { AuthStoreReader } from '../contracts/boundary.interfaces.v1';
 
@@ -248,100 +237,110 @@ export interface MechanicalEnvelopeFields<M extends ModuleId> {
 }
 
 /**
- * Thrown by `assembleSecurityEvaluation` instead of fabricating
- * `consistency` — the ONE field of DEC-15's original five still open after
- * the Architecture Owner's 2026-08-27 ruling.
- *
- * NARROWED 2026-08-27. This error previously named four missing fields.
- * Three were resolved by that ruling: `moduleVersion` (per-module tracking,
- * `module-versions.ts`), `indicators` (`[]`, the LDD's own sanctioned
- * default), and `summary` (an explicitly-labelled interim placeholder, DEC-5
- * "conformant stub" precedent). Only `consistency` remains.
- *
- * WHY `consistency` GETS NO PLACEHOLDER, unlike `summary`. Its type admits
- * exactly three values, and the frozen contract defines the closest
- * candidate as a substantive claim, not a neutral marker:
- * `'indeterminate'  // insufficient evidence to assess coherence`
- * (`evaluation.contract.v1.ts:76`). Stamping that on a fully-evidenced
- * evaluation — the `url` module with all eleven fields present, say — would
- * assert that the evidence was insufficient when it plainly was not. That is
- * a fabricated analytical claim, the same failure shape as DEFECT-22
- * (`not()` fabricating a match), DEC-20 (a skeleton emitted where none was
- * distinct), and the E-6 violation (a rule reporting it found nothing when it
- * was never tested). `summary` is different only because `string` has room
- * for a value that is self-evidently not real content; `ConsistencyAssessment`
- * has no such room.
- *
- * Closing it needs either a genuine per-module coherence-assessment design,
- * or a contract amendment adding a value distinct from `'indeterminate'`'s
- * substantive claim (frozen contract — hand-typed, DEC-3-level). Neither was
- * undertaken. See DEC-21.
- *
- * Carries what WAS genuinely computed — the real module dispatch result and
- * every resolved field — as a diagnostic payload, so a caller can see exactly
- * how far assembly got rather than receiving a bare failure.
+ * Builds one complete `SecurityEvaluation<M>`. Generic over M so `moduleId`
+ * and `result` stay CORRELATED — the caller narrows the dispatch union
+ * first, which is what lets this be written with no `as` cast anywhere,
+ * matching this file's established zero-cast convention (G-2).
  */
-export class Stage1EnvelopeBlockedError extends Error {
-  readonly moduleId: ModuleId;
-  readonly moduleResult: ModuleDispatchResult;
-  readonly mechanicalFields: MechanicalEnvelopeFields<ModuleId>;
-  readonly missingFields: readonly string[] = ['consistency'];
-
-  constructor(moduleResult: ModuleDispatchResult, mechanicalFields: MechanicalEnvelopeFields<ModuleId>) {
-    super(
-      `Stage 1 orchestration for module "${moduleResult.moduleId}" cannot construct a complete ` +
-      `SecurityEvaluation: "consistency" has no coherence-assessment design, and its nearest ` +
-      `enum value 'indeterminate' means "insufficient evidence to assess coherence" — a ` +
-      `substantive claim that would be false on an evaluation with complete evidence, so no ` +
-      `placeholder is stamped (DECISIONS.md DEC-21, open). moduleVersion, indicators, and ` +
-      `summary were resolved 2026-08-27; evaluationId was resolved 2026-08-26. ` +
-      `Dispatch succeeded — see .moduleResult and .mechanicalFields on this error.`,
-    );
-    this.name = 'Stage1EnvelopeBlockedError';
-    this.moduleId = moduleResult.moduleId;
-    this.moduleResult = moduleResult;
-    this.mechanicalFields = mechanicalFields;
-  }
+function buildEvaluation<M extends ModuleId>(
+  moduleId: M,
+  result: Evaluability<FindingsByModule[M]>,
+  common: Omit<MechanicalEnvelopeFields<M>, 'moduleId'>,
+  consistency: ConsistencyAssessment,
+): SecurityEvaluation<M> {
+  return {
+    evaluationId: common.evaluationId,
+    contractVersion: common.contractVersion,
+    targetResourceId: common.targetResourceId,
+    analysisSessionId: common.analysisSessionId,
+    passOrdinal: common.passOrdinal,
+    moduleId,
+    moduleVersion: common.moduleVersion,
+    evidenceRefs: common.evidenceRefs,
+    result,
+    indicators: common.indicators,
+    consistency,
+    summary: common.summary,
+    collectionContext: common.collectionContext,
+  };
 }
 
 /**
- * Attempts the full SecurityEvaluation<M> envelope for one category.
- * Always throws Stage1EnvelopeBlockedError — see the header comment and
- * DECISIONS.md DEC-15. `evidenceRefs` carries only this module's own
- * category (§6.3's minimum: "every evaluation SHALL reference its
- * supporting evidence"); whether authContext's dispatch also needs a
- * second ref for the `url` evidence its Origin was built from (see
- * `evaluateModule`) is a separate, narrower open question this file does
- * not decide — the single, unambiguously-required ref is what's built
- * here.
+ * Assembles the full `SecurityEvaluation<M>` envelope for one category.
+ *
+ * COMPLETE as of 2026-08-28. All thirteen fields are now genuinely
+ * constructed — `consistency` was the last blocked one, resolved by the
+ * per-module internal-coherence relations in `consistency.ts` (DEC-21).
+ * This function no longer throws. `Stage1EnvelopeBlockedError`, which existed
+ * only to report the blocked field, was DELETED in the same change — with no
+ * remaining construction path it was dead code in the same sense DEFECT-18
+ * uses the term, and a retained-but-unreachable error class is a future false
+ * safety net.
+ *
+ * `evidenceRefs` carries only this module's own category (§6.3's minimum:
+ * "every evaluation SHALL reference its supporting evidence"); whether
+ * authContext's dispatch also needs a second ref for the `url` evidence its
+ * Origin was built from (see `evaluateModule`) is a separate, narrower open
+ * question this file does not decide.
  */
-export async function assembleSecurityEvaluation(
+export function assembleSecurityEvaluation(
   evidence: SecurityEvidence,
-  moduleId: ModuleId,
-  storeReader: AuthStoreReader,
-): Promise<never> {
-  const moduleResult = await evaluateModule(evidence, moduleId, storeReader);
+  dispatch: ModuleDispatchResult,
+): AnySecurityEvaluation {
+  const moduleId = dispatch.moduleId;
+  const consistency = assessConsistency(dispatch);
 
-  const mechanicalFields: MechanicalEnvelopeFields<ModuleId> = {
+  const common = {
     contractVersion: EVALUATION_CONTRACT_VERSION,
-    // The SAME evaluationId evaluateModule already minted for this
-    // dispatch — not a second, independent one. Two different IDs for
-    // the same module's evaluation in the same pass would make
-    // evaluationRefs (Stage 3) and this envelope disagree about what
-    // they're both supposedly referencing.
-    evaluationId: moduleResult.evaluationId,
+    // The evaluationId of the dispatch this envelope was built FROM —
+    // now genuinely the same one Stages 2-4 consumed, because the caller
+    // threads a single dispatch through both (DEFECT-30). Before that fix
+    // this function re-dispatched internally, so the id matched its OWN
+    // hidden dispatch rather than the pass's — the comment here previously
+    // claimed sameness that was true locally and false for the pass.
+    evaluationId: dispatch.evaluationId,
     targetResourceId: evidence.targetResourceId,
     analysisSessionId: evidence.analysisSessionId,
     passOrdinal: evidence.collectionContext.passOrdinal,
-    moduleId,
     evidenceRefs: [{ evidenceId: evidence.evidenceId, category: EVIDENCE_CATEGORY_BY_MODULE[moduleId] }],
     collectionContext: evidence.collectionContext,
     moduleVersion: MODULE_VERSIONS[moduleId],
     indicators: [],
     summary: `[DEC-15 UNRESOLVED] No Evaluation Summary generation rule is specified for module "${moduleId}".`,
-  };
+  } as const satisfies Omit<MechanicalEnvelopeFields<ModuleId>, 'moduleId'>;
 
-  // Still throws — `consistency` alone remains open. See the error class's
-  // header for why no placeholder is stamped for it.
-  throw new Stage1EnvelopeBlockedError(moduleResult, mechanicalFields);
+  // One case per module so `dispatch.moduleId` and `dispatch.result` stay
+  // correlated through narrowing. Verbose, but cast-free — the alternative
+  // is an `as` on a union TypeScript cannot correlate on its own.
+  switch (dispatch.moduleId) {
+    case 'url': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'ssl': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'dns': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'redirect': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'loginForm': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'javascript': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'homograph': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'authContext': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'downloadContext': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+    case 'permissionContext': return buildEvaluation(dispatch.moduleId, dispatch.result, common, consistency);
+  }
+}
+
+/**
+ * Assembles the complete Stage 1 output for one pass: exactly one
+ * `SecurityEvaluation` per module, keyed by `ModuleId`.
+ *
+ * This is what invariant E-8 ("Exactly one evaluation per module per pass.
+ * Never zero, never two.") is stated about, and it became constructible —
+ * and therefore testable — only when `consistency` was resolved on
+ * 2026-08-28.
+ */
+export function assembleEvaluationSet(
+  evidence: SecurityEvidence,
+  dispatch: Readonly<Record<ModuleId, ModuleDispatchResult>>,
+): EvaluationSet {
+  const moduleIds = Object.keys(EVIDENCE_CATEGORY_BY_MODULE) as readonly ModuleId[];
+  const entries = moduleIds.map((moduleId) =>
+    [moduleId, assembleSecurityEvaluation(evidence, dispatch[moduleId])] as const);
+  return Object.fromEntries(entries) as EvaluationSet;
 }

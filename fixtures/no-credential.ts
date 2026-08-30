@@ -93,6 +93,11 @@ export const noCredential: SecurityEvidence = {
       listenerOnCredentialField: absent(),
       clientSideTransmissionObserved: present(false),
       transmissionEndpoints: absent(),
+      // Mirrors transmissionEndpoints above: the producer looked and there
+      // are no transmission endpoints, so there are no domains to derive
+      // from them. `absent()` not `notCollected` — the sibling's own
+      // convention in this file, and the honest reading (I-2).
+      transmissionEndpointDomains: absent(),
       dynamicScriptLoadCount: present(3),
       dynamicScriptOrigins: present(['https://blog.example.com']),
       credentialInterfaceInjected: present(false),
