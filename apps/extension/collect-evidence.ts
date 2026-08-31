@@ -28,8 +28,10 @@
  *                    data comes from webNavigation events (A1.2 second phase),
  *                    not this DOM pass.
  *
- *  actionRegistrableDomain likewise stays null pending the PSL follow-up; the
- *  conformance test excludes it (and the PSL url fields) with that reason.
+ *  actionRegistrableDomain — NOW computed via the shared PSL path (was null
+ *                    while PSL was harness-only in A1.2). It is what CRED-01/07
+ *                    compare against url.registrableDomain, so wiring it is what
+ *                    lets those rules fire live. Now INCLUDED in conformance.
  */
 
 import {
@@ -129,29 +131,32 @@ export function collectLoginInterface(
   const formEls = Array.from(root.querySelectorAll('form'));
 
   for (const formEl of formEls) {
+    // actionUrl resolved to absolute against the page's base URL — the
+    // IDENTICAL resolution loginInterface.ts performs (new URL(action ??
+    // base, base).href). A raw getAttribute('action') would diverge from
+    // the harness on every relative action; the conformance test caught
+    // exactly that on its first run. In the content script baseUrl is
+    // document.baseURI; the browser's own URL parser and node's are both
+    // WHATWG, so the resolved href matches byte-for-byte.
+    const actionUrl: string | null = (() => {
+      const raw = formEl.getAttribute('action');
+      if (baseUrl === null) return null;
+      try {
+        return new URL(raw === null || raw.trim() === '' ? baseUrl : raw, baseUrl).href;
+      } catch {
+        return null;
+      }
+    })();
     forms.push({
       fields: collectFieldsIn(formEl),
       method: classifyMethod(formEl.getAttribute('method')),
-      // actionUrl resolved to absolute against the page's base URL — the
-      // IDENTICAL resolution loginInterface.ts performs (new URL(action ??
-      // base, base).href). A raw getAttribute('action') would diverge from
-      // the harness on every relative action; the conformance test caught
-      // exactly that on its first run. In the content script baseUrl is
-      // document.baseURI; the browser's own URL parser and node's are both
-      // WHATWG, so the resolved href matches byte-for-byte.
-      actionUrl: (() => {
-        const raw = formEl.getAttribute('action');
-        if (baseUrl === null) return null;
-        try {
-          return new URL(raw === null || raw.trim() === '' ? baseUrl : raw, baseUrl).href;
-        } catch {
-          return null;
-        }
-      })(),
-      // actionRegistrableDomain still needs the gated PSL path (harness-only);
-      // stays null pending the shared-PSL follow-up, and stays excluded from
-      // conformance for that reason.
-      actionRegistrableDomain: null,
+      actionUrl,
+      // actionRegistrableDomain via the SAME gated PSL path (now shared at
+      // packages/engine/psl.ts) that url.registrableDomain uses, so CRED-01/07
+      // compare two domains derived by identical code and cannot disagree.
+      // Mirrors loginInterface.ts exactly. This was hardcoded null while PSL
+      // was harness-only (A1.2); wiring it is what lets CRED-01/07 fire live.
+      actionRegistrableDomain: actionUrl === null ? null : registrableDomainOf(actionUrl),
       injectedAfterLoad: isInjected(formEl),
       injectingScriptOrigin: null,
     });

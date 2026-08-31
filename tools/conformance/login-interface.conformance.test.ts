@@ -33,15 +33,15 @@ import type { LoginInterfaceEvidence } from '../../packages/contracts/evidence.c
  *
  * INCLUDED (must match): credentialFormPresent; per form its method, its
  * fields[] of {kind, hidden, autocompleteDisabled} — the pure classification
- * output that the shared core drives — AND actionUrl, resolved to absolute
- * against the page base URL on BOTH sides (the extension fix that this test's
- * first run forced: the harness already resolved, the extension emitted the
- * raw attribute).
+ * output that the shared core drives — actionUrl (resolved absolute on BOTH
+ * sides), AND actionRegistrableDomain, now derived on both sides through the
+ * SAME shared PSL path (packages/engine/psl.ts). This field was previously
+ * excluded because the extension hardcoded it null while PSL was harness-only;
+ * once the extension computes it via the shared psl.ts, it MUST agree — and it
+ * is precisely the field CRED-01/07 compare against url.registrableDomain, so
+ * asserting agreement here is what proves those rules can fire live.
  *
  * EXCLUDED, each for a stated reason:
- *   - actionRegistrableDomain: needs the harness's gated PSL path (psl.ts,
- *     harness-only); sharing it is a scoped follow-up, so it is not yet
- *     comparable. NOT a classification field.
  *   - injectedAfterLoad / injectingScriptOrigin: the extension can observe
  *     these from a live page (MutationObserver); the harness structurally
  *     CANNOT (DEFECT-31) and hardcodes false/null. Only one side produces
@@ -51,7 +51,12 @@ import type { LoginInterfaceEvidence } from '../../packages/contracts/evidence.c
  */
 function sharedFields(ev: LoginInterfaceEvidence): unknown {
   const forms = ev.forms.state === 'present'
-    ? ev.forms.value.map((f) => ({ method: f.method, actionUrl: f.actionUrl, fields: f.fields }))
+    ? ev.forms.value.map((f) => ({
+      method: f.method,
+      actionUrl: f.actionUrl,
+      actionRegistrableDomain: f.actionRegistrableDomain,
+      fields: f.fields,
+    }))
     : { notPresent: ev.forms.state };
   return { credentialFormPresent: ev.credentialFormPresent, forms };
 }
@@ -128,7 +133,7 @@ for (const c of CASES) {
 }
 
 console.log(`CP-3 loginInterface conformance PROVEN: ${passed}/${CASES.length} HTML cases produce `
-  + 'byte-identical SHARED fields (incl. actionUrl) across the harness (parse5) and extension '
-  + '(live DOM) paths.');
-console.log('Excluded from comparison (documented): actionRegistrableDomain (PSL follow-up), '
-  + 'injectedAfterLoad/injectingScriptOrigin (extension-only, DEFECT-31 gain). Negative control fired.');
+  + 'byte-identical SHARED fields (incl. actionUrl AND actionRegistrableDomain, both now shared-PSL) '
+  + 'across the harness (parse5) and extension (live DOM) paths.');
+console.log('Excluded from comparison (documented): injectedAfterLoad/injectingScriptOrigin '
+  + '(extension-only, DEFECT-31 gain); fingerprint (both notCollected). Negative control fired.');
