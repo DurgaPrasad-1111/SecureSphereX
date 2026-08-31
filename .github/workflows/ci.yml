@@ -206,6 +206,16 @@ jobs:
       - name: 'A1.1  Extension session survival'
         run: npm run test:extension
 
+      # ── A1.2 — live-DOM vs harness conformance (CP-3) ─────────────────
+      - name: 'A1.2  loginInterface conformance (harness vs extension)'
+        run: npm run test:conformance
+
+      # ── A1.3 — Auth History Store poisoning guards G-01…G-05 ──────────
+      # Exit criterion: guards unit-tested INCLUDING negative (reject) cases.
+      # NO --if-present (DEFECT-29): same discipline as every gate above.
+      - name: 'A1.3  Auth store guards G-01..G-05'
+        run: npm run test:authstore
+
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never
     # failed is a gate nobody has tested.

@@ -20,6 +20,7 @@
     "test:tier1e2e": "node --experimental-strip-types apps/harness/extract/tier1-e2e.test.ts",
     "test:extension": "node --experimental-strip-types apps/extension/session-survival.test.ts",
     "test:conformance": "node --experimental-strip-types tools/conformance/login-interface.conformance.test.ts",
+    "test:authstore": "node --experimental-strip-types apps/extension/auth-store.test.ts",
     "metrics:confusion": "node --experimental-strip-types apps/harness/metrics/confusion.ts",
     "validate:ruleset": "node tools/ci/run-python.mjs tools/ci/validate-ruleset.py",
     "digest:ruleset": "node tools/ci/compute-ruleset-digest.mjs"
