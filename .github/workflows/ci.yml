@@ -193,6 +193,19 @@ jobs:
       - name: 'G-9  Property tests'
         run: npm run test:properties
 
+      # ── A1.1 — extension session survival (Stage 1c onward) ───────────
+      #
+      # Proves the MV3 service worker's Analysis Session state — including
+      # §11.4's intervention lock — survives worker termination mid-session,
+      # reconstructed from chrome.storage.session (shimmed) alone.
+      # NO --if-present (DEFECT-29), same discipline as G-9 above: the flag
+      # makes `npm run` exit 0 when the script is absent, so this would pass
+      # vacuously if `test:extension` were ever removed from package.json. A
+      # gate that cannot fail is not a gate. The script exists and is
+      # required to exist; its absence SHALL fail the build.
+      - name: 'A1.1  Extension session survival'
+        run: npm run test:extension
+
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never
     # failed is a gate nobody has tested.
