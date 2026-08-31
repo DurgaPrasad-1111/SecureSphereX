@@ -18,12 +18,14 @@
     "test:determinism": "node --experimental-strip-types apps/harness/extract/s6-determinism.test.ts",
     "test:readboundary": "node --experimental-strip-types apps/harness/extract/read-boundary.test.ts",
     "test:tier1e2e": "node --experimental-strip-types apps/harness/extract/tier1-e2e.test.ts",
+    "test:extension": "node --experimental-strip-types apps/extension/session-survival.test.ts",
     "metrics:confusion": "node --experimental-strip-types apps/harness/metrics/confusion.ts",
     "validate:ruleset": "node tools/ci/run-python.mjs tools/ci/validate-ruleset.py",
     "digest:ruleset": "node tools/ci/compute-ruleset-digest.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/chrome": "^0.2.7",
     "dependency-cruiser": "^18.2.0",
     "eslint": "^10.9.1",
     "fast-check": "^4.9.0",

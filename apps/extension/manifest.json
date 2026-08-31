@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "SecureSphere X",
+  "version": "0.1.0",
+  "description": "Observes live login pages and produces structured evidence for deterministic phishing-risk evaluation. Analysis is local; no browsing data leaves the device.",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "webNavigation"
+  ],
+  "host_permissions": []
+}
