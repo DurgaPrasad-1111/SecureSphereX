@@ -21,6 +21,8 @@
     "test:extension": "node --experimental-strip-types apps/extension/session-survival.test.ts",
     "test:conformance": "node --experimental-strip-types tools/conformance/login-interface.conformance.test.ts",
     "test:authstore": "node --experimental-strip-types apps/extension/auth-store.test.ts",
+    "test:moduleeval": "node --experimental-strip-types apps/extension/module-eval.test.ts",
+    "test:authcontext": "node --experimental-strip-types apps/extension/auth-context.test.ts",
     "metrics:confusion": "node --experimental-strip-types apps/harness/metrics/confusion.ts",
     "validate:ruleset": "node tools/ci/run-python.mjs tools/ci/validate-ruleset.py",
     "digest:ruleset": "node tools/ci/compute-ruleset-digest.mjs"

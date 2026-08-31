@@ -216,6 +216,15 @@ jobs:
       - name: 'A1.3  Auth store guards G-01..G-05'
         run: npm run test:authstore
 
+      # ── A1.4 — loginForm/javascript modules on extension evidence ─────
+      # Deterministic; injectedAfterLoad observed for real (DEFECT-31 gain).
+      - name: 'A1.4  Module evaluation on extension evidence'
+        run: npm run test:moduleeval
+
+      # ── A1.5 — authContext (ACEM) version-mismatch -> unevaluable ─────
+      - name: 'A1.5  authContext version-mismatch integration'
+        run: npm run test:authcontext
+
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never
     # failed is a gate nobody has tested.
