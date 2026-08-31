@@ -52,6 +52,14 @@ import {
   type CredentialField, type CredentialFieldKind, type FormMethod,
   type LoginFingerprint, type Observation,
 } from '../../../packages/contracts/evidence.contract.v1.ts';
+// A1.2: the classification logic is SHARED with the extension via
+// packages/engine/field-classify.ts — neither producer carries a copy (DEFECT-34).
+// This file adapts parse5 elements to the primitive inputs those functions
+// take; the extension adapts a live DOM to the same inputs.
+import {
+  classifyField, isCredentialFieldHidden, isAutocompleteDisabled, classifyMethod,
+  SECRET_KINDS,
+} from '../../../packages/engine/field-classify.ts';
 
 type Node = DefaultTreeAdapterMap['node'];
 type Element = DefaultTreeAdapterMap['element'];
@@ -85,107 +93,38 @@ function attr(el: Element, name: string): string | null {
   return a === undefined ? null : a.value;
 }
 
-/* ── field classification (DEFECT-32) ─────────────────────────────────── */
+/* ── parse5 → shared-classifier adapters (A1.2) ───────────────────────────
+ * These read a parse5 element into the primitive shapes the SHARED
+ * classification core (packages/engine/field-classify.ts) expects, then delegate.
+ * The classification logic itself lives there, not here — the extension's
+ * live-DOM collector delegates to the very same functions. See DEFECT-32 for
+ * why `classifyField`'s error is bidirectional; that reasoning moved with the
+ * logic and is unchanged. */
 
-/**
- * Classify one input as a credential field, or null if it is not one.
- *
- * ⚠️ HEURISTIC WITH BIDIRECTIONAL ERROR — see DEFECT-32. The precedence below
- * is deliberate: STRONGEST SIGNAL FIRST. `type` and `autocomplete` are
- * declared semantics the page author opted into; `name`/`id` matching is
- * guesswork over free text and is consulted only when nothing declarative
- * said anything.
- *
- * That ordering matters for the over-classification arm specifically: a search
- * box named `user_query` would match a naive `user` pattern, but only reaches
- * the name/id tier if it declared no useful `type` or `autocomplete` — which
- * most real search inputs do (`type="search"`, `role="search"`).
- *
- * `type="hidden"` is NOT excluded here. A hidden credential field is exactly
- * what CRED-07 exists to detect, so excluding it would defeat the rule. It is
- * classified normally and flagged via `hidden` below.
- */
-function classifyField(el: Element): CredentialFieldKind | null {
-  const type = (attr(el, 'type') ?? 'text').toLowerCase().trim();
-  const autocomplete = (attr(el, 'autocomplete') ?? '').toLowerCase().trim();
-
-  // Tier 1 — declared input type. Unambiguous.
-  if (type === 'password') return 'password';
-  if (type === 'email') return 'email';
-
-  // Tier 2 — declared autocomplete token (WHATWG autofill field names).
-  if (autocomplete === 'one-time-code') return 'otp';
-  if (autocomplete === 'current-password' || autocomplete === 'new-password') return 'password';
-  if (autocomplete === 'email') return 'email';
-  if (autocomplete === 'username') return 'username';
-
-  // Tier 3 — name/id guesswork. Only for text-like inputs, and only when
-  // tiers 1 and 2 said nothing. This is the tier DEFECT-32 is about.
-  if (type !== 'text' && type !== 'tel' && type !== 'number' && type !== 'hidden') return null;
-
-  const hay = `${attr(el, 'name') ?? ''} ${attr(el, 'id') ?? ''}`.toLowerCase();
-  if (hay.trim() === '') return null;
-
-  // Order matters: `otp` before `pin` before `username`, because a field named
-  // `otp_pin` is an OTP, and one named `pin_user` is a PIN.
-  if (/\b(otp|2fa|mfa|one[-_]?time|verification[-_]?code|auth[-_]?code)\b/.test(hay)) return 'otp';
-  if (/\bpin\b/.test(hay)) return 'pin';
-  if (/\b(pass|passwd|password|pwd)\b/.test(hay)) return 'password';
-  if (/\b(email|e[-_]?mail)\b/.test(hay)) return 'email';
-  if (/\b(user|username|userid|user[-_]?name|login|loginid|account)\b/.test(hay)) return 'username';
-
-  return null;
+function classifyFieldEl(el: Element): CredentialFieldKind | null {
+  return classifyField({
+    type: attr(el, 'type'),
+    name: attr(el, 'name'),
+    id: attr(el, 'id'),
+    autocomplete: attr(el, 'autocomplete'),
+  });
 }
 
-/**
- * Hidden — MARKUP-ONLY (DEFECT-31, STATIC_EXTRACTION_RECALL_FLOOR).
- *
- * Detects `type="hidden"`, the boolean `hidden` attribute, `aria-hidden`, and
- * inline styles that visually remove the field. CANNOT detect concealment via
- * a stylesheet rule or a CSS class, because `renderedDom` is serialised
- * markup and carries no computed style.
- *
- * The failure direction is one-way: everything detected here is genuinely
- * hidden, so this never over-reports. It under-reports, which biases CRED-07's
- * measured recall DOWNWARD — a floor, not a measurement.
- */
-function isHidden(el: Element): boolean {
-  if ((attr(el, 'type') ?? '').toLowerCase().trim() === 'hidden') return true;
-  if (el.attrs.some((a) => a.name === 'hidden')) return true;
-  if ((attr(el, 'aria-hidden') ?? '').toLowerCase().trim() === 'true') return true;
-
-  const style = (attr(el, 'style') ?? '').toLowerCase().replace(/\s+/g, '');
-  if (style === '') return false;
-  return /display:none/.test(style)
-    || /visibility:hidden/.test(style)
-    || /opacity:0(?![.\d])/.test(style)
-    || /(?:^|;)(?:width|height):0(?:px|em|rem|%)?(?:;|$)/.test(style);
+function isHiddenEl(el: Element): boolean {
+  return isCredentialFieldHidden({
+    type: attr(el, 'type'),
+    hiddenAttrPresent: el.attrs.some((a) => a.name === 'hidden'),
+    ariaHidden: attr(el, 'aria-hidden'),
+    style: attr(el, 'style'),
+  });
 }
 
-/**
- * autocomplete="off" on the field, OR INHERITED FROM THE FORM.
- *
- * The form-level inheritance is not a convenience: `<form autocomplete="off">`
- * is the more common way to suppress autofill across a whole credential form,
- * and reading only the field attribute would miss it entirely — under-counting
- * CRED-07's second disjunct.
- */
-function isAutocompleteDisabled(el: Element, formAutocomplete: string | null): boolean {
-  const own = (attr(el, 'autocomplete') ?? '').toLowerCase().trim();
-  if (own === 'off') return true;
-  if (own !== '') return false;   // an explicit non-off value overrides the form
-  return (formAutocomplete ?? '').toLowerCase().trim() === 'off';
+function isAutocompleteDisabledEl(el: Element, formAutocomplete: string | null): boolean {
+  return isAutocompleteDisabled(attr(el, 'autocomplete'), formAutocomplete);
 }
-
-/* ── form extraction ──────────────────────────────────────────────────── */
 
 function methodOf(el: Element): FormMethod {
-  // An absent `method` means GET — the HTML default, not "unknown". OTHER is
-  // reserved for a method that is genuinely neither, e.g. method="dialog".
-  const m = (attr(el, 'method') ?? 'get').toLowerCase().trim();
-  if (m === 'get') return 'GET';
-  if (m === 'post') return 'POST';
-  return 'OTHER';
+  return classifyMethod(attr(el, 'method'));
 }
 
 function extractForm(formEl: Element, pageUrl: string | null): LoginFormObservation {
@@ -195,12 +134,12 @@ function extractForm(formEl: Element, pageUrl: string | null): LoginFormObservat
   for (const el of walk(formEl)) {
     const tag = el.tagName.toLowerCase();
     if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') continue;
-    const kind = classifyField(el);
+    const kind = classifyFieldEl(el);
     if (kind === null) continue;
     fields.push({
       kind,
-      hidden: isHidden(el),
-      autocompleteDisabled: isAutocompleteDisabled(el, formAutocomplete),
+      hidden: isHiddenEl(el),
+      autocompleteDisabled: isAutocompleteDisabledEl(el, formAutocomplete),
     });
   }
 
@@ -268,10 +207,10 @@ export function extractLoginInterface(
   for (const el of walk(doc)) {
     const tag = el.tagName.toLowerCase();
     if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') continue;
-    const kind = classifyField(el);
+    const kind = classifyFieldEl(el);
     if (kind === null) continue;
     allCredentialFields.push({
-      kind, hidden: isHidden(el), autocompleteDisabled: isAutocompleteDisabled(el, null),
+      kind, hidden: isHiddenEl(el), autocompleteDisabled: isAutocompleteDisabledEl(el, null),
     });
   }
 
@@ -314,7 +253,8 @@ export function extractLoginInterface(
   // credential fields the tier-3 name/id patterns miss — is untouched and
   // still unmeasured, and tier-3 can still over-classify within the secret
   // kinds (a field named `pin` that is a postal PIN, say).
-  const SECRET_KINDS: ReadonlySet<CredentialFieldKind> = new Set(['password', 'otp', 'pin']);
+  // SECRET_KINDS is imported from the shared field-classify.ts so both producers
+  // apply the identical page-level "is this a credential interface?" test.
   const credentialFormPresent = forms.some((f) => f.fields.some((x) => SECRET_KINDS.has(x.kind)));
 
   return {

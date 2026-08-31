@@ -26,7 +26,7 @@ import {
   SessionStore,
   type SessionStorageBackend,
   type SessionKeyParts,
-} from './session-store';
+} from './session-store.ts';
 
 /* ── chrome.storage.session adapter ────────────────────────────────────────
  * The ONE browser-specific seam. `sessionStore.ts` stays browser-free and is

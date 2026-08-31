@@ -2,6 +2,13 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["node", "chrome"],
+    // DOM added for the content-script context (collect-evidence.ts reads a
+    // live document). NOTE: this makes `document`/`window` visible to
+    // service-worker.ts too, which is a DIFFERENT MV3 context that has NO DOM.
+    // Acceptable for A1.2; a stricter split (per-context tsconfigs — a
+    // content-script project with DOM, a worker project without) is a
+    // documented follow-up, not silently assumed away.
+    "lib": ["ES2022", "DOM"],
     "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts"]
