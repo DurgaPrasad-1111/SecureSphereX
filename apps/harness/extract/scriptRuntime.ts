@@ -38,7 +38,7 @@ import {
   type ScriptRuntimeEvidence, type Observation,
 } from '../../../packages/contracts/evidence.contract.v1.ts';
 import type { RawMaterial } from '../../../packages/contracts/snapshot.format.v1.ts';
-import { registrableDomainsOf } from './psl.ts';
+import { registrableDomainsOf } from '../../../packages/engine/psl.ts';
 
 const nc = <T>(): Observation<T> => notCollected<T>('api_unavailable');
 

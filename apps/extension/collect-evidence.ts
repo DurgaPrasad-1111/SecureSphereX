@@ -36,12 +36,16 @@ import {
   present, absent, notCollected,
   type LoginInterfaceEvidence, type LoginFormObservation, type CredentialField,
   type TransportEvidence, type UrlEvidence, type LoginFingerprint,
-  type ScriptRuntimeEvidence, type Observation,
+  type ScriptRuntimeEvidence, type DomainRepresentationEvidence, type Observation,
 } from '../../packages/contracts/evidence.contract.v1.ts';
 import {
   classifyField, isCredentialFieldHidden, isAutocompleteDisabled, classifyMethod,
   SECRET_KINDS,
 } from '../../packages/engine/field-classify.ts';
+// A1.2 PSL wiring: the SAME gated PSL path and domain classifiers the harness
+// uses, now shared in packages/engine — never a copy (DEFECT-34).
+import { registrableDomainOf } from '../../packages/engine/psl.ts';
+import { scriptsOf, confusableSkeleton } from '../../packages/engine/domain-classify.ts';
 
 const nc = <T>(): Observation<T> => notCollected<T>('api_unavailable');
 
@@ -194,11 +198,13 @@ export function collectTransport(protocol: string): TransportEvidence {
   };
 }
 
-/* ── url (browser-native subset) ──────────────────────────────────────────
- * Everything derivable from `new URL()` alone, present. PSL-derived fields
- * (registrableDomain, subdomainLabels) notCollected pending the shared-PSL
- * follow-up — notCollected, never absent (S-7): the extension COULD look, it
- * just does not yet have the gated PSL path the harness uses. */
+/* ── url — every field derivable from the live URL + shared PSL ────────────
+ * registrableDomain and subdomainLabels now come from the SAME gated psl.ts
+ * the harness uses (packages/engine/psl.ts, one psl-config.json), so the
+ * extension and harness cannot disagree on the registrable domain. This is
+ * what makes the `url` module evaluable — and, since CRED-01/07 compare
+ * url.registrableDomain against a form's actionRegistrableDomain, what lets
+ * those rules fire on a real login page. Mirrors apps/harness/extract/url.ts. */
 export function collectUrl(href: string): UrlEvidence {
   let u: URL;
   try {
@@ -219,6 +225,16 @@ export function collectUrl(href: string): UrlEvidence {
     const m = /:(\d+)$/.exec(href.split('?')[0]!.split('#')[0]!.replace(/^[a-z]+:\/\//i, ''));
     return m ? Number(m[1]) : null;
   })();
+
+  // An IP literal has no registrable domain (absent, not notCollected — the
+  // producer looked and there genuinely is none), matching url.ts exactly.
+  const rd = ipLiteral ? null : registrableDomainOf(href);
+  const subdomainLabels: readonly string[] = (() => {
+    if (rd === null) return [];
+    const host = hostname.endsWith(rd) ? hostname.slice(0, -rd.length) : '';
+    return host === '' ? [] : host.replace(/\.$/, '').split('.').filter((l) => l !== '');
+  })();
+
   return {
     fullUrl: present(href),
     scheme: present(u.protocol.replace(/:$/, '').toLowerCase()),
@@ -226,12 +242,73 @@ export function collectUrl(href: string): UrlEvidence {
     port: explicitPort === null ? absent<number>() : present(explicitPort),
     path: present(u.pathname),
     queryPresent: present(u.search !== ''),
-    // PSL follow-up — see file header. notCollected, not fabricated.
-    registrableDomain: nc<string>(),
-    subdomainLabels: nc<readonly string[]>(),
+    registrableDomain: rd !== null ? present(rd) : absent<string>(),
+    subdomainLabels: present(subdomainLabels),
     isIpLiteral: present(ipLiteral),
     totalLength: present(href.length),
     percentEncodedSegmentCount: present(u.pathname.split('/').filter((s) => /%[0-9A-Fa-f]{2}/.test(s)).length),
+  };
+}
+
+/* ── domainRepresentation — homograph module input ────────────────────────
+ * The extension cannot decode punycode to Unicode (ProducerCapabilityManifest
+ * records unicodeDomain as 0/6 NOT OBSERVABLE — no content-script API returns
+ * the decoded form), so behaviour splits on whether the host is an IDN:
+ *
+ *  - NON-IDN host (no xn-- label; the common case, incl. every ASCII domain):
+ *    the host IS its own analysable form. scriptsOf/confusableSkeleton (the
+ *    SHARED classifiers) run correctly → homograph is EVALUABLE and correct.
+ *
+ *  - IDN host (xn-- present): analysing the punycode ASCII would report a
+ *    Cyrillic/Greek homograph as clean Latin — a FALSE NEGATIVE, worse than
+ *    unevaluable. So the script-dependent fields are notCollected, making
+ *    homograph unevaluable for IDN pages. Honest capability gap, never a
+ *    fabricated clean bill of health.
+ *
+ * unicodeDomain is notCollected either way (0/6). homograph does not require
+ * it (it gates on isIdn/containsNonAscii/isMixedScript/scriptsUsed +
+ * confusableSkeleton), so this does not by itself block evaluation. */
+export function collectDomainRepresentation(href: string): DomainRepresentationEvidence {
+  let hostname: string;
+  try {
+    hostname = new URL(href).hostname.toLowerCase();
+  } catch {
+    return {
+      unicodeDomain: nc<string>(), punycodeDomain: nc<string>(), isIdn: nc<boolean>(),
+      containsNonAscii: nc<boolean>(), scriptsUsed: nc<readonly string[]>(),
+      isMixedScript: nc<boolean>(), confusableSkeleton: nc<string>(),
+    };
+  }
+  const isIdn = hostname.split('.').some((l) => l.startsWith('xn--'));
+
+  if (isIdn) {
+    return {
+      // Can't decode punycode in a content script (0/6).
+      unicodeDomain: nc<string>(),
+      punycodeDomain: present(hostname),
+      isIdn: present(true),
+      // Measuring these on the ASCII punycode form would be misleading /
+      // false-negative; not observable without the Unicode form.
+      containsNonAscii: nc<boolean>(),
+      scriptsUsed: nc<readonly string[]>(),
+      isMixedScript: nc<boolean>(),
+      confusableSkeleton: nc<string>(),
+    };
+  }
+
+  // Non-IDN: the host is its own analysable form.
+  const containsNonAscii = /[^\x00-\x7F]/.test(hostname);
+  const scriptsUsed = scriptsOf(hostname);
+  const skeleton = confusableSkeleton(hostname);
+  return {
+    unicodeDomain: nc<string>(),          // 0/6, and homograph does not need it
+    punycodeDomain: present(hostname),
+    isIdn: present(false),
+    containsNonAscii: present(containsNonAscii),
+    scriptsUsed: present(scriptsUsed),
+    isMixedScript: present(scriptsUsed.length >= 2),
+    // DEC-20: present ONLY when the skeleton differs from the domain.
+    confusableSkeleton: skeleton !== hostname ? present(skeleton) : absent<string>(),
   };
 }
 

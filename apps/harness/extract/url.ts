@@ -13,7 +13,7 @@
  * category is `notCollected`, because nothing was observable, not `absent`.
  */
 
-import { registrableDomainOf } from './psl.ts';
+import { registrableDomainOf } from '../../../packages/engine/psl.ts';
 import {
   present, absent, notCollected,
   type UrlEvidence, type Observation,

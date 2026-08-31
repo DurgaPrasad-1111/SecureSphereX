@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import { readSnapshot } from './snapshot-store.ts';
 import { extractEvidence } from './extract.ts';
-import { registrableDomainsOf } from './psl.ts';
+import { registrableDomainsOf } from '../../../packages/engine/psl.ts';
 
 const SNAP = process.env['SSX_E2E_SNAPSHOT'] ?? '';
 if (SNAP === '') {

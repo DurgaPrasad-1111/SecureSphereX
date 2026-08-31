@@ -11,7 +11,7 @@
 
 import {
   collectLoginInterface, collectUrl, collectTransport, collectScriptRuntime,
-  createInjectionTracker,
+  collectDomainRepresentation, createInjectionTracker,
 } from './collect-evidence.ts';
 
 // Start observing for injected credential forms immediately, before the page
@@ -21,6 +21,7 @@ const tracker = createInjectionTracker(document);
 function collectAndSend(): void {
   const parts = {
     url: collectUrl(location.href),
+    domainRepresentation: collectDomainRepresentation(location.href),
     transport: collectTransport(location.protocol),
     loginInterface: collectLoginInterface(document, document.baseURI, tracker.isInjected),
     // Network observations come from the SW's webRequest side; the content

@@ -45,7 +45,7 @@
 
 import { parse } from 'parse5';
 import type { DefaultTreeAdapterMap } from 'parse5';
-import { registrableDomainOf } from './psl.ts';
+import { registrableDomainOf } from '../../../packages/engine/psl.ts';
 import {
   present, notCollected,
   type LoginInterfaceEvidence, type LoginFormObservation,

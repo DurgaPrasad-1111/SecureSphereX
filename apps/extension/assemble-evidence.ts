@@ -66,6 +66,9 @@ export interface CollectedParts {
   readonly transport: TransportEvidence;
   readonly loginInterface: LoginInterfaceEvidence;
   readonly scriptRuntime: ScriptRuntimeEvidence;
+  /** A1.2 PSL wiring: now genuinely collected (shared domain-classify), not
+   *  stubbed. Optional so an older content script still assembles. */
+  readonly domainRepresentation?: DomainRepresentationEvidence;
   /** Optional live overrides for categories the SW can observe (step 7). */
   readonly downloadContext?: DownloadContextEvidence;
   readonly permissionContext?: PermissionContextEvidence;
@@ -77,7 +80,7 @@ export function assembleEvidence(parts: CollectedParts, targetUrl: string, colle
     transport: parts.transport,
     loginInterface: parts.loginInterface,
     scriptRuntime: parts.scriptRuntime,
-    domainRepresentation: stubDomainRepresentation(),
+    domainRepresentation: parts.domainRepresentation ?? stubDomainRepresentation(),
     dns: stubDns(),
     redirect: stubRedirect(),
     downloadContext: parts.downloadContext ?? stubDownloadContext(),

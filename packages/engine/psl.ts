@@ -58,7 +58,7 @@ import { parse as parseDomain } from 'tldts';
  * (`include_psl_private_domains`) — that vocabulary mapping is the one thing
  * that CANNOT be single-sourced, so it lives here, in one place, applied once.
  */
-import pslConfig from '../../../tools/ci/psl-config.json' with { type: 'json' };
+import pslConfig from '../../tools/ci/psl-config.json' with { type: 'json' };
 
 const PSL_OPTIONS = { allowPrivateDomains: pslConfig.includePrivateDomains } as const;
 
