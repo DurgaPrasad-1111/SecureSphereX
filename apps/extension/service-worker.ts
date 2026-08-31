@@ -19,8 +19,10 @@ import {
 } from './session-store.ts';
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
+import { RedirectTracker, computeRedirectEvidence, redirectKey } from './redirect-observer.ts';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
+import type { RedirectEvidence } from '../../packages/contracts/evidence.contract.v1.ts';
 
 const chromeSessionBackend: SessionStorageBackend = {
   get: (keys) => chrome.storage.session.get(keys),
@@ -29,6 +31,7 @@ const chromeSessionBackend: SessionStorageBackend = {
 };
 const store = new SessionStore(chromeSessionBackend);
 const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext: inPrivateContext() });
+const redirectTracker = new RedirectTracker();
 
 /** The bundled rule set, loaded once and cached. */
 let ruleSetPromise: Promise<RuleSet> | null = null;
@@ -57,6 +60,31 @@ chrome.webNavigation.onDOMContentLoaded.addListener((details) => {
   void store.updateSession(parts, { reachedTier: 1 });
 });
 
+/* ── Redirect evidence producer (webNavigation only, main frame) ──────────
+ * onBeforeNavigate records where a navigation started; onCommitted finalizes
+ * initial/final/server-redirect into RedirectEvidence and persists it per tab
+ * for the analysis pass. onErrorOccurred drops pending state so a failed
+ * navigation cannot leak a stale initialUrl into the next one.
+ *
+ * onHistoryStateUpdated is DELIBERATELY NOT wired: an SPA History API change
+ * is not an HTTP/server redirect and must never be recorded as one. Subframe
+ * events are excluded inside the tracker (frameId !== 0). Full multi-hop chain
+ * + hopCount need chrome.webRequest — a permission decision, not made here. */
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  redirectTracker.beginNavigation(details.tabId, details.frameId, details.url);
+});
+chrome.webNavigation.onCommitted.addListener((details) => {
+  const rec = redirectTracker.commitNavigation(
+    details.tabId, details.frameId, details.url, details.transitionQualifiers ?? [],
+  );
+  if (rec === null) return;
+  const redirect = computeRedirectEvidence(rec);
+  void chrome.storage.session.set({ [redirectKey(details.tabId)]: redirect });
+});
+chrome.webNavigation.onErrorOccurred.addListener((details) => {
+  redirectTracker.abortNavigation(details.tabId, details.frameId);
+});
+
 /* ── evidence from the content script → real engine pass ─────────────────── */
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type !== 'ssx-evidence') return;
@@ -68,7 +96,12 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 async function analyzeAndReflect(tabId: number, targetUrl: string, parts: CollectedParts): Promise<void> {
   try {
     const ruleSet = await loadRuleSet();
-    const evidence = assembleEvidence(parts, targetUrl, today());
+    // Merge the SW-observed redirect evidence for this tab (if any) into the
+    // content script's parts. Absent -> assembler falls back to the stub
+    // (notCollected), so the redirect module is honestly unevaluable.
+    const stored = await chrome.storage.session.get(redirectKey(tabId));
+    const redirect = stored[redirectKey(tabId)] as RedirectEvidence | undefined;
+    const evidence = assembleEvidence(redirect ? { ...parts, redirect } : parts, targetUrl, today());
     // A1.5: the real AuthStore is the ACEM's reader. prior=null for a first
     // pass; the §11.4 lock is A1.1's concern and not wired into this minimal
     // first-run path yet.

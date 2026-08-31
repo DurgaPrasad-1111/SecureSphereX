@@ -217,6 +217,13 @@ jobs:
       - name: 'A1.2  CRED live-path (extension collectors -> engine)'
         run: npm run test:cred-livepath
 
+      # ── Redirect producer: webNavigation-only redirect evidence ───────
+      # 8 navigation scenarios; no-redirect makes the redirect module
+      # evaluable, redirects honestly represented at the endpoints.
+      # No --if-present (DEFECT-29).
+      - name: 'Redirect producer (webNavigation evidence)'
+        run: npm run test:redirect
+
       # ── A1.3 — Auth History Store poisoning guards G-01…G-05 ──────────
       # Exit criterion: guards unit-tested INCLUDING negative (reject) cases.
       # NO --if-present (DEFECT-29): same discipline as every gate above.

@@ -69,6 +69,10 @@ export interface CollectedParts {
   /** A1.2 PSL wiring: now genuinely collected (shared domain-classify), not
    *  stubbed. Optional so an older content script still assembles. */
   readonly domainRepresentation?: DomainRepresentationEvidence;
+  /** SW-observed redirect evidence (webNavigation, this checkpoint). Optional:
+   *  absent when the SW observed no navigation for the tab (falls back to
+   *  stub -> notCollected -> module unevaluable, honestly). */
+  readonly redirect?: RedirectEvidence;
   /** Optional live overrides for categories the SW can observe (step 7). */
   readonly downloadContext?: DownloadContextEvidence;
   readonly permissionContext?: PermissionContextEvidence;
@@ -82,7 +86,7 @@ export function assembleEvidence(parts: CollectedParts, targetUrl: string, colle
     scriptRuntime: parts.scriptRuntime,
     domainRepresentation: parts.domainRepresentation ?? stubDomainRepresentation(),
     dns: stubDns(),
-    redirect: stubRedirect(),
+    redirect: parts.redirect ?? stubRedirect(),
     downloadContext: parts.downloadContext ?? stubDownloadContext(),
     permissionContext: parts.permissionContext ?? stubPermissionContext(),
   };

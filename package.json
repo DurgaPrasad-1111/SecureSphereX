@@ -21,6 +21,7 @@
     "test:extension": "node --experimental-strip-types apps/extension/session-survival.test.ts",
     "test:conformance": "node --experimental-strip-types tools/conformance/login-interface.conformance.test.ts",
     "test:cred-livepath": "node --experimental-strip-types tools/conformance/cred-live-path.test.ts",
+    "test:redirect": "node --experimental-strip-types tools/conformance/redirect-producer.test.ts",
     "test:authstore": "node --experimental-strip-types apps/extension/auth-store.test.ts",
     "test:moduleeval": "node --experimental-strip-types apps/extension/module-eval.test.ts",
     "test:authcontext": "node --experimental-strip-types apps/extension/auth-context.test.ts",
