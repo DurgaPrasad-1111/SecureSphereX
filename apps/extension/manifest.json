@@ -8,11 +8,23 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SecureSphere X"
+  },
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
-    "webNavigation"
+    "webNavigation",
+    "downloads"
   ],
-  "host_permissions": []
+  "host_permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
