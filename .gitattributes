@@ -1,0 +1,8 @@
+# Normalize committed text to LF and check it out as LF everywhere. Without
+# this, Windows autocrlf checks files out with CRLF, so the raw-byte SHA-256
+# that tools/ci/extract-storage-enums.py pins for the LDD (computed on LF, the
+# committed blob) does not match the working copy — G-11 (contract↔LDD)
+# then fails LOCALLY on Windows while passing on the Linux CI runner. LF
+# everywhere removes that drift. Binary corpus payloads are untouched.
+* text=auto eol=lf
+*.json.gz binary
