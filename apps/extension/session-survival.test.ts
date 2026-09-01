@@ -34,7 +34,7 @@ import type { PriorPassState } from '../../packages/engine/stage7-8.ts';
  *  survive in the browser (and vice versa). This object IS the "backing bytes"
  *  that persist across a simulated worker death. */
 function makeMemoryBackend(): SessionStorageBackend & { dump: () => Record<string, unknown> } {
-  let data: Record<string, unknown> = {};
+  const data: Record<string, unknown> = {};
   return {
     async get(keys) {
       if (keys === null) return JSON.parse(JSON.stringify(data));

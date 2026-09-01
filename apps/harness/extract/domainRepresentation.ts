@@ -41,7 +41,7 @@ export function extractDomainRepresentation(hostname: string | null): DomainRepr
   const unicodeDomain = domainToUnicode(hostname) || hostname;
   const punycodeDomain = domainToASCII(hostname) || hostname;
 
-  const containsNonAscii = /[^\x00-\x7F]/.test(unicodeDomain);
+  const containsNonAscii = /\P{ASCII}/u.test(unicodeDomain);
 
   // isIdn is measured on the PUNYCODE form: a domain is an IDN iff some label
   // carries the `xn--` ACE prefix. Measuring it on the Unicode form would make

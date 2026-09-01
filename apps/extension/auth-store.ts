@@ -249,7 +249,7 @@ export class AuthStore implements AuthStoreReader, AuthStoreWriter, AuthStoreUse
         status: 'available', originPresent: false, lifecycleState: null,
         fingerprintDrift: null, bestCrossOriginMatch: best,
       };
-    } catch (e) {
+    } catch {
       return { status: 'unavailable', reason: 'io_error' };
     }
   }

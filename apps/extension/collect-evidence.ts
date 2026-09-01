@@ -302,7 +302,7 @@ export function collectDomainRepresentation(href: string): DomainRepresentationE
   }
 
   // Non-IDN: the host is its own analysable form.
-  const containsNonAscii = /[^\x00-\x7F]/.test(hostname);
+  const containsNonAscii = /\P{ASCII}/u.test(hostname);
   const scriptsUsed = scriptsOf(hostname);
   const skeleton = confusableSkeleton(hostname);
   return {

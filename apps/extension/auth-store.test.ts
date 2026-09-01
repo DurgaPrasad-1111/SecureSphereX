@@ -22,7 +22,7 @@ import type { LoginFingerprint, Origin } from '../../packages/contracts/evidence
 import type { AuthRecordRequest } from '../../packages/contracts/boundary.interfaces.v1.ts';
 
 function memoryBackend(): AuthStorageBackend {
-  let data: Record<string, unknown> = {};
+  const data: Record<string, unknown> = {};
   return {
     async get(keys) {
       if (keys === null) return JSON.parse(JSON.stringify(data));

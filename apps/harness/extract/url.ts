@@ -68,7 +68,7 @@ function countPercentEncodedSegments(pathname: string): number {
  * bracketed, so the port can only follow the closing bracket.
  */
 export function explicitPort(rawUrl: string): number | null {
-  const afterScheme = rawUrl.replace(/^[A-Za-z][A-Za-z0-9+.\-]*:\/\//, '');
+  const afterScheme = rawUrl.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, '');
   const authority = afterScheme.split(/[/?#]/, 1)[0] ?? '';
   const atIdx = authority.lastIndexOf('@');
   const hostPort = atIdx === -1 ? authority : authority.slice(atIdx + 1);
