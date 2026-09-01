@@ -20,9 +20,14 @@ import {
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
 import { RedirectTracker, computeRedirectEvidence, redirectKey } from './redirect-observer.ts';
+import {
+  LoginSuccessTracker, buildLoginFingerprint, buildAuthRecordRequest,
+} from './login-success.ts';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
-import type { RedirectEvidence } from '../../packages/contracts/evidence.contract.v1.ts';
+import type {
+  RedirectEvidence, CredentialFieldKind, AnalysisSessionId,
+} from '../../packages/contracts/evidence.contract.v1.ts';
 
 const chromeSessionBackend: SessionStorageBackend = {
   get: (keys) => chrome.storage.session.get(keys),
@@ -32,6 +37,7 @@ const chromeSessionBackend: SessionStorageBackend = {
 const store = new SessionStore(chromeSessionBackend);
 const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext: inPrivateContext() });
 const redirectTracker = new RedirectTracker();
+const loginTracker = new LoginSuccessTracker();
 
 /** The bundled rule set, loaded once and cached. */
 let ruleSetPromise: Promise<RuleSet> | null = null;
@@ -53,6 +59,9 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const parts: SessionKeyParts = { tabId: details.tabId, navigationId: deriveNavigationId(details) };
   void store.startSession(parts, details.url, today());
+  // §20.5 conjunct 2 — a main-frame navigation is the "subsequent navigation"
+  // after a credential submit. Records the time against any pending submit.
+  loginTracker.recordNavigation(details.tabId, Date.now());
 });
 chrome.webNavigation.onDOMContentLoaded.addListener((details) => {
   if (details.frameId !== 0) return;
@@ -85,15 +94,44 @@ chrome.webNavigation.onErrorOccurred.addListener((details) => {
   redirectTracker.abortNavigation(details.tabId, details.frameId);
 });
 
-/* ── evidence from the content script → real engine pass ─────────────────── */
+/* ── messages from the content script ─────────────────────────────────────
+ * 'ssx-evidence'    — a page's collected evidence -> engine pass (+ landing
+ *                     evaluation for §20.5).
+ * 'ssx-cred-submit' — a credential-bearing form was submitted on THIS page
+ *                     (§20.5 conjunct 1). Records the pending auth, capturing
+ *                     G-01's input (did a CRED rule fire on this page?) from
+ *                     the login page's own stored verdict. */
 chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg?.type !== 'ssx-evidence') return;
   const tabId = sender.tab?.id;
   if (tabId === undefined) return;
-  void analyzeAndReflect(tabId, msg.targetUrl as string, msg.parts as CollectedParts);
+  if (msg?.type === 'ssx-evidence') {
+    void analyzeAndReflect(tabId, msg.targetUrl as string, msg.parts as CollectedParts, Boolean(msg.sessionStateEstablished));
+  } else if (msg?.type === 'ssx-cred-submit') {
+    void recordCredentialSubmit(tabId, msg.origin as string,
+      msg.fieldComposition as CredentialFieldKind[], msg.titleTokens as string[]);
+  }
 });
 
-async function analyzeAndReflect(tabId: number, targetUrl: string, parts: CollectedParts): Promise<void> {
+async function recordCredentialSubmit(
+  tabId: number, origin: string, fieldComposition: CredentialFieldKind[], titleTokens: string[],
+): Promise<void> {
+  // G-01 input: whether any CRED-family rule fired on the login page's own
+  // analysis. Read from the verdict stored for this tab (the login page's).
+  const stored = await chrome.storage.session.get(`ssx:verdict:${tabId}`);
+  const verdict = stored[`ssx:verdict:${tabId}`] as { fired?: string[] } | undefined;
+  const credFindingActiveInSession = (verdict?.fired ?? []).some((r) => r.startsWith('CRED-'));
+  loginTracker.recordSubmit(tabId, {
+    origin,
+    fingerprint: buildLoginFingerprint(fieldComposition, titleTokens),
+    credFindingActiveInSession,
+    analysisSessionId: `sess_${origin}` as AnalysisSessionId,
+    submitTimeMs: Date.now(),
+  });
+}
+
+async function analyzeAndReflect(
+  tabId: number, targetUrl: string, parts: CollectedParts, sessionStateEstablished: boolean = false,
+): Promise<void> {
   try {
     const ruleSet = await loadRuleSet();
     // Merge the SW-observed redirect evidence for this tab (if any) into the
@@ -120,9 +158,30 @@ async function analyzeAndReflect(tabId: number, targetUrl: string, parts: Collec
     };
     await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
     reflectBadge(tabId, effectiveTier);
+
+    // §20.5 conjuncts 3 + 4, evaluated on THIS (possibly landing) page against
+    // any pending credential submit for the tab. On all four holding, write
+    // through the EXISTING guarded store path (G-01/G-02 inside it).
+    void maybeRecordLoginSuccess(tabId, parts, sessionStateEstablished);
   } catch (err) {
     console.error('SSX analyze error:', err);
   }
+}
+
+async function maybeRecordLoginSuccess(
+  tabId: number, parts: CollectedParts, sessionStateEstablished: boolean,
+): Promise<void> {
+  const li = parts.loginInterface;
+  const credentialFormPresent = li.credentialFormPresent.state === 'present' && li.credentialFormPresent.value;
+  const { result, pending } = loginTracker.resolveLanding(tabId, { credentialFormPresent, sessionStateEstablished });
+  if (!result.success || pending === null) return;
+
+  const req = buildAuthRecordRequest(pending, inPrivateContext());
+  if (req === null) return;                         // malformed origin — never write
+  // The write is GUARDED inside recordAuthentication (G-01…G-05) and feeds the
+  // PROVISIONAL→ESTABLISHED ramp; this producer does not bypass any of it.
+  const outcome = await authStore.recordAuthentication(req);
+  console.info(`SSX login-success (${pending.origin}): ${JSON.stringify(outcome)}`);
 }
 
 /* ── badge: green Low / yellow Medium / red High ────────────────────────── */

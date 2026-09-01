@@ -4336,3 +4336,104 @@ required — only fresher targets.
 This does not reopen or amend the ruling above; sentinel-fill remains
 approved as scoped. It records that the first execution attempt met dead
 infrastructure, not any defect in the approach.
+
+---
+
+## DEC-36 — `webRequest` permission REJECTED for the javascript module
+
+**[R]** Investigation (2026-09-01) proposed adding the `webRequest` permission
+to populate `scriptRuntime.transmissionEndpoints` / `dynamicScriptOrigins`
+(script-initiated request observation) in the service worker.
+
+**[I] It does not unblock the module.** `packages/engine/modules/javascript.ts`
+gates on FOUR fields present: `listenerOnCredentialField`,
+`clientSideTransmissionObserved`, `dynamicScriptLoadCount`,
+`credentialInterfaceInjected`. `dynamicScriptLoadCount` is already `present`;
+the fields `webRequest` would populate (`transmissionEndpoints`,
+`dynamicScriptOrigins`) are NOT in the gate. The three fields that actually
+block the module are untouched by `webRequest` — `listenerOnCredentialField`
+(needs CDP/`chrome.debugger`, see [[DEC-37]]), `clientSideTransmissionObserved`
+([[DEC-29]] Tier 4, never inferred passively), `credentialInterfaceInjected`
+(MutationObserver, permission-free, not yet wired).
+
+**[I] The permission cost is real.** `webRequest` + `host_permissions:
+["http://*/*","https://*/*"]` prompts "read your browsing history" + "read and
+change all your data on all websites" — a network-observation capability the
+extension does not hold today (content_scripts inject into pages but do not see
+network requests).
+
+**Decision:** ☑ REJECTED for the javascript module — broad network-observation
+permission for zero module-evaluability gain. If `webRequest` is ever justified
+it will be for the REDIRECT full-hop chain (a separate matter, [[DEC-34]]-adjacent),
+decided on its own merits when redirect is revisited, not bundled here.
+
+- **Status:** SIGNED 2026-09-01. No code; the manifest permission set is
+  unchanged (`activeTab`, `scripting`, `storage`, `webNavigation`, `downloads`).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01
+
+---
+
+## DEC-37 — `chrome.debugger` for `listenerOnCredentialField` DEFERRED to Phase II
+
+**[R]** `listenerOnCredentialField` (scriptRuntime) requires enumerating a
+page's event listeners. `getEventListeners` is exposed ONLY through the
+DevTools protocol; in an extension that means `chrome.debugger`. In-page
+monkey-patching of `addEventListener` is FORBIDDEN by [[DEC-30]] (a hostile
+page detects/falsifies it).
+
+**[I] The UX cost is disqualifying for Phase I.** `chrome.debugger.attach()`
+forces Chrome to display a persistent, non-dismissable "SecureSphere X started
+debugging this browser" infobar on every affected tab, for as long as attached.
+For an always-on passive analyzer that would touch essentially every page load,
+that banner is continuous and reads to users as intrusion — directly
+contradicting §3.2's premise that Tier 0/1 cost the user nothing when wrong.
+The field it buys feeds only CRED-05/CRED-A1, already [[DEC-14]] non-functional,
+so the cost is enormous and the current detection payoff is zero.
+
+**Decision:** ☑ DEFERRED to Phase II — NOT permanently rejected. The banner
+cost rules it out for the passive Phase I product, but a Phase II with an
+on-demand deep-scan interaction model (user explicitly triggers a
+debugger-backed scan) could revisit it. Logged in the ProducerCapabilityManifest
+as "deferred, not rejected". `chrome.debugger` is NOT added to the manifest.
+
+- **Status:** SIGNED 2026-09-01. No code; capability manifest updated to record
+  the deferral and its reasoning.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01
+
+---
+
+## DEC-38 — authContext login-success signal: ADOPT §20.5's four conjuncts
+
+**[R]** authContext writes to the Authentication History Store on inferred
+successful authentication, which is not directly observable. §20.5 defines the
+inference as the CONJUNCTION of: credential submission, subsequent navigation,
+absence of a credential interface on the resulting page, and establishment of
+session-scoped storage or cookie state — calibrated RESTRICTIVELY ("a store
+that learns slowly is materially safer than one that learns wrongly").
+
+**Decision:** ☑ ADOPT §20.5's four conjuncts verbatim as the login-success
+signal, content-script-observable: (1) `submit` on a credential-bearing form;
+(2) main-frame navigation within 10s; (3) `credentialFormPresent === false` on
+the landing page; (4) any (non-httpOnly) cookie or session/local storage entry
+for the origin. The write goes through the EXISTING guarded
+`recordAuthentication` (G-01/G-02 not bypassed) and feeds the
+PROVISIONAL→ESTABLISHED ramp — one success is PROVISIONAL, never immediately
+ESTABLISHED.
+
+**[I] False-positive risk, accepted with mitigations.** The dangerous failure
+is learning from a failed login or a phishing page. Conjunct 3 is the primary
+discriminator (a failed login re-shows the form); it is imperfect — a kit that
+redirects to a form-less "success" page after harvesting would satisfy all four
+— which is exactly why G-01 (no learning from a session where a CRED rule
+fired) gates the write and why the multi-visit ESTABLISHED ramp bounds trust.
+KNOWN GAP: `interventionOverriddenInSession` (G-02 input) is hardcoded false —
+the InterventionReporter path is not wired — so G-02 cannot yet block an
+override; G-01 remains the operative phishing guard. Conjunct 4 UNDER-reports
+(httpOnly session cookies are invisible to JS), the restrictive direction.
+
+- **Status:** SIGNED 2026-09-01. IMPLEMENTED: `apps/extension/login-success.ts`
+  + content-script/service-worker wiring; `test:loginsuccess` (four conjuncts,
+  PROVISIONAL ramp, G-01 rejection, private-context suppression) green in CI.
+  The authContext MODULE remains unevaluable — this is the WRITE path; the
+  read-path fingerprint is separate (see ProducerCapabilityManifest).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01

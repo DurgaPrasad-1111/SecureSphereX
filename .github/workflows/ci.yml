@@ -239,6 +239,13 @@ jobs:
       - name: 'A1.5  authContext version-mismatch integration'
         run: npm run test:authcontext
 
+      # ── §20.5 login-success inference feeding the auth store ──────────
+      # Four conjuncts each gate independently; G-01/G-02 not bypassed; a
+      # genuine success is PROVISIONAL, never immediately ESTABLISHED.
+      # No --if-present (DEFECT-29).
+      - name: 'authContext  login-success inference (§20.5)'
+        run: npm run test:loginsuccess
+
       # ── Tier 1 E2E — capture.py output shape -> extractEvidence ───────
       # Self-contained via the committed tier1-e2e-fixture.json (no external
       # corpus/env). Enforces the capture->extract path in CI. No --if-present

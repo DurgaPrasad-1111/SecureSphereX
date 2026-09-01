@@ -65,15 +65,34 @@ server-side or native resolver.
   `https://account.proton.me`, Notion's `https://app.notion.com`, GitHub's
   `https://github.githubassets.com`. **The extension can see which script
   origin injected a login form.**
-- `fingerprint` — **NOT OBSERVABLE** here (0/6, `not_applicable`): the spike
-  didn't implement image hashing. This is a spike limitation, not a platform
-  one — the raw inputs (favicon, hero image, DOM) are reachable, so the real
-  producer can compute it. Flag: *observable in principle, not exercised.*
+- `fingerprint` — **PARTIALLY BUILT** (Decision 3, §20.5 login-success WRITE
+  path). `login-success.ts:buildLoginFingerprint` now produces a real
+  fingerprint from content-script-observable data — `fieldComposition` (via the
+  shared classifier) and `titleTokens` (document.title) — with `faviconHash` /
+  `heroImagePerceptualHash` / `dominantColors` honestly `null`/`[]` (a content
+  script does not cheaply compute perceptual hashes; fabricating them would be
+  worse than absent). This feeds `recordAuthentication` on inferred login
+  success. **NOT yet wired into the evaluation READ path:** `collectLoginInterface`
+  still returns `fingerprint: notCollected`, so the **authContext module stays
+  unevaluable** and CRED-02 cannot fire until the read-path fingerprint (and a
+  stored cross-origin match) exist. That read-path wiring is separate,
+  deliberately not bundled into the write-path decision.
 
 ### scriptRuntime.* — OBSERVABLE, and it caught real signals
-- `listenerOnCredentialField` — **OBSERVABLE** (6/6). Not just "worked" —
-  it detected **11 listeners** on Microsoft's fields, **27** on the bank's,
-  **2** on Notion's, and correctly **0** where there were no credential fields.
+- `listenerOnCredentialField` — **DEFERRED TO PHASE II, not rejected**
+  (Decision 2, 2026-09-01). ⚠ Correction to the spike's "OBSERVABLE (6/6)"
+  claim: the spike read listeners via a technique the PRODUCTION extension
+  cannot use — DEC-30 FORBIDS in-page monkey-patching of `addEventListener`,
+  and `getEventListeners` is exposed ONLY through the DevTools protocol, which
+  in an extension requires `chrome.debugger`. `chrome.debugger` forces Chrome
+  to show a persistent "SecureSphere X started debugging this browser" banner
+  on every affected tab — disqualifying for the passive, unobtrusive Phase I
+  model, whose whole premise (§3.2) is that Tier 0/1 cost the user nothing when
+  wrong. **Deferred to Phase II**, revisitable only if an on-demand deep-scan
+  interaction model (where the user explicitly triggers a debugger-backed scan)
+  is ever built. Until then this field is `notCollected` in the content-script
+  producer, and the javascript module stays unevaluable. (Its consumers
+  CRED-05/CRED-A1 are DEC-14 non-functional regardless.)
 - `clientSideTransmissionObserved` / `transmissionEndpoints` — **OBSERVABLE**
   (6/6) but returned `false`/`[]` everywhere. **Caveat: no credential value
   was ever typed** (we never log in), so the detector had nothing to match
