@@ -8,26 +8,51 @@
  * shaped the way the extractor's author imagined, which is the failure this
  * whole exercise keeps finding.
  *
- * Set SSX_E2E_SNAPSHOT to a capture.py-produced .json.gz carrying
- * `raw.scriptRuntimeObservations`. Skips loudly if unset — never silently.
+ * TWO MODES:
+ *   - DEFAULT (CI, self-contained): reads the committed, format-faithful
+ *     fixture `tier1-e2e-fixture.json` — a snapshot in capture.py's exact
+ *     output shape. Deterministic, no external corpus/env needed. This is what
+ *     makes the capture->extract path an ENFORCED CI gate.
+ *   - REAL-CAPTURE OVERRIDE: set SSX_E2E_SNAPSHOT to a REAL capture.py-produced
+ *     .json.gz. The test then validates the extractor against fresh live
+ *     output, preserving this file's original purpose (a hand-built object
+ *     proves only that the extractor works on data its author imagined).
  *
- * Run: SSX_E2E_SNAPSHOT=/path/to/snap.json.gz \
+ * Run (override): SSX_E2E_SNAPSHOT=/path/to/snap.json.gz \
  *        node --experimental-strip-types apps/harness/extract/tier1-e2e.test.ts
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readSnapshot } from './snapshot-store.ts';
 import { extractEvidence } from './extract.ts';
 import { registrableDomainsOf } from '../../../packages/engine/psl.ts';
+import type { Snapshot } from '../../../packages/contracts/snapshot.format.v1.ts';
 
 const SNAP = process.env['SSX_E2E_SNAPSHOT'] ?? '';
-if (SNAP === '') {
-  console.error('SSX_E2E_SNAPSHOT is not set — no real capture.py output to read.');
-  console.error('Refusing to report a pass: this test exists to prove the capture->extract path.');
-  process.exit(1);
+
+/** Load the committed plain-JSON fixture, applying the same missing-key
+ *  normalisation `readSnapshot` performs for gz snapshots. */
+function loadCommittedFixture(): Snapshot {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const parsed = JSON.parse(readFileSync(join(here, 'tier1-e2e-fixture.json'), 'utf8')) as Record<string, unknown>;
+  const raw = parsed['raw'] as Record<string, unknown> | undefined;
+  if (raw && raw['scriptRuntimeObservations'] === undefined) raw['scriptRuntimeObservations'] = null;
+  return parsed as unknown as Snapshot;
 }
 
-const snapshot = readSnapshot(SNAP);
+// Either mode yields a Snapshot from the SAME extract path; only the source
+// differs. `reload()` returns a FRESH parse each call so the S-6 byte-identity
+// check below compares two independent extractions, not an object to itself.
+const usingOverride = SNAP !== '';
+const reload = (): Snapshot => (usingOverride ? readSnapshot(SNAP) : loadCommittedFixture());
+console.log(usingOverride
+  ? `Tier 1 E2E: SSX_E2E_SNAPSHOT override -> ${SNAP}`
+  : 'Tier 1 E2E: committed fixture (set SSX_E2E_SNAPSHOT to validate a real capture.py .json.gz)');
+
+const snapshot = reload();
 
 // ── The producer half actually landed in the snapshot ─────────────────────
 const obs = snapshot.raw.scriptRuntimeObservations;
@@ -115,8 +140,8 @@ assert.equal(sr.clientSideTransmissionObserved.state, 'notCollected',
 
 // ── S-6 through the full path ─────────────────────────────────────────────
 assert.equal(
-  JSON.stringify(extractEvidence(readSnapshot(SNAP))),
-  JSON.stringify(extractEvidence(readSnapshot(SNAP))),
+  JSON.stringify(extractEvidence(reload())),
+  JSON.stringify(extractEvidence(reload())),
   'S-6: two extractions of the same captured snapshot must be byte-identical',
 );
 

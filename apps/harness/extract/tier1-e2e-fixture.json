@@ -1,0 +1,48 @@
+{
+  "_provenance": "Format-faithful Snapshot fixture for CI determinism, matching capture.py's output shape (snapshot.format.v1 + the scriptRuntimeObservations superset key). Models the DEC-30 synthetic beacon-on-load kit: a page that beacons to 127.0.0.1 and loads a late script. Endpoints are IP literals with no eTLD+1, so transmissionEndpointDomains must derive to []. The SSX_E2E_SNAPSHOT env override still runs this test against a REAL fresh capture.py .json.gz output.",
+  "snapshotId": "tier1e2efixture000000000000000000",
+  "formatVersion": "1.1.0",
+  "capturedOn": "2026-08-30",
+  "provenance": {
+    "label": "phishing",
+    "feed": "manual",
+    "feedVerified": null,
+    "reportedOn": null,
+    "feedRecordId": null,
+    "impersonatedBrand": null
+  },
+  "split": {
+    "split": "test",
+    "assignmentFunctionVersion": "split-v2",
+    "splitKey": "127.0.0.1",
+    "proportions": { "train": 0.6, "validation": 0.2, "test": 0.2 },
+    "assignedOn": "2026-08-30"
+  },
+  "fetch": {
+    "outcome": "success",
+    "httpStatus": 200,
+    "durationMs": 1200,
+    "finalUrl": "http://127.0.0.1:8101/",
+    "attemptOrdinal": 1
+  },
+  "raw": {
+    "requestedUrl": "http://127.0.0.1:8101/",
+    "finalUrl": "http://127.0.0.1:8101/",
+    "renderedDom": "<!doctype html><html><head><title>kit</title></head><body><form method=\"post\" action=\"/submit\"><input type=\"text\" name=\"user\"><input type=\"password\" name=\"pass\"></form></body></html>",
+    "domContentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "responseHeaders": { "content-type": "text/html" },
+    "redirectChain": [],
+    "tlsCertificateChain": null,
+    "dnsRecords": null,
+    "screenshotRef": null,
+    "scriptRuntimeObservations": {
+      "transmissionEndpoints": ["http://127.0.0.1:8102/beacon"],
+      "dynamicScriptOrigins": ["http://127.0.0.1:8102/late.js"],
+      "dynamicScriptLoadCount": 1,
+      "postRequestCount": 1,
+      "postAfterDclCount": 1
+    }
+  },
+  "extraction": null,
+  "presentsCredentialInterface": null
+}
