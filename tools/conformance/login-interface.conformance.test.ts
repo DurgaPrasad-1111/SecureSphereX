@@ -2,6 +2,15 @@
  * CP-3 CONFORMANCE: harness (offline, parse5) vs extension (live DOM) must
  * produce IDENTICAL loginInterface evidence on SHARED fields.
  *
+ * CONFIG-ECHO-EXEMPT: this is a harness-vs-extension CLASSIFICATION conformance
+ * test, not a library-oracle test. It compares two in-repo producers of the
+ * SAME shared classifier against each other; there is no external oracle
+ * (unlike the PSL conformance test, whose tldts/tldextract oracle has a
+ * configurable includePrivateDomains that must be echoed). The DEFECT-34 class
+ * this check guards — a fixture silently comparing two library DEFAULTS — is
+ * structurally impossible here: both sides call the identical shared code, so
+ * there is no configuration to drift.
+ *
  * WHY THIS LIVES IN tools/conformance AND NOT IN EITHER PACKAGE. It imports
  * BOTH producers. The dependency matrix (CLAUDE.md §2, G-4) forbids
  * apps/extension → apps/harness and apps/harness → apps/extension, so a test
