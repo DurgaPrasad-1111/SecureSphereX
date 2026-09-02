@@ -28,7 +28,17 @@ import {
 import type { AuthRecordRequest } from '../../packages/contracts/boundary.interfaces.v1.ts';
 
 /** §20.5's "subsequent navigation" window: the main-frame navigation must
- *  commit within this long of the credential submit to be counted. */
+ *  commit within this long of the credential submit to be counted.
+ *
+ *  ⚠ PROVISIONAL — PENDING CALIBRATION. 10s is a deliberately restrictive
+ *  first guess, NOT a spec-normative value: §20.5 gives no number and mandates
+ *  the inference be "calibrated RESTRICTIVELY ... loosened only on measured
+ *  evidence" ("a store that learns slowly is materially safer than one that
+ *  learns wrongly"). This literal must be re-derived from real login-flow
+ *  timing data (submit→landing latency distribution across the corpus) before
+ *  it is treated as settled; a too-wide window admits false PROVISIONAL writes,
+ *  a too-narrow one misses genuine successes (which fails SAFE — no write).
+ *  Do not read this bare number as authoritative. */
 export const LOGIN_SUCCESS_WINDOW_MS = 10_000;
 
 /** State captured at credential submit on the LOGIN page. */
