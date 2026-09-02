@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+// Git pre-commit entry. Git requires the hook be named exactly `pre-commit`
+// (hence no file extension); the real, independently-runnable logic lives in
+// pre-commit-lint.mjs. This entry spawns `node` directly on that module — the
+// same "spawn node, do not depend on shebang interpretation" choice
+// block-frozen.mjs documents — and propagates its exit status so a lint failure
+// aborts the commit.
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+
+const result = spawnSync(
+  process.execPath,
+  [join(import.meta.dirname, 'pre-commit-lint.mjs')],
+  { stdio: 'inherit' },
+);
+
+process.exit(result.status ?? 1);

@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "node tools/hooks/install.mjs",
     "typecheck": "tsc -b",
     "test:fixtures": "node --experimental-strip-types tools/ci/test-fixtures.ts",
     "test:properties": "node --experimental-strip-types packages/engine/b1-5.properties.test.ts",

@@ -2592,7 +2592,14 @@ browser/webextension globals scoped to `apps/extension/**` only (engine config
 untouched, so G-3's "engine is provably free of chrome/window/document" claim is
 preserved); real source lints fixed at source, no suppressions. `verify:all`
 exits 0 on `87630b1`.
-- **Status:** FIXED (fix landed on `main`, CI green). **Preventive item OPEN:**
-  nothing yet runs `npm run lint` / `verify:all` locally before push, so a
-  first-position gate can still silently rot between CI runs — a local
-  pre-push/pre-commit lint hook is the recorded, not-yet-done follow-up.
+- **Status:** FIXED (fix landed on `main`, CI green, `8a68e1a`/`4e3726e`/`87630b1`).
+  **Preventive control now CLOSED (2026-09-02):** a git `pre-commit` lint gate
+  runs eslint (CI's `--max-warnings=0` strictness) on the staged lintable files
+  at commit time and blocks the commit on any error — `tools/hooks/pre-commit-lint.mjs`
+  (logic), `tools/hooks/pre-commit` (git entry), `tools/hooks/install.mjs` +
+  package.json `prepare` (activates `core.hooksPath` on clone). Node/.mjs, not
+  shell, per DEFECT-8's fail-closed reasoning. **This control would have caught
+  `f3520ea` at commit time — blocking it locally — instead of the break
+  surfacing only in CI 4 days and 42 red runs later.** Verified end-to-end:
+  a staged unused-var violation was blocked (no commit created); the clean
+  hook commit itself passed the gate.
