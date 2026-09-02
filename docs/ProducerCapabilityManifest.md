@@ -88,11 +88,22 @@ server-side or native resolver.
   to show a persistent "SecureSphere X started debugging this browser" banner
   on every affected tab — disqualifying for the passive, unobtrusive Phase I
   model, whose whole premise (§3.2) is that Tier 0/1 cost the user nothing when
-  wrong. **Deferred to Phase II**, revisitable only if an on-demand deep-scan
-  interaction model (where the user explicitly triggers a debugger-backed scan)
-  is ever built. Until then this field is `notCollected` in the content-script
-  producer, and the javascript module stays unevaluable. (Its consumers
-  CRED-05/CRED-A1 are DEC-14 non-functional regardless.)
+  wrong. **Deferred to Phase II** (not rejected).
+
+  **REVISIT TRIGGER (concrete, testable — added 2026-09-02).** Reopen this
+  deferral if and only if BOTH conditions below hold; absent either, the
+  `chrome.debugger` banner cost buys nothing and the deferral stands:
+  1. a **user-initiated, per-invocation deep-scan UX** exists — the user
+     explicitly triggers a debugger-backed scan on a specific tab, so the
+     "started debugging this browser" banner appears only during that
+     opt-in scan, never on passive Tier 0/1 page loads; AND
+  2. the field has a **live consumer** — CRED-05/CRED-A1 are functional
+     (i.e. [[DEC-14]]'s non-functional status has been lifted), so collecting
+     `listenerOnCredentialField` actually changes a detection outcome.
+
+  Owner of the revisit decision: Architecture Owner. Until both hold, this
+  field is `notCollected` in the content-script producer and the javascript
+  module stays unevaluable.
 - `clientSideTransmissionObserved` / `transmissionEndpoints` — **OBSERVABLE**
   (6/6) but returned `false`/`[]` everywhere. **Caveat: no credential value
   was ever typed** (we never log in), so the detector had nothing to match
