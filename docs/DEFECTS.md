@@ -2541,3 +2541,58 @@ CSV branch already fixed for a different variable.
   `python -m py_compile` and by reproducing the original cwd scenario
   directly. The 40 real captures this bug produced were recovered and merged
   into the real corpus, not discarded.
+
+---
+
+## DEFECT-36 — CI was red for ~4 days (every push failed at G-1 Lint), unnoticed because no local workflow ran the lint gate (found and FIXED 2026-09-01)
+
+**Finding.** GitHub Actions `CI` failed on every push from 2026-08-28 through
+2026-09-01 — 42 consecutive failed runs — while local development continued
+against a working tree that was never linted. The failing gate was **G-1 Lint
+(eslint)**, which runs FIRST in the CI job and fails fast, so no later gate
+(typecheck, architectural G-2/G-3, dependency-cruiser, tests) even executed:
+the whole pipeline read red on the strength of one un-run gate, and a red run
+proved only that eslint failed — nothing about the health of anything behind it.
+
+**Evidence (Actions run history, verified via `gh run list` / `gh run view`):**
+- Last GREEN run: `33191027034`, commit `0c4e987`, 2026-08-28T16:39.
+- First RED run: `33191063644`, commit `f3520ea` (the commit IMMEDIATELY after
+  `0c4e987`), 2026-08-28T16:40 — failing step confirmed `G-1  Lint`.
+- Red window: 2026-08-28 → 2026-09-01, 42 failed runs, all at G-1 Lint.
+- Fixed by `8a68e1a` (G-1) + `4e3726e` + `87630b1`; `verify:all` exits 0 on
+  `main` at `87630b1`, CI green on that commit 2026-09-01.
+
+**Two corrections to the finding as originally described to me ("red since
+0c4e987, unnoticed for months"):**
+1. `0c4e987` was the **last GREEN** commit, not the first red one. Red began at
+   `f3520ea`, the next commit — so the honest phrasing is "red since `f3520ea`."
+2. The red window was **~4 days** (2026-08-28 → 2026-09-01), **NOT months** —
+   the first-failing commit is only four days older than the fix. Both
+   corrections are recorded rather than parroting the original framing.
+
+**Root cause.** eslint's ignore list carried `dist/**`, which does NOT match the
+NESTED build output `apps/extension/dist/**`; eslint therefore linted the built
+browser bundles and raised 38 spurious `no-undef` errors, plus a handful of real
+source lints (unused catch binding, control-regex, useless-escape). CI enforced
+the gate, but no local workflow ran `npm run lint`, so the failures were
+invisible to the implementing sessions — the "CI enforces what local never runs"
+gap, made worse by a first-position fail-fast gate that masks the true state of
+every gate behind it.
+
+**Owning step.** CI configuration / G-1 (`.github/workflows/ci.yml` Lint step;
+`eslint.config.js`).
+
+**Impact.** For ~4 days "is `main` green?" was unanswerable from CI. Because G-1
+fails fast, the determinism/architecture gates (G-2/G-3), dependency-cruiser
+(G-4/G-5), and the whole test suite were effectively **un-observed** across the
+window — not known-passing, not known-failing, just never reached.
+
+**Fix / status.** FIXED 2026-09-01. eslint ignore corrected to `**/dist/**`;
+browser/webextension globals scoped to `apps/extension/**` only (engine config
+untouched, so G-3's "engine is provably free of chrome/window/document" claim is
+preserved); real source lints fixed at source, no suppressions. `verify:all`
+exits 0 on `87630b1`.
+- **Status:** FIXED (fix landed on `main`, CI green). **Preventive item OPEN:**
+  nothing yet runs `npm run lint` / `verify:all` locally before push, so a
+  first-position gate can still silently rot between CI runs — a local
+  pre-push/pre-commit lint hook is the recorded, not-yet-done follow-up.
