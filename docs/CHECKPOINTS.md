@@ -59,6 +59,23 @@ not.
 Whether to tag the contracts going forward — and at what version, marking
 which state — is a separate decision, deliberately not resolved here.
 
+**[RESOLVED 2026-09-02 — the deferred tagging decision above.]** Per the
+Architecture-Owner review of `docs/DEC-36-37-38-REVIEW.md` (Jayanth, provided
+directly in session), that separate decision is now made — along exactly the
+lines this entry anticipated. `v1.0.0` has been created as an annotated tag on
+**`d721413`**, the pre-amendment Stage-0 baseline — NOT on the amended HEAD,
+which is the misrepresentation the paragraphs above warned against. It marks the
+frozen contracts as they stood before the Phase-I amendments (A-1…A-6:
+`3ad38ed`, `e2d9239`, `bfecce8`, `d806f14`, `ce05ded`, `bc8d710`, all
+descendants of `d721413`). The *option choice* — retroactive Stage-0 tag vs a
+new version at HEAD — was delegated by the Architecture Owner to the
+implementing session, which selected the retroactive Stage-0 tag; that
+sub-choice is the implementing session's, not attributed to Jayanth. This does
+not rewrite the historical record that CP-0's ritual was NOT performed at end of
+Stage 0 — it records that the tag that ritual required now exists, on the
+correct baseline commit. (Pre-import git history was lost in cross-machine
+transfer, so `d721413` is the earliest reproducible baseline.)
+
 **[I] Recording CP-0 as NOT MET does not invalidate the Stage 0 work.** It
 records that the checkpoint's own ritual was never performed. The
 substantive Stage 0 outputs exist and are independently evidenced
