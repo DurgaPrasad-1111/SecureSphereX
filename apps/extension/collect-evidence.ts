@@ -39,11 +39,17 @@ import {
   type LoginInterfaceEvidence, type LoginFormObservation, type CredentialField,
   type TransportEvidence, type UrlEvidence, type LoginFingerprint,
   type ScriptRuntimeEvidence, type DomainRepresentationEvidence, type Observation,
+  type CredentialFieldKind,
 } from '../../packages/contracts/evidence.contract.v1.ts';
 import {
   classifyField, isCredentialFieldHidden, isAutocompleteDisabled, classifyMethod,
   SECRET_KINDS,
 } from '../../packages/engine/field-classify.ts';
+// The SAME fingerprint builder the WRITE path (login-success.ts) uses, so the
+// fingerprint this read path computes for a page is byte-identical to the one
+// stored on a successful login there — the invariant CRED-02's drift and
+// cross-origin match depend on.
+import { buildLoginFingerprint } from './login-success.ts';
 // A1.2 PSL wiring: the SAME gated PSL path and domain classifiers the harness
 // uses, now shared in packages/engine — never a copy (DEFECT-34).
 import { registrableDomainOf } from '../../packages/engine/psl.ts';
@@ -109,6 +115,29 @@ function collectFieldsIn(root: ParentNode): CredentialField[] {
 }
 
 /**
+ * `document.title` → lowercased alphanumeric tokens (§20.3 title-token basis).
+ * SHARED with the WRITE path: content-script.ts imports THIS function so the
+ * fingerprint it stores on a successful login and the fingerprint this read
+ * path computes for the SAME page are tokenised identically — otherwise a
+ * genuine revisit would show spurious drift or miss the cross-origin match.
+ */
+export function tokenizeTitle(title: string): readonly string[] {
+  return title.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t !== '');
+}
+
+/**
+ * Field composition for the page fingerprint: the FIRST credential-bearing
+ * form's classified kinds — the form the write path observes on submit — or,
+ * absent any credential form, the first form's kinds (or [] for none).
+ * Deterministic, document order; the same classifier the write path uses, so
+ * the two compositions agree for the same page.
+ */
+function fingerprintFieldComposition(forms: readonly LoginFormObservation[]): readonly CredentialFieldKind[] {
+  const credForm = forms.find((f) => f.fields.some((x) => SECRET_KINDS.has(x.kind)));
+  return (credForm ?? forms[0])?.fields.map((x) => x.kind) ?? [];
+}
+
+/**
  * Collect `loginInterface` evidence from a live DOM root.
  *
  * Structurally identical to `loginInterface.ts`: forms in document order, then
@@ -126,6 +155,13 @@ export function collectLoginInterface(
   root: ParentNode,
   baseUrl: string | null,
   isInjected: InjectionPredicate = () => false,
+  // The page title, supplied by the live content script (document.title). When
+  // provided, this pass ALSO produces the `fingerprint` — the authContext read
+  // path CRED-02 needs. Left null by the harness and by callers that only want
+  // the classification fields, keeping `fingerprint` notCollected and shared-
+  // field byte-identity (CP-3) intact. A genuine extension-only gain, exactly
+  // like injectedAfterLoad: only a live page has a title to fingerprint from.
+  pageTitle: string | null = null,
 ): LoginInterfaceEvidence {
   const forms: LoginFormObservation[] = [];
   const formEls = Array.from(root.querySelectorAll('form'));
@@ -180,11 +216,20 @@ export function collectLoginInterface(
 
   const credentialFormPresent = forms.some((f) => f.fields.some((x) => SECRET_KINDS.has(x.kind)));
 
+  // authContext read path (CRED-02). Built the SAME way as the write path
+  // (buildLoginFingerprint over the same field composition + title tokenizer),
+  // so the store lookup compares like against like. Present only when a title
+  // was supplied; faviconHash/heroImagePerceptualHash/dominantColors stay
+  // null/[] (a content script does not cheaply compute perceptual hashes —
+  // buildLoginFingerprint's honest limitation, not this pass's).
+  const fingerprint: Observation<LoginFingerprint> = pageTitle === null
+    ? notCollected<LoginFingerprint>('api_unavailable')
+    : present(buildLoginFingerprint(fingerprintFieldComposition(forms), tokenizeTitle(pageTitle)));
+
   return {
     credentialFormPresent: present(credentialFormPresent),
     forms: present(forms),
-    // Same as the harness: fingerprint needs assets this pass does not have.
-    fingerprint: notCollected<LoginFingerprint>('api_unavailable'),
+    fingerprint,
   };
 }
 

@@ -11,7 +11,7 @@
 
 import {
   collectLoginInterface, collectUrl, collectTransport, collectScriptRuntime,
-  collectDomainRepresentation, createInjectionTracker,
+  collectDomainRepresentation, createInjectionTracker, tokenizeTitle,
 } from './collect-evidence.ts';
 import { classifyField, SECRET_KINDS } from '../../packages/engine/field-classify.ts';
 import type { CredentialFieldKind } from '../../packages/contracts/evidence.contract.v1.ts';
@@ -31,11 +31,6 @@ function sessionStateEstablished(): boolean {
     if (window.localStorage.length > 0) return true;
   } catch { /* storage access can throw in some contexts — treat as not established */ }
   return false;
-}
-
-/** document.title -> lowercased alphanumeric tokens, for the fingerprint. */
-function titleTokens(): string[] {
-  return document.title.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t !== '');
 }
 
 /** Ordered credential-field kinds of one form, via the SHARED classifier. */
@@ -68,7 +63,7 @@ function armCredentialSubmitListeners(): void {
         type: 'ssx-cred-submit',
         origin: location.origin,
         fieldComposition: composition,
-        titleTokens: titleTokens(),
+        titleTokens: tokenizeTitle(document.title),
       });
     }, { capture: true });
   }
@@ -79,7 +74,10 @@ function collectAndSend(): void {
     url: collectUrl(location.href),
     domainRepresentation: collectDomainRepresentation(location.href),
     transport: collectTransport(location.protocol),
-    loginInterface: collectLoginInterface(document, document.baseURI, tracker.isInjected),
+    // Pass document.title so this pass ALSO produces the login fingerprint the
+    // authContext read path (CRED-02) consumes — built identically to the
+    // write path's stored one (buildLoginFingerprint + tokenizeTitle).
+    loginInterface: collectLoginInterface(document, document.baseURI, tracker.isInjected, document.title),
     // Network observations come from the SW's webRequest side; the content
     // script contributes none, so this pass reports the observable subset as
     // empty. (Wiring SW-observed endpoints into here is a later step.)

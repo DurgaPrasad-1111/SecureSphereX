@@ -2603,3 +2603,53 @@ exits 0 on `87630b1`.
   surfacing only in CI 4 days and 42 red runs later.** Verified end-to-end:
   a staged unused-var violation was blocked (no commit created); the clean
   hook commit itself passed the gate.
+
+---
+
+## DEFECT-37 — `resolveFindingPath` split only on the FIRST dot, so CRED-02's nested finding paths silently resolved to `undefined` (latent; unmasked and FIXED 2026-09-02 by the authContext read-path wiring)
+
+**Finding.** `packages/engine/stage2.ts`'s `resolveFindingPath` resolved a
+`FindingPath` by taking everything after the FIRST `.` as a single object key:
+`findings[path.slice(dot + 1)]`. For a two-level path (`url.registrableDomain`)
+that is correct. For CRED-02's **three-level** paths —
+`authContext.bestCrossOriginMatch.similarity` and
+`authContext.bestCrossOriginMatch.registrableDomain` — it looked up
+`findings['bestCrossOriginMatch.similarity']` (a key that does not exist) and
+returned `undefined`. The `gte`/`notSameSite` operands then saw a non-number /
+non-string and returned `noMatch`, so the CRED-02 `and` never matched.
+
+**Why it was latent (never observed until now).** CRED-02 is the only rule with
+a nested finding path, and it reads `authContext` — which was **always
+unevaluable** because the extension's `collectLoginInterface` returned
+`fingerprint: notCollected`. The `requiredModules` pre-check (§15.2) short-
+circuited CRED-02 to `unevaluable` before the predicate was ever evaluated, so
+the broken path resolution was never reached. Wiring the read-path fingerprint
+(this session) made `authContext` evaluable for the first time and immediately
+exposed it: CRED-02 evaluated, but its predicate could not read its own inputs.
+
+**Evidence.** With the fingerprint wired, a direct `AuthStore.lookup` returned a
+correct `bestCrossOriginMatch` (similarity 1.0) and the engine's `authContext`
+evaluation showed the same nested object — yet `runAnalysisPass` fired `[]`.
+Tracing the predicate showed `resolveFindingPath('authContext.bestCrossOriginMatch.similarity')`
+returning `undefined`. The contract intends nested paths: `FindingPath` is
+`` `${ModuleId}.${string}` `` (dots allowed in the tail) and
+`tools/ci/validate-ruleset.py` V-2 explicitly whitelists
+`authContext.bestCrossOriginMatch.{origin,registrableDomain,similarity}` — so
+the ruleset was valid and the runtime resolver was wrong, not the reverse.
+
+**Owning step.** Stage 2 predicate evaluation (`packages/engine/stage2.ts`).
+
+**Impact.** CRED-02 — "no other rule reads the Authentication History Store",
+the platform's strongest zero-hour impersonation signal — could not have fired
+against ANY input, even with a correct store and a wired fingerprint. A silent
+false negative on the whole rule, hidden behind an unrelated unevaluable module.
+
+**Fix / status.** FIXED 2026-09-02. `resolveFindingPath` now walks the dotted
+tail segment by segment over the findings object; a `null`/`undefined`
+intermediate is returned as-is (a genuine `null` `bestCrossOriginMatch` yields a
+`noMatch`, never an unevaluable module). Two-level paths are unchanged (one
+segment), so no other rule's behavior moves; `verify:all` green. Proven firing
+end-to-end by `tools/conformance/cred02-live-path.test.ts` (positive ESTABLISHED
+impersonation fires; PROVISIONAL-only, no-credential-form, version-mismatch, and
+cold-start all correctly do not).
+- **Status:** FIXED.

@@ -56,7 +56,15 @@ import type { LoginInterfaceEvidence } from '../../packages/contracts/evidence.c
  *     CANNOT (DEFECT-31) and hardcodes false/null. Only one side produces
  *     them, so they are excluded by definition — a genuine extension gain,
  *     not a disagreement.
- *   - fingerprint: both emit notCollected identically; not classification.
+ *   - fingerprint: an EXTENSION-ONLY gain, exactly like injectedAfterLoad.
+ *     The extension builds it (from field composition + the page title) WHEN a
+ *     title is supplied — which the live content script does; the harness has
+ *     no page title in its offline model and structurally cannot. So only one
+ *     side produces it, and comparing it would be comparing an extension gain
+ *     against a structural harness gap, not a classification disagreement.
+ *     Its absence from the shared set is asserted POSITIVELY below (a title is
+ *     passed, the extension yields a present fingerprint, the harness stays
+ *     notCollected, and the shared fields remain byte-identical regardless).
  */
 function sharedFields(ev: LoginInterfaceEvidence): unknown {
   const forms = ev.forms.state === 'present'
@@ -141,8 +149,36 @@ for (const c of CASES) {
     'NEGATIVE CONTROL FAILED: sharedFields did not distinguish a credential form from a non-credential one');
 }
 
+// ── fingerprint: extension-only gain, shared-field identity UNAFFECTED ──────
+// Passing a page title makes the extension produce a real login fingerprint
+// (the authContext / CRED-02 read path); the harness cannot and stays
+// notCollected. Asserts the divergence is INTENTIONAL and one-sided, and that
+// the SHARED classification fields remain byte-identical even so.
+{
+  const html = '<title>Trusted Bank — Sign in</title>'
+    + '<form method="post" action="/login"><input type="text" name="username">'
+    + '<input type="password" name="password"></form>';
+  const harnessEv = extractLoginInterface(html, BASE_URL);
+  const dom = new JSDOM(html, { url: BASE_URL });
+  const titledEv = collectLoginInterface(
+    dom.window.document as unknown as ParentNode, BASE_URL, () => false, dom.window.document.title,
+  );
+
+  assert.equal(harnessEv.fingerprint.state, 'notCollected',
+    'harness has no page title in its offline model -> fingerprint notCollected');
+  assert.equal(titledEv.fingerprint.state, 'present',
+    'extension WITH a title produces a present login fingerprint (the CRED-02 read path)');
+  assert.equal(
+    JSON.stringify(sharedFields(harnessEv)), JSON.stringify(sharedFields(titledEv)),
+    'the extra extension-only fingerprint must NOT perturb the shared classification fields (CP-3 identity holds)',
+  );
+  console.log('  fingerprint: extension-only gain confirmed (present in extension WITH title, '
+    + 'notCollected in harness); shared fields byte-identical regardless ✓');
+}
+
 console.log(`CP-3 loginInterface conformance PROVEN: ${passed}/${CASES.length} HTML cases produce `
   + 'byte-identical SHARED fields (incl. actionUrl AND actionRegistrableDomain, both now shared-PSL) '
   + 'across the harness (parse5) and extension (live DOM) paths.');
 console.log('Excluded from comparison (documented): injectedAfterLoad/injectingScriptOrigin '
-  + '(extension-only, DEFECT-31 gain); fingerprint (both notCollected). Negative control fired.');
+  + '(extension-only, DEFECT-31 gain); fingerprint (extension-only when a title is supplied — asserted '
+  + 'above: present in extension, notCollected in harness, shared fields unaffected). Negative control fired.');

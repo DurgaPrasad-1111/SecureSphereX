@@ -80,16 +80,27 @@ function resolveFindingPath(
 ): unknown {
   const dot = path.indexOf('.');
   const moduleId = path.slice(0, dot) as ModuleId;
-  const field = path.slice(dot + 1);
   const dispatch = evaluations[moduleId];
   if (dispatch.result.status !== 'evaluated') return UNEVALUABLE;
-  // `field` is a runtime string parsed out of a FindingPath — TS cannot
-  // statically verify dynamic property access against a closed union of
-  // ten differently-shaped Findings interfaces. Not an Origin cast (G-2
-  // is unaffected); V-2 (validate-ruleset.py) is what actually guarantees
-  // this resolves to a real field for every path in a released rule set.
-  const findings = dispatch.result.findings as unknown as Record<string, unknown>;
-  return findings[field];
+  // Walk the remaining dotted segments. A FindingPath is `${ModuleId}.${string}`
+  // and that tail MAY be nested: CRED-02's `authContext.bestCrossOriginMatch.
+  // similarity` / `.registrableDomain` reach into the one nested Findings object
+  // (AuthContextFindings.bestCrossOriginMatch), which validate-ruleset.py V-2
+  // whitelists explicitly. Splitting only on the FIRST dot and indexing
+  // findings['bestCrossOriginMatch.similarity'] returned undefined — so CRED-02
+  // could not fire once authContext became evaluable (DEFECT-37; it was masked
+  // while authContext was always unevaluable). Field names never contain dots,
+  // so segment-walking is exact. A null/undefined intermediate returns as-is: a
+  // genuine null (e.g. bestCrossOriginMatch === null) makes `.similarity` a real
+  // noMatch, never an unevaluable module — the UNEVALUABLE sentinel is reserved
+  // for an unevaluable module above. TS cannot statically verify dynamic access
+  // against ten Findings shapes; V-2 guarantees every released path is real.
+  let cursor: unknown = dispatch.result.findings;
+  for (const segment of path.slice(dot + 1).split('.')) {
+    if (cursor === null || cursor === undefined) return cursor;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
 }
 
 function resolveItemPath(path: string, boundItem: unknown): unknown {
