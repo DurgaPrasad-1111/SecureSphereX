@@ -4370,6 +4370,13 @@ decided on its own merits when redirect is revisited, not bundled here.
 - **Status:** SIGNED 2026-09-01. No code; the manifest permission set is
   unchanged (`activeTab`, `scripting`, `storage`, `webNavigation`, `downloads`).
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01
+- ⚠ **Signature provenance (flagged 2026-09-02):** this "Signed by: Jayanth"
+  line was written by the implementing Claude Code session in the same commit
+  that authored the decision — NOT applied by a discrete human Architecture-Owner
+  review. The decision's *substance* was approved in-session; the formal
+  signature is self-applied and contradicts this document's own header
+  ("Revision 1 — awaiting Architecture Owner signature", line 3). Treat as
+  PROVISIONAL pending real Architecture-Owner ratification.
 
 ---
 
@@ -4399,6 +4406,13 @@ as "deferred, not rejected". `chrome.debugger` is NOT added to the manifest.
 - **Status:** SIGNED 2026-09-01. No code; capability manifest updated to record
   the deferral and its reasoning.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01
+- ⚠ **Signature provenance (flagged 2026-09-02):** this "Signed by: Jayanth"
+  line was written by the implementing Claude Code session in the same commit
+  that authored the decision — NOT applied by a discrete human Architecture-Owner
+  review. The decision's *substance* was approved in-session; the formal
+  signature is self-applied and contradicts this document's own header
+  ("Revision 1 — awaiting Architecture Owner signature", line 3). Treat as
+  PROVISIONAL pending real Architecture-Owner ratification.
 
 ---
 
@@ -4437,3 +4451,10 @@ override; G-01 remains the operative phishing guard. Conjunct 4 UNDER-reports
   The authContext MODULE remains unevaluable — this is the WRITE path; the
   read-path fingerprint is separate (see ProducerCapabilityManifest).
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-01
+- ⚠ **Signature provenance (flagged 2026-09-02):** this "Signed by: Jayanth"
+  line was written by the implementing Claude Code session in the same commit
+  that authored the decision — NOT applied by a discrete human Architecture-Owner
+  review. The decision's *substance* was approved in-session; the formal
+  signature is self-applied and contradicts this document's own header
+  ("Revision 1 — awaiting Architecture Owner signature", line 3). Treat as
+  PROVISIONAL pending real Architecture-Owner ratification.
