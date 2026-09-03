@@ -715,6 +715,26 @@ field arrive pre-resolved).
   deferred to a future decision — logged, not started. This closes the
   question of what to do about the gap; it does not close the gap
   itself, which remains real until that future amendment lands.
+- **Update 2026-09-03 — the two sub-gaps have diverged; recording precisely:**
+  - **`transmissionEndpointDomains` — CLOSED end-to-end.** The future amendment
+    the original entry anticipated has landed: contract Amendment B (`ce05ded`)
+    added a producer-PSL-resolved `ScriptRuntimeEvidence.transmissionEndpointDomains`,
+    the extractor (`scriptRuntime.ts`) populates it via the shared `psl.ts`
+    resolver, and — this session — `javascript.ts` now READS it (present→value,
+    absent→[], notCollected→unevaluable), mirroring DEFECT-19's fix. The
+    hardcoded `[]` is gone; CRED-05's `exists` over this field is no longer
+    vacuously false. The remaining CRED-05 blocker on this path is the SEPARATE
+    transmission-observation gate (`clientSideTransmissionObserved`, Tier 4).
+  - **`injectingScriptOriginDomain` — STILL OPEN, unchanged, and larger than a
+    wiring fix.** It is `null` at the EVIDENCE level too: `ScriptRuntimeEvidence`
+    has no injecting-origin field (no Amendment B analogue), and the only
+    plausible source — `LoginFormObservation.injectingScriptOrigin` — is both
+    cross-category (§2.6-forbidden to this module) AND itself fabricated/null at
+    the producer (DEFECT-31). Closing it needs capture-layer injection-provenance
+    capability (DEC-30 Part 4, not built) plus a contract amendment. CRED-A1's
+    left operand stays `null`.
+  - DEC-14 still governs both rules as non-functional Phase I; one sub-gap is now
+    closed, the other is not.
 
 ---
 

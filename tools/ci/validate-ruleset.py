@@ -205,7 +205,22 @@ def walk_predicate(pred, ctx, findings):
 
 
 def check_v16_null_fold_on_nullable(pred, findings, rule_id, negated=False):
-    """V-16: flag any predicate on a three-state (`boolean | null`) field whose
+    """LAYER NOTE (DEC-42, 2026-09-03): V-16 is now DEFENSE-IN-DEPTH authoring
+    guidance, NOT the primary safety mechanism. As of DEC-42 the ENGINE itself
+    closes this footgun class structurally: a finding-level `null` reaching a
+    leaf operator yields the `nullOperand` sentinel (packages/engine/stage2.ts),
+    which propagates like `unevaluable` and CANNOT be flipped to a match by an
+    enclosing `not` — so `not(is(null))` and its parity-equivalents resolve to
+    `unmatched` at the rule root even if a predicate in this shape were authored
+    and V-16 were hypothetically absent (proven 0/4000 in
+    packages/engine/dec42-null-negation.properties.test.ts). The engine is the
+    enforcing layer; V-16 stays as an EARLY, human-readable authoring signal that
+    rejects the shape at rule-set validation time with a concrete fix, rather
+    than letting a reviewer discover it only in evaluation semantics. Keep both:
+    the engine guarantees safety, V-16 guarantees clarity at authoring time. Do
+    not treat a green V-16 as the reason these predicates are safe — DEC-42 is.
+
+    V-16: flag any predicate on a three-state (`boolean | null`) field whose
     effective match set — accounting for negation PARITY through the full
     ancestor path (not just a direct not-chain) — includes `null`. That form
     silently folds "unknown" into a definite value, firing every time the field
