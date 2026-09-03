@@ -1,4 +1,4 @@
-# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-15).
+# Working CI script — G-8 rule-set static validator (D0.3 §8, V-1 … V-16).
 #
 # Fifteen checks, not thirteen: V-1 … V-13 come from ruleset.format.v1.ts's
 # §8 (itself thirteen, not the twelve Stage0-Completion-Pack.md §3 still
@@ -53,6 +53,24 @@ def extract_union(type_name):
 MODULE_IDS = extract_union('ModuleId')
 PARAMETER_IDS = extract_union('ParameterId')
 REFINEMENT_SET_IDS = extract_union('RefinementSetId')
+
+
+def three_state_boolean_fields():
+    """V-16: the set of findings-field NAMES declared `boolean | null` (three-
+    state) across packages/contracts/evaluation.contract.v1.ts's Findings
+    interfaces. These are the fields where `not(is(x))` silently misreads
+    `null` (unknown) as `false` (confirmed-negative) — DEFECT-39/40. A general
+    TS interface parser is out of scope (same stance as TOP_LEVEL_FIELDS
+    below), so this matches on field name; the names are unique across the
+    contract today, asserted at load."""
+    src = open(os.path.join(CONTRACTS_DIR, 'evaluation.contract.v1.ts'), encoding='utf-8').read()
+    return set(re.findall(r'readonly (\w+):\s*boolean \| null', src))
+
+
+THREE_STATE_BOOLEAN_FIELDS = three_state_boolean_fields()
+if not THREE_STATE_BOOLEAN_FIELDS:
+    print("ERROR: V-16 could not extract any `boolean | null` fields from evaluation.contract.v1.ts", file=sys.stderr)
+    sys.exit(2)
 
 if MODULE_IDS is None or PARAMETER_IDS is None or REFINEMENT_SET_IDS is None:
     print("ERROR: could not extract ModuleId / ParameterId / RefinementSetId from packages/contracts/*.ts", file=sys.stderr)
@@ -184,6 +202,38 @@ def walk_predicate(pred, ctx, findings):
         pass
     else:
         findings['V-12'].append(f"unrecognized predicate op {op!r}")
+
+
+def check_v16_negated_is_on_nullable(pred, findings, rule_id, negated=False):
+    """V-16: flag any `is(x)` on a three-state (`boolean | null`) field that
+    sits under an ODD number of `not` wrappers — i.e. `not(is(x))`, however the
+    AST nests it. That form matches BOTH `false` and `null`, because the engine
+    `is` operator tests only `=== true` (stage2.ts): so `not(is(null))` reads
+    "unknown" as "confirmed false", firing every time the field is unknown, not
+    just sometimes. This is DEFECT-39 (DL-02, extensionMimeConsistent) and
+    DEFECT-40 (PM-01, precededByUserGesture). The correct form is
+    `eq(x, false)`, which matches only a confirmed `false`.
+
+    Non-negated `is(x)` on the same field is SAFE (null -> noMatch -> silent,
+    the restrictive direction) and is not flagged. Even negation depth cancels
+    (not(not(is(x))) == is(x)), handled by the parity toggle."""
+    op = pred.get('op')
+    if op == 'is':
+        path = pred.get('path', '')
+        field = path.split('.')[-1]  # module.field or $.field -> terminal segment
+        if negated and field in THREE_STATE_BOOLEAN_FIELDS:
+            findings['V-16'].append(
+                f"{rule_id}: not(is({path})) over a three-state (boolean | null) field — "
+                f"treats null (unknown) as false (DEFECT-39/40). Use eq({path}, false) so only "
+                f"a confirmed false matches.")
+    elif op == 'not':
+        check_v16_negated_is_on_nullable(pred['operand'], findings, rule_id, not negated)
+    elif op in ('and', 'or'):
+        for o in pred.get('operands', []):
+            check_v16_negated_is_on_nullable(o, findings, rule_id, negated)
+    elif op == 'exists':
+        check_v16_negated_is_on_nullable(pred['where'], findings, rule_id, negated)
+    # eq/neq/gte/.../sameSite/inSet/priorFindingActive carry no nested `is` to negate.
 
 
 def predicate_depth(pred):
@@ -332,7 +382,7 @@ MAX_PREDICATE_DEPTH = 12
 
 
 def validate(rs, ruleset_path):
-    findings = {f'V-{i}': [] for i in range(1, 16)}
+    findings = {f'V-{i}': [] for i in range(1, 17)}
 
     rules_by_id = {r['id']: r for r in rs['rules']}
     param_ids_used = set()
@@ -347,6 +397,7 @@ def validate(rs, ruleset_path):
         if depth > MAX_PREDICATE_DEPTH:
             findings['V-12'].append(f"{r['id']}: predicate depth {depth} exceeds bound {MAX_PREDICATE_DEPTH}")
         walk_predicate(r['predicate'], {'in_exists': False, 'collection': None}, findings)
+        check_v16_negated_is_on_nullable(r['predicate'], findings, r['id'])  # V-16
 
     # also walk suppression guards (same path/param/set/ItemPath rules apply)
     for s in rs['suppressions']:
@@ -437,7 +488,7 @@ def main():
     print(f"{'CHECK':<8} {'STATUS':<8} DETAIL")
     print("-" * 78)
     any_fail = False
-    for i in range(1, 16):
+    for i in range(1, 17):
         key = f'V-{i}'
         viols = findings[key]
         if viols:
