@@ -49,6 +49,7 @@
 | test:conformance | ✅ PASS (8/8 shared fields, incl. actionRegistrableDomain) |
 | test:cred-livepath | ✅ PASS (CRED-01 fires live; localhost caveat correct) |
 | test:redirect | ✅ PASS (8/8 navigation scenarios) |
+| test:cred04livepath | ✅ PASS (CRED-04 fires cross-domain; silent same-site/no-form; S-10 intact) |
 | test:authstore | ✅ PASS (guards G-01…G-05, negative cases) |
 | test:moduleeval | ✅ PASS |
 | test:authcontext | ✅ PASS (version-mismatch → unevaluable) |
@@ -85,17 +86,17 @@
 
 ## 4. Governance registers — audited for currency
 
-- **DECISIONS.md:** 35 entries. **25 signed** (Jayanth, Architecture Owner); **10 CANDIDATE-unsigned-open**: DEC-12, 13, 15, 16, 17, 18, 19, 20, 24, 25. Spot-checked 5 signed decisions against code — all reflected: DEC-33 selector in `capture.py`, DEC-31 `pslVersion` string in the ruleset, DEC-30 `new_cdp_session` used with no `addEventListener` monkey-patch, DEC-35 `sentinel_fill.py` present, DEC-26 `dnsRecords: None` in capture. **DEC-19 (redirect registrable-domain gap) is unsigned AND still blocks CRED-04** — see §5.
-- **DEFECTS.md:** 35 entries — **11 OPEN**, **17 FIXED/RESOLVED**, 7 early entries use an "Owner:" format predating the OPEN/RESOLVED convention. Spot-checks: DEFECT-35 (CORPUS_DIR anchored) ✅ present; DEFECT-34 (single-sourced `psl-config.json`) ✅ present; DEFECT-13 (architectural-gates.mjs) ✅ present & real; DEFECT-15 (loginForm `pageRegistrableDomain` null) ✅ still null as documented; DEFECT-19 (redirect regdomain null) ✅ still `null` in `redirect.ts:89` — genuinely open.
+- **DECISIONS.md:** 35 entries. **25 signed** (Jayanth, Architecture Owner); **10 CANDIDATE-unsigned-open**: DEC-12, 13, 15, 16, 17, 18, 19, 20, 24, 25. Spot-checked 5 signed decisions against code — all reflected: DEC-33 selector in `capture.py`, DEC-31 `pslVersion` string in the ruleset, DEC-30 `new_cdp_session` used with no `addEventListener` monkey-patch, DEC-35 `sentinel_fill.py` present, DEC-26 `dnsRecords: None` in capture. **DEC-19 resolved via Option B (602fbeb): RedirectEvidence gained initialRegistrableDomain/finalRegistrableDomain; CRED-04 mechanism now proven** — see §5.
+- **DEFECTS.md:** 35 entries — **11 OPEN**, **17 FIXED/RESOLVED**, 7 early entries use an "Owner:" format predating the OPEN/RESOLVED convention. Spot-checks: DEFECT-35 (CORPUS_DIR anchored) ✅ present; DEFECT-34 (single-sourced `psl-config.json`) ✅ present; DEFECT-13 (architectural-gates.mjs) ✅ present & real; DEFECT-15 (loginForm `pageRegistrableDomain` null) ✅ still null as documented; DEFECT-19 (redirect regdomain null) — **RESOLVED (602fbeb)**: `redirect.ts` now reads the producer-derived domains (Option B), mirroring DEFECT-15; was genuinely open before this.
 - **CHECKPOINTS.md:** CP-0 = **NOT MET** (0 tags confirms the unmet "v1.0.0 tag" criterion — accurate). CP-1 = **MET & signed** (engine + 10 modules; `test:properties`/`test:fixtures` green today confirm the gates it cited). CP-2/CP-3/CP-4 = not declared in the file (CP-3's loginInterface-conformance content exists and passes, but no formal CP-3 record).
 
 ---
 
 ## 5. Detection capability — what actually fires
 
-**Modules (10):** `url`, `homograph`, `loginForm` — **real & evaluable live**. `ssl`, `dns` — conformant **stubs**, no rule reads them (DEC-5). `redirect` — **newly evaluable for no-redirect navigations** (this session), unevaluable on redirects (webNavigation can't enumerate hops). `javascript`, `downloadContext`, `permissionContext` — **unevaluable** (capability/policy boundaries; see remaining list). `authContext` — **write path built** (§20.5 login-success inference in `login-success.ts`, `test:loginsuccess` green), **read path pending** (`collectLoginInterface` fingerprint is still `notCollected` on the evaluation path), so **CRED-02 still does not fire**.
+**Modules (10):** `url`, `homograph`, `loginForm` — **real & evaluable live**. `ssl`, `dns` — conformant **stubs**, no rule reads them (DEC-5). `redirect` — **fully evaluable** (602fbeb): the harness extractor builds full RedirectEvidence (incl. both registrable-domain fields) from raw.redirectChain; the engine module reads them. (The EXTENSION producer alone stays webNavigation-limited on redirects — hopCount/chain notCollected — pending chrome.webRequest; that is a producer limit, not a module gap.) `javascript`, `downloadContext`, `permissionContext` — **unevaluable** (capability/policy boundaries; see remaining list). `authContext` — **write path built** (§20.5 login-success inference in `login-success.ts`, `test:loginsuccess` green), **read path pending** (`collectLoginInterface` fingerprint is still `notCollected` on the evaluation path), so **CRED-02 still does not fire**.
 
-**Rules (11):** CRED-01/06/07 **fire live** (verified: `test:cred-livepath` + user's Chrome screenshot on `login.acmebank.example` → High, CRED-01+CRED-06). CRED-02 (authContext — write path built, read-path `collectLoginInterface` fingerprint pending), CRED-04 (redirect+**DEFECT-19**), CRED-05/CRED-A1 (javascript, **DEC-14 non-functional**), DL-01/02 (downloadContext), PM-01 (permissionContext) — **do not fire** (dependencies unevaluable/blocked).
+**Rules (11):** CRED-01/06/07 **fire live** (verified: `test:cred-livepath` + user's Chrome screenshot on `login.acmebank.example` → High, CRED-01+CRED-06). CRED-02 (authContext — write path built, read-path `collectLoginInterface` fingerprint pending), CRED-04 (**mechanism proven** — fires on cross-domain redirect to a credential form via the harness path, `test:cred04livepath`; **0 corpus firings** on the 617-snapshot store — the >=2-hop cross-domain redirects (30) and credential-form pages (80) are DISJOINT populations, a data property, not a defect; S-10 keeps it DIVERGENT), CRED-05/CRED-A1 (javascript, **DEC-14 non-functional**), DL-01/02 (downloadContext), PM-01 (permissionContext) — **do not fire** (dependencies unevaluable/blocked).
 
 **Confusion matrix:** last full run this session (34,631 evaluated): **CRED-01/06/07 fire; CRED-05 = 0**; credential-bearing subset **P=99.3%, R=14.9%**. **Not re-run today** (full corpus pass ≈ 20–40 min); the corpus has since grown to 35,087 INDEX entries. **CRED-05 remaining zero is certain** — `sentinel-runs/` **does not exist**, so `sentinel_fill.py --live` (DEC-35 Tier 4) has never run, and `clientSideTransmissionObserved` stays notCollected.
 
@@ -123,8 +124,8 @@
 |---|---|---|
 | contracts (frozen) | ~100% | typechecks, consumed everywhere, amendments landed |
 | engine — pipeline (stages 1–8) | ~95% | runs end-to-end; property + fixture tests green |
-| engine — 10 modules | ~70% | 3 real+live, 2 conformant stubs (intentional), 1 partial (redirect), 4 unevaluable by capability/policy |
-| rules (11) | ~45% functional | 3 fire live; 8 blocked by capability/policy/DEC-14/DEFECT-19 |
+| engine — 10 modules | ~75% | 3 real+live, 2 conformant stubs (intentional), redirect **fully evaluable** (602fbeb), 4 unevaluable by capability/policy |
+| rules (11) | ~45% functional | 3 fire live; CRED-04 mechanism proven (0 corpus firings, disjoint populations); 7 blocked by capability/policy/DEC-14 |
 | extension (MV3) | ~75% | builds, loads, collects, evaluates, fires CRED-01/06/07 live; javascript/download/permission/authContext evidence not wired |
 | capture pipeline | ~90% | Tier 1+3 built & validated; sentinel-fill approved but never run live |
 | harness | ~90% | extractor + metrics real; `tier1e2e` never CI-exercised |
@@ -135,7 +136,7 @@
 ## Prioritized remaining work (ranked by what blocks the most)
 
 1. **Fix the 3 red CI gates** — blocks trustworthy "green" state for everything else. (a) eslint: add browser/webextension globals + ignore `dist/`; (b) `check:conformance-config`: exempt or rescope the login-interface conformance file; (c) G-11: regenerate + commit `storage-enums.json`.
-2. **DEFECT-19 (redirect registrable-domain fields)** — frozen-contract amendment; unblocks CRED-04. Architecture-Owner decision.
+2. ~~DEFECT-19 (redirect registrable-domain fields)~~ — **DONE (602fbeb)**: amendment landed, Option B wired, CRED-04 mechanism proven. (Corpus firings await a snapshot with a >=2-hop cross-domain redirect landing on a credential form; none in the current 617.)
 3. **`webRequest` permission decision** — unblocks full redirect chain/hopCount **and** javascript transmission endpoints. One decision, two modules.
 4. **authContext read-path fingerprint** — the write path (§20.5 login-success inference → authStore, DEC-38) is **built** this session; CRED-02 is still blocked on wiring `collectLoginInterface` to populate the `fingerprint` on the evaluation **read** path (currently `notCollected`). That read-path wiring is the remaining step; it changes production detection behavior and awaits its own explicit authorization.
 5. **Tier 4 sentinel-fill live run** — approved (DEC-35), never executed; the only path to a non-zero CRED-05.
