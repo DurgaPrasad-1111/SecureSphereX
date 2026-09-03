@@ -33,9 +33,10 @@ assert.deepEqual(exfilResult, {
   findings: {
     listenerOnCredentialField: true,
     clientSideTransmissionObserved: true,
-    // Always [] — see javascript.ts's header comment and DEFECT-18. Not
-    // derived from transmissionEndpoints even though it's present here.
-    transmissionEndpointDomains: [],
+    // DEFECT-18 engine-consumption fix: now THREADS the producer-derived
+    // domain through (present -> value), no longer hardcoded []. The module
+    // projects evidence.transmissionEndpointDomains; it does not derive it.
+    transmissionEndpointDomains: ['evil.tld'],
     dynamicScriptLoadCount: 3,
     credentialInterfaceInjected: false,
     // Always null — see below (case 2 tests this more adversarially).
@@ -98,13 +99,13 @@ assert.deepEqual(missingResult, {
   reason: 'required_evidence_not_collected',
 });
 
-// --- Case 4: absent on the two UNGATED fields — module still evaluates -----
+// --- Case 4: absent on transmission fields — module still evaluates, [] ----
 //
-// transmissionEndpoints and dynamicScriptOrigins are never gated (see
-// javascript.ts's function-level comment: transmissionEndpointDomains and
-// injectingScriptOriginDomain are unconditional structural gaps regardless
-// of what these two Observations report). Confirms that holds even when
-// both are absent(), not just notCollected or present.
+// transmissionEndpoints and dynamicScriptOrigins are never gated. After the
+// DEFECT-18 fix, transmissionEndpointDomains IS gated — but only on
+// notCollected; absent() is legitimate ("looked, no endpoints") and maps to
+// [], exactly as redirect.ts treats its `chain`. Confirms the module still
+// evaluates and reports [] when all three are absent().
 
 const bothAbsent: ScriptRuntimeEvidence = {
   listenerOnCredentialField: present(false),
@@ -204,5 +205,87 @@ if (cred_A1_findings.status === 'evaluated') {
     'unable to ground both sides of its own comparison as of this commit.'
   );
 }
+
+// --- Case 7: DEFECT-18 fix — real domains thread through, multi-endpoint ----
+//
+// The direct proof of the engine-consumption fix: when the module is
+// evaluable and evidence carries producer-resolved domains, they appear in
+// the findings verbatim and in producer order — no longer the hardcoded [].
+// This is the operand CRED-05's `exists(transmissionEndpointDomains,
+// notSameSite($, url.registrableDomain))` reads; it is no longer vacuously
+// empty.
+
+const multiEndpoint: ScriptRuntimeEvidence = {
+  listenerOnCredentialField: present(true),
+  clientSideTransmissionObserved: present(true),
+  transmissionEndpoints: present([
+    'https://collect.evil.tld/a', 'https://beacon.tracker.example/b',
+  ]),
+  transmissionEndpointDomains: present(['evil.tld', 'tracker.example']),
+  dynamicScriptLoadCount: present(2),
+  dynamicScriptOrigins: present([]),
+  credentialInterfaceInjected: present(false),
+};
+
+const multiResult = computeJavaScriptFindings(multiEndpoint);
+assert.equal(multiResult.status, 'evaluated');
+if (multiResult.status === 'evaluated') {
+  assert.deepEqual(
+    multiResult.findings.transmissionEndpointDomains,
+    ['evil.tld', 'tracker.example'],
+    'DEFECT-18 fix: producer-resolved transmissionEndpointDomains now thread ' +
+    'through the module verbatim (was hardcoded [] before this commit).',
+  );
+}
+
+// --- Case 8: the fix does NOT change the clientSideTransmissionObserved gate -
+//
+// The whole point of the user's guardrail: this fix removes a SECOND
+// structural blocker (the hardcoded []) that sat behind the transmission
+// gate — it must not disturb that gate. Here transmissionEndpointDomains is
+// fully present with real domains, yet clientSideTransmissionObserved is
+// notCollected (its live state today, Tier 4). The module MUST still be
+// unevaluable — the transmission-observation gate still governs.
+
+const transmissionGateStillClosed: ScriptRuntimeEvidence = {
+  listenerOnCredentialField: present(true),
+  clientSideTransmissionObserved: notCollected('tier_not_reached'),
+  transmissionEndpoints: present(['https://collect.evil.tld/a']),
+  transmissionEndpointDomains: present(['evil.tld']),
+  dynamicScriptLoadCount: present(2),
+  dynamicScriptOrigins: present([]),
+  credentialInterfaceInjected: present(false),
+};
+
+assert.deepEqual(
+  computeJavaScriptFindings(transmissionGateStillClosed),
+  { status: 'unevaluable', reason: 'required_evidence_not_collected' },
+  'DEFECT-18 fix must NOT open the clientSideTransmissionObserved gate: the ' +
+  'module stays unevaluable while that Tier-4 field is notCollected, even ' +
+  'with transmissionEndpointDomains fully present.',
+);
+
+// --- Case 9: the NEW gate — transmissionEndpointDomains notCollected --------
+//
+// I-2 discipline: a notCollected domain field must make the evaluation
+// unevaluable, never be fabricated to []. (absent() -> [] is Case 4; this is
+// the notCollected sibling, and it gates.)
+
+const domainsNotCollected: ScriptRuntimeEvidence = {
+  listenerOnCredentialField: present(true),
+  clientSideTransmissionObserved: present(true),
+  transmissionEndpoints: present(['https://collect.evil.tld/a']),
+  transmissionEndpointDomains: notCollected('tier_not_reached'),
+  dynamicScriptLoadCount: present(2),
+  dynamicScriptOrigins: present([]),
+  credentialInterfaceInjected: present(false),
+};
+
+assert.deepEqual(
+  computeJavaScriptFindings(domainsNotCollected),
+  { status: 'unevaluable', reason: 'required_evidence_not_collected' },
+  'notCollected transmissionEndpointDomains must gate to unevaluable (I-2), ' +
+  'never be fabricated to [].',
+);
 
 console.log('all javascript module fixture assertions passed');

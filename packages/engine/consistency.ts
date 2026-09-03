@@ -145,12 +145,21 @@ export function loginFormIsInconsistent(f: LoginFormFindings): boolean {
  *    dynamic load at all;
  *  - `dynamicScriptLoadCount` relates to nothing else in the type.
  *
- * Two relations DO exist in principle but are unreachable: DEFECT-18 pins
- * `transmissionEndpointDomains` to `[]` and `injectingScriptOriginDomain` to
- * `null` unconditionally, so neither
- * "`clientSideTransmissionObserved: false` with endpoints" nor
- * "`credentialInterfaceInjected: false` with an injecting domain" can occur.
- * When DEFECT-18 is fixed, add them here.
+ * Two relations DO exist in principle. Their reachability has diverged since
+ * DEFECT-18 was split:
+ *  - "`clientSideTransmissionObserved: false` with endpoints" is now
+ *    REACHABLE in principle — `transmissionEndpointDomains` is no longer
+ *    pinned to `[]` (DEFECT-18 engine-consumption fix, 2026-09-03: the module
+ *    threads the producer-resolved domains). It stays dormant in practice only
+ *    while the transmission-observation gate keeps the module unevaluable
+ *    (Tier 4, `clientSideTransmissionObserved` notCollected).
+ *  - "`credentialInterfaceInjected: false` with an injecting domain" remains
+ *    UNREACHABLE — `injectingScriptOriginDomain` is still `null`
+ *    unconditionally (DEFECT-18's other half is untouched; no evidence source
+ *    in this category at all).
+ * Neither relation is CHECKED here yet — adding one would change consistency
+ * scoring and is a separate decision, deliberately not made as a side effect
+ * of the DEFECT-18 wiring. `javascriptIsInconsistent` still returns false.
  */
 export function javascriptIsInconsistent(_f: JavaScriptFindings): boolean {
   return false;

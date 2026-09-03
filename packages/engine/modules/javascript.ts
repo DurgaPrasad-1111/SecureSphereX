@@ -24,18 +24,23 @@
  * module in a rule's requiredModules cannot fix either gap below, since
  * §2.6 forbids a MODULE, not a rule, from crossing evidence categories:
  *
- * `transmissionEndpointDomains` — ScriptRuntimeEvidence has exactly one
- * transmission-related field, `transmissionEndpoints: Observation<readonly
- * string[]>` (raw endpoint strings — every field in this contract that
- * genuinely holds a registrable domain says so explicitly in its name,
- * e.g. actionRegistrableDomain, downloadRegistrableDomain; this one does
- * not). Deriving a domain from a raw endpoint string would require
- * PSL-equivalent registrable-domain extraction logic inside this module —
- * exactly the class of thing a module must not do; that derivation belongs
- * at Stage 1 in the evidence PRODUCER, or is R-01 territory reserved for
- * Stage 2, never here. Reported as `[]` unconditionally, documented at the
- * assignment below. Consequence: CRED-05's only reference to this field is
- * an `exists` over it — vacuously false forever while it stays `[]`.
+ * `transmissionEndpointDomains` — RESOLVED (engine-consumption half,
+ * 2026-09-03), the same shape of fix as DEFECT-19's RedirectFindings.
+ * ScriptRuntimeEvidence now carries a producer-PSL-resolved
+ * `transmissionEndpointDomains: Observation<readonly string[]>` (contract
+ * Amendment B, evidence.contract.v1.ts; the harness extractor
+ * apps/harness/extract/scriptRuntime.ts derives it via the shared psl.ts
+ * resolver, §2.6-compliant because the derivation is producer-side). This
+ * module now READS it — a projection, not a derivation: present -> value,
+ * absent -> [] (looked, no endpoints), notCollected -> the whole evaluation
+ * unevaluable, mirroring the `chain` handling in redirect.ts exactly. It
+ * never derives a domain itself. Consequence: CRED-05's `exists` over this
+ * field is no longer vacuously false — the operand carries real domains once
+ * the module is evaluable. The remaining CRED-05 blocker is the SEPARATE
+ * transmission-observation gate (`clientSideTransmissionObserved`, Tier 4,
+ * notCollected until the sentinel run) — this fix removes a structural
+ * blocker that sat BEHIND that gate, it does not change that gate. See
+ * DEFECT-18.
  *
  * `injectingScriptOriginDomain` — the only evidence field that plausibly
  * answers "which script's origin injected this" is
@@ -65,23 +70,29 @@ import type { JavaScriptFindings, Evaluability } from '../../contracts/evaluatio
  * into a clean bill of health"). Same reasoning as url.ts's and
  * loginForm.ts's non-nullable fields.
  *
- * transmissionEndpoints and dynamicScriptOrigins are NOT gated here — and
- * are never read at all. `evidence.transmissionEndpoints.value` is never
- * touched (transmissionEndpointDomains is hardcoded [] unconditionally, not
- * derived from it); `evidence.dynamicScriptOrigins.value` is likewise
- * ignored (see the header comment on injectingScriptOriginDomain). Neither
- * backs a field whose evaluability should depend on this evidence's
- * Observation state, since
- * transmissionEndpointDomains and injectingScriptOriginDomain are already
- * unconditional structural gaps regardless of what these two Observations
- * report.
+ * `transmissionEndpointDomains` IS now gated and read (DEFECT-18
+ * engine-consumption fix): notCollected -> unevaluable, present -> value,
+ * absent -> [] — the `chain` precedent in redirect.ts. `transmissionEndpoints`
+ * (the raw strings) stays unread — the producer-resolved domain field is what
+ * this module projects, never the raw endpoints.
+ *
+ * `dynamicScriptOrigins` is NOT gated here and is never read at all —
+ * `evidence.dynamicScriptOrigins.value` is ignored (see the header comment on
+ * injectingScriptOriginDomain). It does not back a field whose evaluability
+ * should depend on its Observation state, since injectingScriptOriginDomain
+ * remains an unconditional structural gap (no evidence source in this
+ * category at all) regardless of what it reports.
  */
 export function computeJavaScriptFindings(evidence: ScriptRuntimeEvidence): Evaluability<JavaScriptFindings> {
   if (
     evidence.listenerOnCredentialField.state !== 'present' ||
     evidence.clientSideTransmissionObserved.state !== 'present' ||
     evidence.dynamicScriptLoadCount.state !== 'present' ||
-    evidence.credentialInterfaceInjected.state !== 'present'
+    evidence.credentialInterfaceInjected.state !== 'present' ||
+    // notCollected -> unevaluable (I-2: never fabricate [] for "not looked");
+    // absent is legitimate ("looked, no endpoints") and maps to [] below,
+    // exactly as redirect.ts treats its `chain`.
+    evidence.transmissionEndpointDomains.state === 'notCollected'
   ) {
     return { status: 'unevaluable', reason: 'required_evidence_not_collected' };
   }
@@ -89,11 +100,15 @@ export function computeJavaScriptFindings(evidence: ScriptRuntimeEvidence): Eval
   const findings: JavaScriptFindings = {
     listenerOnCredentialField: evidence.listenerOnCredentialField.value,
     clientSideTransmissionObserved: evidence.clientSideTransmissionObserved.value,
-    // Always [] — ScriptRuntimeEvidence has no registrable-domain field for
-    // transmission endpoints, only raw endpoint strings. Deriving one here
-    // would require PSL-equivalent logic this module must not perform. See
-    // the header comment and DEFECT-18.
-    transmissionEndpointDomains: [],
+    // DEFECT-18 engine-consumption fix (mirrors DEFECT-19's redirect fix):
+    // project the producer-derived domains from evidence — present -> value,
+    // absent -> [] (looked, no endpoints); notCollected is gated to
+    // unevaluable above. §2.6: a projection, not a derivation. See the header
+    // comment and DEFECT-18.
+    transmissionEndpointDomains:
+      evidence.transmissionEndpointDomains.state === 'present'
+        ? evidence.transmissionEndpointDomains.value
+        : [],
     dynamicScriptLoadCount: evidence.dynamicScriptLoadCount.value,
     credentialInterfaceInjected: evidence.credentialInterfaceInjected.value,
     // Always null — the evidence that could answer this
