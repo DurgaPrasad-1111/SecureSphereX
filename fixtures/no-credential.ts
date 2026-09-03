@@ -72,6 +72,8 @@ export const noCredential: SecurityEvidence = {
     redirect: {
       initialUrl: present('https://blog.example.com/article/phishing-explained'),
       finalUrl: present('https://blog.example.com/article/phishing-explained'),
+      initialRegistrableDomain: present('example.com'),
+      finalRegistrableDomain: present('example.com'),
       chain: absent(),
       hopCount: present(0),
       crossedRegistrableDomain: absent(),

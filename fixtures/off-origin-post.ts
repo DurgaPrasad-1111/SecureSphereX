@@ -73,6 +73,8 @@ export const offOriginPost: SecurityEvidence = {
     redirect: {
       initialUrl: present('https://accounts.example.com/login'),
       finalUrl: present('https://accounts.example.com/login'),
+      initialRegistrableDomain: present('example.com'),
+      finalRegistrableDomain: present('example.com'),
       chain: absent(),
       hopCount: present(0),
       crossedRegistrableDomain: absent(),

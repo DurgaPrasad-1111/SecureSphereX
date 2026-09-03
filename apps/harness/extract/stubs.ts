@@ -21,10 +21,8 @@
 import {
   notCollected, present,
   type Observation, type TransportEvidence, type DnsEvidence,
-  type RedirectEvidence,
   type DownloadContextEvidence, type PermissionContextEvidence,
-  type RedirectHop,
-  type SensitivePermission,
+    type SensitivePermission,
 } from '../../../packages/contracts/evidence.contract.v1.ts';
 
 const nc = <T>(): Observation<T> => notCollected<T>('api_unavailable');
@@ -74,23 +72,6 @@ export function stubDns(): DnsEvidence {
     resolves: nc<boolean>(), aRecordCount: nc<number>(), aaaaRecordCount: nc<number>(),
     nameServers: nc<readonly string[]>(), cnameTarget: nc<string>(),
     mxPresent: nc<boolean>(), txtRecordCount: nc<number>(), dnssecDeployed: nc<boolean>(),
-  };
-}
-
-/**
- * `redirect` — NOT YET BUILT. Buildable; scheduled next.
- *
- * Distinct from the two above: `raw.redirectChain` IS captured and non-empty
- * on 46% of snapshots. This is a "not written yet", not a "cannot be written".
- * It needs `RawRedirectHop.mechanism: string` narrowed to `RedirectMechanism`'s
- * closed union, and `crossedRegistrableDomain` derived by PSL comparison of
- * first and last hop.
- */
-export function stubRedirect(): RedirectEvidence {
-  return {
-    initialUrl: nc<string>(), finalUrl: nc<string>(),
-    chain: nc<readonly RedirectHop[]>(), hopCount: nc<number>(),
-    crossedRegistrableDomain: nc<boolean>(),
   };
 }
 

@@ -718,7 +718,7 @@ field arrive pre-resolved).
 
 ---
 
-## DEFECT-19 — `RedirectFindings` has two ungroundable fields; makes CRED-04 structurally unable to fire (found 2026-08-26)
+## DEFECT-19 — `RedirectFindings` has two ungroundable fields; makes CRED-04 structurally unable to fire (found 2026-08-26; RESOLVED 2026-09-03 via Option B)
 
 Finding: `RedirectEvidence` (evidence.contract.v1.ts:198-204) carries
 `initialUrl` and `finalUrl` as raw URL strings only — no field in this
@@ -799,10 +799,21 @@ or Stage 1 producer-side extraction computing them before evidence
 reaches this module.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN. CRED-04 accepted as structurally non-functional and
-  PM-01 as degraded for the same reason DEC-14 accepted CRED-05/CRED-A1
-  — flagged here for the same Architecture Owner ruling, not
-  independently decided.
+- **Status:** RESOLVED 2026-09-03 via Option B (Architecture-Owner ruling,
+  docs/DEC-19-CRED04-fix-path-REVIEW.md). Annex A amendment added
+  `RedirectEvidence.initialRegistrableDomain` / `.finalRegistrableDomain`
+  (`Observation<string>`), hand-typed by the Architecture Owner. Both
+  producers derive them via the shared PSL resolver — the extension collector
+  (`apps/extension/redirect-observer.ts`) and the harness extractor
+  (`apps/harness/extract/redirect.ts`, un-stubbed). `redirect.ts` now READS
+  them, mirroring DEFECT-15's `url.registrableDomain` fix. **CRED-04 fires on
+  real cross-domain data** (`tools/conformance/cred04-live-path.test.ts`),
+  stays silent same-site (`notSameSite(x, x)` false) and without a credential
+  form. PM-01's redirect arm is likewise restored. No ruleset change: both
+  predicates already expected this shape. ⚠️ **S-10 is NOT lifted** — CRED-04
+  remains DIVERGENT; its corpus recall must still be reported separately and
+  MUST NOT be folded into a headline. This fix lets CRED-04 fire; it does not
+  make CRED-04 corpus-validatable.
 
 ---
 

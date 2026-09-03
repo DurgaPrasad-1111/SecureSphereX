@@ -198,6 +198,8 @@ export interface RedirectHop {
 export interface RedirectEvidence {
   readonly initialUrl: Observation<string>;
   readonly finalUrl: Observation<string>;
+  readonly initialRegistrableDomain: Observation<string>;  // NEW — Annex A amendment, resolves DEFECT-19
+  readonly finalRegistrableDomain: Observation<string>;    // NEW — Annex A amendment, resolves DEFECT-19
   readonly chain: Observation<readonly RedirectHop[]>;
   readonly hopCount: Observation<number>;
   readonly crossedRegistrableDomain: Observation<boolean>;

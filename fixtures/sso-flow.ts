@@ -79,6 +79,8 @@ export const ssoFlow: SecurityEvidence = {
     redirect: {
       initialUrl: present('https://app.example.com/dashboard'),
       finalUrl: present('https://login.idp-example.com/authorize?client_id=app'),
+      initialRegistrableDomain: present('example.com'),
+      finalRegistrableDomain: present('idp-example.com'),
       chain: present([
         {
           fromUrl: 'https://app.example.com/dashboard',

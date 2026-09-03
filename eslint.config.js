@@ -24,6 +24,11 @@ export default tseslint.config(
       '**/*.tsbuildinfo',
       'spec/**',
       'corpus/**',
+      // Stray Python virtualenvs (e.g. .venv-sentinel/ for the sentinel-fill
+      // work) vendor thousands of JS files — same category as node_modules,
+      // never project source. Without this, `npx eslint .` drowns in ~12.7k
+      // errors from emscripten/urllib3 worker bundles and verify:all cannot pass.
+      '**/.venv*/**',
     ],
   },
   eslint.configs.recommended,

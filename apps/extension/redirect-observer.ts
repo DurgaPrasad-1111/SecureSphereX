@@ -33,7 +33,7 @@
  */
 
 import {
-  present, notCollected,
+  present, absent, notCollected,
   type RedirectEvidence, type RedirectHop, type Observation,
 } from '../../packages/contracts/evidence.contract.v1.ts';
 import { registrableDomainOf } from '../../packages/engine/psl.ts';
@@ -56,9 +56,16 @@ export interface NavigationRecord {
 export function computeRedirectEvidence(rec: NavigationRecord): RedirectEvidence {
   if (!rec.serverRedirect) {
     // No redirect: endpoints coincide, zero hops — all HONESTLY present.
+    // No redirect: endpoints coincide. Both registrable domains are the same
+    // committed URL's — present when it resolves, absent for an IP literal /
+    // bare public suffix (mirrors url.ts). DEFECT-19 Option B.
+    const rdSame = registrableDomainOf(rec.committedUrl);
+    const sameDomain: Observation<string> = rdSame === null ? absent<string>() : present(rdSame);
     return {
       initialUrl: present(rec.committedUrl),
       finalUrl: present(rec.committedUrl),
+      initialRegistrableDomain: sameDomain,
+      finalRegistrableDomain: sameDomain,
       chain: present([] as readonly RedirectHop[]),
       hopCount: present(0),
       crossedRegistrableDomain: present(false),
@@ -85,9 +92,21 @@ export function computeRedirectEvidence(rec: NavigationRecord): RedirectEvidence
       : present(rdInitial !== rdFinal);
   }
 
+  // DEFECT-19 Option B: the two registrable-domain fields, from the same
+  // endpoints, via the same shared PSL resolver used for `crossed`. Each:
+  // URL unobserved -> notCollected; URL present but no eTLD+1 -> absent;
+  // else present(domain) — mirrors url.ts exactly.
+  const initialRegistrableDomain: Observation<string> =
+    rec.initialUrl === null ? nc<string>()
+      : (registrableDomainOf(rec.initialUrl) === null ? absent<string>() : present(registrableDomainOf(rec.initialUrl)!));
+  const finalRegistrableDomain: Observation<string> =
+    registrableDomainOf(rec.committedUrl) === null ? absent<string>() : present(registrableDomainOf(rec.committedUrl)!);
+
   return {
     initialUrl,
     finalUrl,
+    initialRegistrableDomain,
+    finalRegistrableDomain,
     // NOT observable via webNavigation — never fabricated. This is why the
     // redirect module is unevaluable for redirected navigations under the
     // current (webNavigation-only) producer. See header + the reported

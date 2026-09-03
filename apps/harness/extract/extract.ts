@@ -43,8 +43,9 @@ import { extractUrlEvidence } from './url.ts';
 import { extractDomainRepresentation } from './domainRepresentation.ts';
 import { extractLoginInterface } from './loginInterface.ts';
 import { extractScriptRuntime } from './scriptRuntime.ts';
+import { extractRedirect } from './redirect.ts';
 import {
-  extractTransport, stubDns, stubRedirect,
+  extractTransport, stubDns,
   stubDownloadContext, stubPermissionContext,
 } from './stubs.ts';
 
@@ -78,7 +79,7 @@ export function extractEvidence(snapshot: Snapshot): SecurityEvidence {
     scriptRuntime: extractScriptRuntime(snapshot.raw),
 
     dns: stubDns(),
-    redirect: stubRedirect(),
+    redirect: extractRedirect(snapshot.raw),
     downloadContext: stubDownloadContext(),
     permissionContext: stubPermissionContext(),
   };

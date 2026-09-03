@@ -42,7 +42,9 @@ export function stubDns(): DnsEvidence {
 }
 export function stubRedirect(): RedirectEvidence {
   return {
-    initialUrl: nc<string>(), finalUrl: nc<string>(), chain: nc<readonly never[]>(),
+    initialUrl: nc<string>(), finalUrl: nc<string>(),
+    initialRegistrableDomain: nc<string>(), finalRegistrableDomain: nc<string>(),
+    chain: nc<readonly never[]>(),
     hopCount: nc<number>(), crossedRegistrableDomain: nc<boolean>(),
   } as RedirectEvidence;
 }

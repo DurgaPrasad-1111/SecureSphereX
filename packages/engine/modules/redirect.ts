@@ -18,37 +18,30 @@
  * no correlation with another module's output, no network access, no store
  * access.
  *
- * STRUCTURAL LIMITATION — `initialRegistrableDomain` and
- * `finalRegistrableDomain`, logged as DEFECT-19 (docs/DEFECTS.md). Same
- * *shape* of gap as DEFECT-15/DEFECT-18 (a Findings field with no
- * groundable evidence source): RedirectEvidence carries `initialUrl` and
- * `finalUrl` as raw URL strings only (evidence.contract.v1.ts:198-204) —
- * every field in this contract that genuinely holds a registrable domain
- * says so explicitly in its name (e.g. `actionRegistrableDomain`,
- * `downloadRegistrableDomain`); these two do not. Deriving a domain from a
- * raw URL string requires PSL-equivalent registrable-domain extraction
- * inside this module — exactly the class of thing a module must not do
- * (restated explicitly for `javascript.ts`'s equivalent gap, DEFECT-18);
- * that derivation belongs at Stage 1 in the evidence PRODUCER, never here.
- * Unlike DEFECT-15/16's fix (swap the operand to `url.registrableDomain`),
- * no such substitute exists here — CRED-04 and PM-01 both compare
- * `redirect.finalRegistrableDomain` against `redirect.initialRegistrableDomain`,
- * two values from THIS module's own category, not a cross-module "page"
- * reference `url` could stand in for. Both are reported `null`
- * unconditionally, documented at their assignment below.
+ * DEFECT-19 — RESOLVED via Option B (Annex A amendment, Architecture-Owner
+ * ruling, docs/DEC-19-CRED04-fix-path-REVIEW.md). `RedirectEvidence` now
+ * carries `initialRegistrableDomain` / `finalRegistrableDomain` as
+ * `Observation<string>` (evidence.contract.v1.ts:201-202), producer-derived
+ * via the shared PSL resolver — the extension collector (redirect-observer.ts)
+ * and the harness extractor (apps/harness/extract/redirect.ts) both compute
+ * them, §2.6-compliant because the derivation is producer-side. This module
+ * now READS them (present -> value, absent -> null; notCollected -> the whole
+ * evaluation unevaluable), mirroring DEFECT-15's `url.registrableDomain` fix
+ * exactly. It never derives a domain itself.
  *
  * Consequence: CRED-04's `notSameSite(redirect.finalRegistrableDomain,
- * redirect.initialRegistrableDomain)` conjunct can never match while both
- * operands stay null — CRED-04 is structurally unable to fire, full stop
- * (all three conjuncts in its `and` are required). PM-01's `or` has a second
- * arm (`permissionContext.pageAgeMs` below threshold) that does not depend
- * on this gap, so PM-01 is degraded, not disabled — it can still fire via
- * the page-age arm alone. See DEFECT-19 for the full analysis, including
- * the observation that `RedirectEvidence.crossedRegistrableDomain`
- * (evidence.contract.v1.ts:203) already carries a producer-computed
- * same-site verdict as a boolean, but `RedirectFindings` has no field
- * shaped to receive a boolean rather than the two domain strings it asks
- * for instead.
+ * redirect.initialRegistrableDomain)` conjunct can now match — CRED-04 CAN
+ * fire when a credential-bearing redirect crosses a registrable-domain
+ * boundary with hopCount >= redirect_hop_min. `notSameSite(x, x)` on a
+ * same-site redirect correctly does NOT match (stage2.ts). PM-01's redirect
+ * arm is likewise restored.
+ *
+ * ⚠️ S-10 IS NOT LIFTED. snapshot.format.v1.ts:353 — CRED-04 remains
+ * DIVERGENT (the harness sees server-side redirect chains the extension may
+ * not), so its corpus recall MUST be reported separately and MUST NOT be
+ * folded into a headline. This fix lets CRED-04 fire; it does not make CRED-04
+ * corpus-headline-valid. A green test here proves the mechanism, not corpus
+ * validatability.
  */
 
 import type { RedirectEvidence } from '../../contracts/evidence.contract.v1';
@@ -77,18 +70,27 @@ import type { RedirectFindings, Evaluability } from '../../contracts/evaluation.
  * unconditional structural gaps regardless of what these three report.
  */
 export function computeRedirectFindings(evidence: RedirectEvidence): Evaluability<RedirectFindings> {
-  if (evidence.hopCount.state !== 'present' || evidence.chain.state === 'notCollected') {
+  if (
+    evidence.hopCount.state !== 'present' ||
+    evidence.chain.state === 'notCollected' ||
+    evidence.initialRegistrableDomain.state === 'notCollected' ||
+    evidence.finalRegistrableDomain.state === 'notCollected'
+  ) {
     return { status: 'unevaluable', reason: 'required_evidence_not_collected' };
   }
 
   const chain = evidence.chain.state === 'present' ? evidence.chain.value : [];
 
+  // DEFECT-19 RESOLVED (Option B, Annex A amendment): read the producer-derived
+  // registrable domains from evidence, mirroring DEFECT-15's url.registrableDomain
+  // fix exactly — present -> value, absent -> null. notCollected is gated to
+  // unevaluable above. §2.6: this is a projection, not a derivation.
   const findings: RedirectFindings = {
     hopCount: evidence.hopCount.value,
-    // Always null — see the header comment and DEFECT-19.
-    initialRegistrableDomain: null,
-    // Always null — see the header comment and DEFECT-19.
-    finalRegistrableDomain: null,
+    initialRegistrableDomain:
+      evidence.initialRegistrableDomain.state === 'present' ? evidence.initialRegistrableDomain.value : null,
+    finalRegistrableDomain:
+      evidence.finalRegistrableDomain.state === 'present' ? evidence.finalRegistrableDomain.value : null,
     // One entry per hop, in chain order — the direct per-hop projection,
     // not deduplicated. Deduplicating would be an invented design choice
     // with no source text to justify it (cf. url.ts's explicit reasoning

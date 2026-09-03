@@ -150,4 +150,4 @@ function val<T>(o: Observation<T>): { state: string; value?: T } {
 
 console.log('Redirect producer PROVEN: 8/8 scenarios honest; no-redirect makes the module evaluable, '
   + 'redirects are honestly represented at the endpoints with hopCount/chain notCollected. '
-  + 'No fabricated hops. Full chain/hopCount + CRED-04 remain blocked on chrome.webRequest + DEFECT-19.');
+  + 'No fabricated hops. In the EXTENSION producer, full chain/hopCount (and thus CRED-04 via this path) remain blocked on chrome.webRequest — webNavigation cannot see the hops. DEFECT-19 itself is RESOLVED (Option B): the harness path, which sees server-side chains, now fires CRED-04 (tools/conformance/cred04-live-path.test.ts) — S-10 DIVERGENT.');

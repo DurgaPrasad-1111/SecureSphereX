@@ -18,18 +18,23 @@ import { computeRedirectFindings } from './redirect.ts';
 const directArrival: RedirectEvidence = {
   initialUrl: present('https://accounts.example.com/login'),
   finalUrl: present('https://accounts.example.com/login'),
+  initialRegistrableDomain: present('example.com'),
+  finalRegistrableDomain: present('example.com'),
   chain: absent(),
   hopCount: present(0),
   crossedRegistrableDomain: absent(),
 };
 
 const directResult = computeRedirectFindings(directArrival);
+// DEFECT-19 RESOLVED: the two domain fields now carry the producer-derived
+// values, not null. Same-site (example.com == example.com) — CRED-04's
+// notSameSite conjunct would be a noMatch on these.
 assert.deepEqual(directResult, {
   status: 'evaluated',
   findings: {
     hopCount: 0,
-    initialRegistrableDomain: null,
-    finalRegistrableDomain: null,
+    initialRegistrableDomain: 'example.com',
+    finalRegistrableDomain: 'example.com',
     mechanisms: [],
     chainLength: 0,
   },
@@ -48,6 +53,8 @@ const ssoChain: RedirectEvidence = {
       mechanism: 'http_3xx',
     },
   ]),
+  initialRegistrableDomain: present('example.com'),
+  finalRegistrableDomain: present('idp-example.com'),
   hopCount: present(1),
   crossedRegistrableDomain: present(true),
 };
@@ -58,9 +65,13 @@ if (ssoResult.status === 'evaluated') {
   assert.equal(ssoResult.findings.hopCount, 1);
   assert.equal(ssoResult.findings.chainLength, 1);
   assert.deepEqual(ssoResult.findings.mechanisms, ['http_3xx']);
-  // DEFECT-19: always null, regardless of a real, present, cross-domain chain.
-  assert.equal(ssoResult.findings.initialRegistrableDomain, null);
-  assert.equal(ssoResult.findings.finalRegistrableDomain, null);
+  // DEFECT-19 RESOLVED: real cross-domain values now flow through. This is a
+  // genuinely cross-registrable-domain chain (example.com -> idp-example.com);
+  // CRED-04's notSameSite conjunct would MATCH here — but this fixture has
+  // hopCount 1 < redirect_hop_min (2), so CRED-04 still does not fire. The
+  // module's job is only to project the domains faithfully, which it now does.
+  assert.equal(ssoResult.findings.initialRegistrableDomain, 'example.com');
+  assert.equal(ssoResult.findings.finalRegistrableDomain, 'idp-example.com');
 }
 
 // --- Case 3: multi-hop, mixed-mechanism chain -------------------------------
@@ -88,6 +99,8 @@ const multiHop: RedirectEvidence = {
       mechanism: 'javascript',
     },
   ]),
+  initialRegistrableDomain: present('bit.ly'),
+  finalRegistrableDomain: present('evil.tld'),
   hopCount: present(3),
   crossedRegistrableDomain: present(true),
 };
@@ -98,6 +111,9 @@ if (multiHopResult.status === 'evaluated') {
   assert.equal(multiHopResult.findings.hopCount, 3);
   assert.equal(multiHopResult.findings.chainLength, 3);
   assert.deepEqual(multiHopResult.findings.mechanisms, ['http_3xx', 'meta_refresh', 'javascript']);
+  // Cross-domain, 3 hops — the exact shape CRED-04 targets.
+  assert.equal(multiHopResult.findings.initialRegistrableDomain, 'bit.ly');
+  assert.equal(multiHopResult.findings.finalRegistrableDomain, 'evil.tld');
 }
 
 // --- Case 4: missing evidence — hopCount itself not collected --------------
@@ -105,6 +121,8 @@ if (multiHopResult.status === 'evaluated') {
 const noHopCount: RedirectEvidence = {
   initialUrl: present('https://accounts.example.com/login'),
   finalUrl: present('https://accounts.example.com/login'),
+  initialRegistrableDomain: present('example.com'),
+  finalRegistrableDomain: present('example.com'),
   chain: absent(),
   hopCount: notCollected('collector_error'),
   crossedRegistrableDomain: absent(),
@@ -121,6 +139,8 @@ assert.deepEqual(noHopCountResult, {
 const chainNotCollected: RedirectEvidence = {
   initialUrl: present('https://accounts.example.com/login'),
   finalUrl: present('https://accounts.example.com/login'),
+  initialRegistrableDomain: present('example.com'),
+  finalRegistrableDomain: present('example.com'),
   chain: notCollected('tier_not_reached'),
   hopCount: present(0),
   crossedRegistrableDomain: absent(),
@@ -131,5 +151,43 @@ assert.deepEqual(chainNotCollectedResult, {
   status: 'unevaluable',
   reason: 'required_evidence_not_collected',
 });
+
+// --- Case 6: a registrable-domain field notCollected -> unevaluable --------
+// New gate (mirrors url.ts): notCollected on either domain makes the whole
+// evaluation unevaluable, exactly as notCollected on url.registrableDomain does.
+
+const domainNotCollected: RedirectEvidence = {
+  initialUrl: present('https://a.example.com/'),
+  finalUrl: present('https://b.other.tld/'),
+  initialRegistrableDomain: notCollected('collector_error'),
+  finalRegistrableDomain: present('other.tld'),
+  chain: present([]),
+  hopCount: present(0),
+  crossedRegistrableDomain: notCollected('collector_error'),
+};
+assert.deepEqual(computeRedirectFindings(domainNotCollected), {
+  status: 'unevaluable',
+  reason: 'required_evidence_not_collected',
+});
+
+// --- Case 7: a registrable-domain field absent -> null in findings ---------
+// absent is a real "no eTLD+1" finding (IP literal / bare suffix), mapped to
+// null exactly as url.ts maps its own absent registrableDomain.
+
+const domainAbsent: RedirectEvidence = {
+  initialUrl: present('http://192.0.2.44/'),
+  finalUrl: present('https://evil.tld/'),
+  initialRegistrableDomain: absent(),
+  finalRegistrableDomain: present('evil.tld'),
+  chain: present([]),
+  hopCount: present(0),
+  crossedRegistrableDomain: notCollected('collector_error'),
+};
+const absentResult = computeRedirectFindings(domainAbsent);
+assert.equal(absentResult.status, 'evaluated');
+if (absentResult.status === 'evaluated') {
+  assert.equal(absentResult.findings.initialRegistrableDomain, null);
+  assert.equal(absentResult.findings.finalRegistrableDomain, 'evil.tld');
+}
 
 console.log('all redirect module fixture assertions passed');
