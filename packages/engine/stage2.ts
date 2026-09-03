@@ -148,7 +148,27 @@ function resolveSet(set: RefinementSetId, ruleSet: RuleSet): readonly string[] {
  * `noMatch`, never `unevaluable` — only the UNEVALUABLE sentinel, i.e. an
  * unevaluable MODULE, produces `unevaluable`.
  */
-export type PredicateResult = 'match' | 'noMatch' | 'unevaluable';
+export type PredicateResult = 'match' | 'noMatch' | 'unevaluable' | 'nullOperand';
+
+// DEC-42 / Option B: a leaf whose finding PATH resolves to a finding-level
+// `null` (the module EVALUATED and produced null) yields `nullOperand`, a
+// LEAF-SCOPED state DISTINCT from the whole-module `UNEVALUABLE` symbol.
+//   - not(nullOperand) -> nullOperand (never flips to match — requirement 3).
+//   - it PROPAGATES through and/or/exists exactly like unevaluable already does,
+//     so it reaches an enclosing not() intact (never laundered into a plain
+//     noMatch a later not() could flip). Non-poisoning is preserved because a
+//     real `match` sibling still wins (checked first). Priority when nothing
+//     matched: unevaluable > nullOperand > noMatch.
+//   - it NEVER populates RuleMatchResult.unevaluableModules (req 2): a null
+//     field on an evaluated module is not an unevaluable module. At a rule root
+//     it collapses to `unmatched`, empty module list.
+// Why narrower blast radius than `unevaluable`: an unevaluable MODULE is "we
+// could not look at all", which must poison and/or (the missing operand might
+// have changed the result). A null FIELD is "we looked, the module ran, the
+// value is null" — a strictly narrower fact that must not carry the same
+// combinator blast radius, so it collapses to noMatch inside and/or and only
+// resists the one operation that would misread it: negation.
+const NULL_OPERAND: PredicateResult = 'nullOperand';
 
 /**
  * Evaluates one `Predicate` node to a three-state result. `boundItem` is
@@ -177,6 +197,7 @@ export function evaluatePredicate(
     case 'is': {
       const value = resolveValuePath(predicate.path, evaluations, boundItem);
       if (value === UNEVALUABLE) return 'unevaluable';
+      if (value === null) return NULL_OPERAND;   // DEC-42
       return value === true ? 'match' : 'noMatch';
     }
     case 'not': {
@@ -187,10 +208,15 @@ export function evaluatePredicate(
       // UNEVALUABLE to `false` and `!false` fabricated a match.
       const inner = evaluatePredicate(predicate.operand, evaluations, ruleSet, ruleId, boundItem);
       if (inner === 'unevaluable') return 'unevaluable';
+      if (inner === NULL_OPERAND) return NULL_OPERAND;   // DEC-42 req 3: null cannot be flipped to a match
       return inner === 'match' ? 'noMatch' : 'match';
     }
     case 'and': {
-      // Mirrors Array.every: stop at the first non-`match` operand.
+      // Mirrors Array.every: stop at the first non-`match` operand and return
+      // it as-is. DEC-42 (corrected): nullOperand PROPAGATES exactly like
+      // unevaluable already does — the `and` still doesn't match, but a
+      // nullOperand reaches an enclosing not() intact rather than being
+      // laundered into a plain noMatch that a subsequent not() could flip.
       for (const operand of predicate.operands) {
         const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
         if (result !== 'match') return result;
@@ -204,12 +230,18 @@ export function evaluatePredicate(
       // unevaluable, since that operand might have matched had it been
       // readable.
       let sawUnevaluable = false;
+      let sawNullOperand = false;
       for (const operand of predicate.operands) {
         const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
-        if (result === 'match') return 'match';
+        if (result === 'match') return 'match';   // a real match always wins (non-poisoning, req 4a)
         if (result === 'unevaluable') sawUnevaluable = true;
+        else if (result === NULL_OPERAND) sawNullOperand = true;
       }
-      return sawUnevaluable ? 'unevaluable' : 'noMatch';
+      // DEC-42 priority: unevaluable > nullOperand > noMatch. An unevaluable
+      // operand MIGHT have matched had the module been readable, so it
+      // dominates a merely-null one; a null operand in turn dominates a plain
+      // noMatch so the null survives to any enclosing not().
+      return sawUnevaluable ? 'unevaluable' : sawNullOperand ? NULL_OPERAND : 'noMatch';
     }
     case 'gte':
     case 'lte':
@@ -217,6 +249,7 @@ export function evaluatePredicate(
     case 'lt': {
       const value = resolveValuePath(predicate.path, evaluations, boundItem);
       if (value === UNEVALUABLE) return 'unevaluable';
+      if (value === null) return NULL_OPERAND;   // DEC-42 (never coerced to 0)
       if (typeof value !== 'number') return 'noMatch';
       const paramValue = resolveParam(predicate.param, ruleSet);
       if (predicate.op === 'gte') return value >= paramValue ? 'match' : 'noMatch';
@@ -228,6 +261,10 @@ export function evaluatePredicate(
     case 'neq': {
       const value = resolveValuePath(predicate.path, evaluations, boundItem);
       if (value === UNEVALUABLE) return 'unevaluable';
+      // DEC-42: a null finding value is nullOperand — UNLESS the predicate is an
+      // EXPLICIT null comparison (eq/neq x, null), which legitimately tests
+      // known-ness and must compute normally.
+      if (value === null && predicate.value !== null) return NULL_OPERAND;
       const equal = value === predicate.value;
       return (predicate.op === 'eq' ? equal : !equal) ? 'match' : 'noMatch';
     }
@@ -236,9 +273,16 @@ export function evaluatePredicate(
       const left = resolveValuePath(predicate.left, evaluations, boundItem);
       const right = resolveValuePath(predicate.right, evaluations, boundItem);
       // An unevaluable MODULE on either side leaves the comparison
-      // unevaluable. A genuine `null` domain is different: that is a real
-      // finding, and DEFECT-19 already settled that notSameSite(null, null)
-      // is a `noMatch`, not a match — preserved exactly.
+      // unevaluable. A genuine `null` domain is different: DEFECT-19 settled
+      // that notSameSite(null, null) is `noMatch`, not a match — preserved.
+      // DEC-42 SCOPE: sameSite/notSameSite are deliberately OUTSIDE the
+      // nullOperand mechanism. They are two-domain comparisons, never appear
+      // under a `not` in any rule (notSameSite IS the negated form), and their
+      // null semantics were settled by DEFECT-19 as noMatch. A null domain here
+      // stays noMatch, which is behaviourally identical inside the `and`s that
+      // use them (nullOperand also collapses to noMatch there) — so nothing is
+      // gained by routing them through nullOperand, and DEFECT-19's settled
+      // characterisation is left untouched.
       if (left === UNEVALUABLE || right === UNEVALUABLE) return 'unevaluable';
       if (typeof left !== 'string' || typeof right !== 'string') return 'noMatch';
       const same = left === right;
@@ -247,6 +291,7 @@ export function evaluatePredicate(
     case 'inSet': {
       const value = resolveValuePath(predicate.path, evaluations, boundItem);
       if (value === UNEVALUABLE) return 'unevaluable';
+      if (value === null) return NULL_OPERAND;   // DEC-42
       if (typeof value !== 'string') return 'noMatch';
       return resolveSet(predicate.set, ruleSet).includes(value) ? 'match' : 'noMatch';
     }
@@ -255,12 +300,15 @@ export function evaluatePredicate(
       if (collection === UNEVALUABLE) return 'unevaluable';
       if (!Array.isArray(collection)) return 'noMatch';
       let sawUnevaluable = false;
+      let sawNullOperand = false;
       for (const item of collection) {
         const result = evaluatePredicate(predicate.where, evaluations, ruleSet, ruleId, item);
         if (result === 'match') return 'match';
         if (result === 'unevaluable') sawUnevaluable = true;
+        else if (result === NULL_OPERAND) sawNullOperand = true;
       }
-      return sawUnevaluable ? 'unevaluable' : 'noMatch';
+      // DEC-42 priority: unevaluable > nullOperand > noMatch (same as `or`).
+      return sawUnevaluable ? 'unevaluable' : sawNullOperand ? NULL_OPERAND : 'noMatch';
     }
     case 'priorFindingActive':
       throw new PriorFindingActiveUnavailableError(ruleId);
@@ -365,7 +413,10 @@ export function matchAllRules(evaluations: EvaluationSetForMatching, ruleSet: Ru
     try {
       const result = evaluatePredicate(rule.predicate, evaluations, ruleSet, rule.id);
       if (result === 'match') return { ruleId: rule.id, status: 'matched' };
-      if (result === 'noMatch') return { ruleId: rule.id, status: 'unmatched' };
+      // DEC-42 req 2: a nullOperand at the root is a non-firing rule, NOT an
+      // unevaluable one — the module evaluated and produced null. It maps to
+      // `unmatched` with NO entry in unevaluableModules, exactly like noMatch.
+      if (result === 'noMatch' || result === NULL_OPERAND) return { ruleId: rule.id, status: 'unmatched' };
       // Every declared required module WAS evaluable, yet the predicate still
       // read an unevaluable one — the rule's `requiredModules` under-declares
       // what its predicate actually reads (DEFECT-16's shape). Reported

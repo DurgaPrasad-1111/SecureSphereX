@@ -4635,3 +4635,96 @@ suppressions, subsumption. Only the two `not(is)` nodes became `eq(...,false)`.
 [[DEC-31]]/[[DEC-39]] (prior digest-recompute ruleset amendments), [[DEC-40]]
 (why PM-01's half is dormant), `docs/DL-02-extension-mime-REVIEW.md` (the packet
 whose Option A this implements).
+
+---
+
+## DEC-42 — Engine-level `NULL_OPERAND` leaf sentinel: closing the null-under-negation footgun class structurally (Option B)
+
+**Context.** [[DEFECT-39]] and [[DEFECT-40]] were two concrete instances of one
+structural footgun: a leaf operator that collapses a finding-level `null`
+(unknown) to `noMatch`, sitting under a `not`, fabricates a match — "unknown"
+gets read as "confirmed false" and then negated to "true". DEC-41 fixed the two
+*live* predicates (`not(is(x))` → `eq(x, false)`) and V-16 now statically
+rejects the shape. But V-16 is a validator gate, not a semantic guarantee: a
+future rule author (or a hypothetically-absent V-16) could reintroduce the class.
+This decision closes it at the evaluator, where it cannot be reintroduced by a
+ruleset edit.
+
+**Ruling — Option B, as recommended in `docs/predicate-null-negation-REVIEW.md`.**
+A leaf-scoped `NULL_OPERAND` sentinel, distinct from the whole-module
+`UNEVALUABLE` Symbol, propagates through combinators exactly like
+`unevaluable` and can never be flipped to a match. Built to four binding
+requirements (the packet listed three; the Architecture Owner added the fourth):
+
+1. **Leaf-scoped sentinel, distinct from module-level unevaluable.**
+   `PredicateResult` gains `'nullOperand'` (`const NULL_OPERAND`). The leaf
+   operators `is`/`eq`/`neq`/`gte`/`lte`/`gt`/`lt`/`inSet` return it on a
+   finding-level `null`; the whole-module `UNEVALUABLE` Symbol is untouched.
+   `sameSite`/`notSameSite` are EXCLUDED (DEFECT-19-settled, never negated) and
+   stay `noMatch` on null — documented in the operator.
+2. **Never populates `unevaluableModules`.** A `null` field from an *evaluated*
+   module is not a module-level unevaluable; `matchAllRules` collapses a root
+   `nullOperand` to `{ status: 'unmatched' }` with an EMPTY `unevaluableModules`.
+   Property (c) asserts this over random trees.
+3. **`not(NULL_OPERAND)` stays `NULL_OPERAND`** — cannot be flipped to a match,
+   mirroring DEFECT-22's `not(unevaluable)` shape.
+4. **Non-poisoning propagation.** `and` returns the first non-match (so
+   `nullOperand` propagates exactly as `unevaluable` already did — the collapse
+   in an earlier draft was reverted). `or`/`exists` track `sawUnevaluable` and
+   `sawNullOperand` and, when nothing matched, return with priority
+   **`unevaluable` > `nullOperand` > `noMatch`** — an unevaluable operand
+   dominates a null one because it MIGHT have matched.
+
+**Property-test campaign (`packages/engine/dec42-null-negation.properties.test.ts`),
+reported in full to the AO.** The four packet properties (a–d) pass at 2000 runs
+each. The hard anti-flip invariant — *for every randomly generated predicate
+tree, a `null` leaf never fabricates a match a plain `noMatch` leaf would not, at
+any position or negation depth* — passes **0/4000 divergence genuinely** (not
+narrowed). An earlier draft that collapsed `nullOperand` to `noMatch` inside
+combinators FAILED this with counterexample `not(or(not(is(null))))` (a null
+laundered through a combinator then re-negated); the corrected propagation closes
+it. Two further properties added for the new logic: **unknown-equivalence**
+(a `null` leaf matches iff an `unevaluable` leaf matches, 0/4000) and
+**priority** (`or`/`exists` with both an unevaluable and a null operand and no
+match return `unevaluable`, never `nullOperand`).
+
+**Matrix-neutrality — proven empirically, not just argued.** `nullOperand` and
+`noMatch` both collapse to `unmatched` at the rule root, so no rule's *firing*
+can change. Confirmed by running `metrics:confusion` over a 687-snapshot store
+(487 phishing / 200 benign) with HEAD's pre-change engine and with the Option B
+engine: the confusion matrix and per-rule firing counts were **byte-identical**
+(TP=12, FP=0, CRED-06 the only firing rule, precision 100%). Option B is
+zero-risk to shipped behavior — consistent with the two clean sweeps cited in the
+packet.
+
+**[I] Test touched by the new leaf semantics.**
+`tools/conformance/pm01-predicate-unit.test.ts` asserted `eq(precededByUserGesture,
+false)` on a `null` field returns `noMatch`; under Option B it returns
+`nullOperand`. The assertion was updated to `nullOperand` — a STRONGER guarantee
+(still `unmatched` at the root AND non-flippable by an enclosing `not`). The
+test's intent ("unknown gesture MUST NOT match") is unchanged. No other test
+asserted `noMatch` on a null leaf (swept: only `run(true)`, a genuine non-null
+`noMatch`, remains).
+
+**[I] `verify:all` exit 0** after the change (typecheck, eslint, architectural
+gates, dependency-cruiser, fixtures, V-1..V-16 validator, conformance, property,
+and live-path suites all green). Ruleset unchanged by this decision — DEC-41's
+digest `sha256:088ba46e4e2391736c06f9e7254b343a015c98bb632f6a7e73d78146d5fd74ec` stands.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-03** — stated plainly, not self-attested: "Option B approved by the
+Architecture Owner. Build it to four binding requirements." The corrected
+propagation (revert `and`'s collapse; `unevaluable` > `nullOperand` > `noMatch`
+in `or`/`exists`) and the genuine-0/4000 re-run were directed in-session.
+
+- **Status:** SIGNED 2026-09-03. Engine sentinel implemented, property campaign
+  green (0/4000 anti-flip, plus unknown-equivalence and priority), matrix proven
+  neutral against HEAD. The DEFECT-39/40 footgun class is now closed
+  structurally — a reintroduced `not(is(null))` yields `nullOperand` → unmatched
+  even with V-16 hypothetically absent.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+**Related:** [[DEFECT-39]], [[DEFECT-40]] (the two live instances), [[DEC-41]]
+(the ruleset-level fix + V-16), [[DEC-40]] (why PM-01 is dormant),
+`docs/predicate-null-negation-REVIEW.md` (the decision packet whose Option B
+this implements).

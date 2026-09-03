@@ -71,10 +71,10 @@ const run = (gesture: boolean | null) =>
 
 assert.equal(run(false), 'match',
   'confirmed no-gesture (false) MUST match eq(x,false) — the rule\'s intended trigger');
-assert.equal(run(null), 'noMatch',
-  'DEFECT-40: unknown gesture (null) MUST NOT match — this is the over-fire the fix removes (old not(is(null)) matched)');
+assert.equal(run(null), 'nullOperand',
+  'DEFECT-40 + DEC-42: unknown gesture (null) MUST NOT match. eq(x,false) on a null field now yields the leaf-scoped nullOperand sentinel (Option B) — even safer than noMatch: it collapses to unmatched at the root AND cannot be flipped to a match by an enclosing not. The over-fire the fix removes (old not(is(null)) matched) stays removed.');
 assert.equal(run(true), 'noMatch',
   'gesture present (true) MUST NOT match');
 
 console.log('PM-01 predicate-unit PROVEN (dormant code): eq(precededByUserGesture, false) matches confirmed false, NOT null and NOT true.');
-console.log('  false -> match ; null -> noMatch (DEFECT-40 over-fire gone) ; true -> noMatch. PM-01 stays unevaluable end-to-end under DEC-40; this proves the operator, not live behavior.');
+console.log('  false -> match ; null -> nullOperand (DEFECT-40 over-fire gone; DEC-42 sentinel, non-flippable) ; true -> noMatch. PM-01 stays unevaluable end-to-end under DEC-40; this proves the operator, not live behavior.');
