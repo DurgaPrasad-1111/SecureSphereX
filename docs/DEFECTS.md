@@ -2743,3 +2743,76 @@ Combined discovery-and-fix in one pass, the same shape as [[DEFECT-7]]
 - **Related:** [[DEFECT-7]] (same found-and-fixed-together shape), [[DEC-30]]
   (the "no falsifiable heuristic" discipline this honors), `docs/download-permission-context-REVIEW.md`
   (the investigation that surfaced it).
+
+---
+
+## DEFECT-39 — DL-02 fires on ordinary benign downloads: `not(is(extensionMimeConsistent))` treats "unknown" as "inconsistent" (found 2026-09-03; HIGH; RULESET-level, decision pending)
+
+**Severity: HIGH.** Structurally invisible to the corpus (S-9: downloadContext
+is in-browser-only), so no existing gate catches it — it surfaces only the first
+time DL-02 runs against real download traffic, where it will fire on ordinary
+benign downloads (pdf, png, jpg, docx, xlsx, and any extension not in a 14-entry
+map). Surfaced while building `tools/conformance/dl-live-path.test.ts` for
+DEFECT-38.
+
+### The behavior
+`computeExtensionMimeConsistent` (`packages/engine/modules/downloadContext.ts:86-96`)
+returns a faithful THREE-STATE value:
+- `true` — extension and mime are a known-consistent pairing,
+- `false` — a known-inconsistent pairing (`.exe` served as `image/png`),
+- `null` — INCONCLUSIVE: unknown extension (`:94` `if (known === undefined)
+  return null;`), or a generic/catch-all mime (`:92`).
+
+`EXTENSION_MIME_MAP` (`:62-76`) has 14 entries, all executable/archive-oriented
+(exe, msi, dmg, pkg, sh, vbs, js, jar, apk, zip, rar, 7z, iso). Every other
+extension — pdf, png, jpg, docx, xlsx, mp4, … — is absent, so
+`computeExtensionMimeConsistent` returns `null` for them.
+
+DL-02's predicate (`rulesets/rules-v0.1.0.json:658-663`) is
+`or(not(is(downloadContext.extensionMimeConsistent)), is(hasCompoundExtension))`.
+The engine `is` operator (`packages/engine/stage2.ts:177-181`) returns `match`
+only when the value is `=== true`, so it collapses BOTH `false` and `null` to
+`noMatch`; `not` then matches BOTH. Result: a benign `report.pdf`
+(`application/pdf`) yields `extensionMimeConsistent = null`, `not(is(null))` =
+match, and **DL-02 fires** — verified live (the DEFECT-38 test's first benign
+case fired until it was switched to an in-map type).
+
+### Which layer OWNS it — determined, not guessed: RULESET-level
+The module is CORRECT: a three-state value is the honest representation, and
+`null` for an unknown pairing is right (returning `true` would assert consistency
+it cannot know; returning `false` would assert inconsistency it cannot know).
+
+The conflation lives in the **frozen ruleset predicate**: `not(is(x))` maps
+`{false, null}` identically, because `is` tests only `=== true`
+(`stage2.ts:180`). **No module sentinel choice can fix this** — the predicate
+has exactly one test and collapses any three-state field to two. Expanding the
+map only reduces how OFTEN `null` is produced; it cannot stop `not(is(null))`
+from firing when `null` occurs, and `null` MUST occur for genuinely-unknown
+extensions (the extension space is unbounded and unenumerable).
+
+Fixing the root therefore requires changing the predicate text — an Annex A
+amendment to a frozen artifact (e.g. `eq(extensionMimeConsistent, false)` in
+place of `not(is(...))`, so only a KNOWN-inconsistent pairing fires). The engine
+already has an `eq` operator (`stage2.ts:227`), so no engine change is needed —
+only the frozen ruleset.
+
+`extensionMimeConsistent` is read by DL-02 ALONE (confirmed against
+`rules-v0.1.0.json`), so scope is contained to DL-02.
+
+### Status — HELD for an Architecture-Owner decision, same as DEFECT-19
+Because the root fix is ruleset-level (frozen), this is not fixed here.
+`docs/DL-02-extension-mime-REVIEW.md` lays out the options (ruleset predicate
+amendment; module map expansion as a partial frequency mitigation; the
+residual-unknown behavior question) in decision-packet format, no recommendation
+baked in.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, HIGH. Root cause is the frozen DL-02 predicate; awaiting an
+  Architecture-Owner ruling via `docs/DL-02-extension-mime-REVIEW.md`. DL-02 is
+  NOT complete until this is resolved. DEFECT-38's producer wiring is unaffected
+  and correct — this is a separate, pre-existing rule/predicate defect that the
+  wiring merely made observable.
+- **Related:** [[DEFECT-38]] (surfaced it — the producer that made DL-02 real),
+  [[DEFECT-19]] (the same "ruleset-level → Architecture-Owner decision packet"
+  handling), [[DEFECT-22]] (the `not`/three-state operator reasoning this is
+  adjacent to).
