@@ -4728,3 +4728,91 @@ in `or`/`exists`) and the genuine-0/4000 re-run were directed in-session.
 (the ruleset-level fix + V-16), [[DEC-40]] (why PM-01 is dormant),
 `docs/predicate-null-negation-REVIEW.md` (the decision packet whose Option B
 this implements).
+
+---
+
+## DEC-43 — Option C adopted for `priorFindingActive`/DL-01: `PriorPassState.anyPriorPrimaryFindingActive` (no new store)
+
+**Context.** DL-01 is the only rule whose predicate uses `priorFindingActive`
+(`ruleset.format.v1.ts:140-151`): *"True when at least one primary finding with
+non-zero effective weight exists in a PRIOR COMMITTED PASS of the current Analysis
+Session … reads committed state only, never the in-flight finding set."* Stage 2
+answered it by THROWING `PriorFindingActiveUnavailableError`, caught and mapped to
+a distinct `blocked` rule status — a placeholder for "needs Analysis History from
+a store that does not exist yet." The decision packet
+`docs/priorFindingActive-analysis-history-REVIEW.md` laid out three ways to close
+this; §Option C evaluated the cheapest — a single derived boolean on
+`PriorPassState` rather than a new store — and found it correct, materially
+cheaper, and §20-neutral.
+
+**Ruling — Option C, adopted.** `PriorPassState` (engine type, `stage7-8.ts`,
+NOT a frozen contract) gains one field, `anyPriorPrimaryFindingActive: boolean`,
+threaded into Stage 2 to answer `priorFindingActive`. The throw and the `blocked`
+status are retired.
+
+**Binding requirement (stated explicitly, not a preference).** The field is
+updated at the **pass-commit boundary UNCONDITIONALLY**, by a new pure reducer
+`recordCommittedPass(prior, scoring)` — **never** inside `recordIntervention`.
+`recordIntervention` fires only when an intervention is presented; a primary
+finding with non-zero effective weight can occur on a pass that presents no
+intervention (a Tier 0/1 pass, or a Low/Medium result), and folding the update
+into `recordIntervention` would silently miss every such finding. This is proven
+by a dedicated test (`stage7-8.fixture.test.ts`): a committed pass with a primary
+finding whose tier never escalated sets the flag via `recordCommittedPass` while
+`interventionPresented` stays `false`. `recordIntervention` and
+`recordCommittedPass` each carry the other's fields through unchanged, so they
+compose in either order.
+
+**Filter — `ruleType === 'primary' && effectiveWeight > 0`, and nothing else.**
+This matches the contract's literal criterion. `effectiveWeight`
+(`baseWeight × (1 − maxReduction)`) is the finding's intrinsic weight, computed
+independently of subsumption and score inclusion. NO `subsumed` / `countedInScore`
+filter is applied: the contract keys on non-zero **effective weight**, not on
+score contribution (P-8), and DL-01's rationale ("a page already carrying security
+findings") is about a finding's existence, not its participation in the sum.
+Adding a `countedInScore` filter would narrow the criterion beyond the contract.
+
+**Threading & defaults.** `evaluatePredicate` / `matchPredicate` / `matchRule` /
+`matchAllRules` take `priorPrimaryFindingActive: boolean = false` as a trailing
+parameter; `pass.ts` supplies `prior?.anyPriorPrimaryFindingActive ?? false`. The
+`false` default is the conservative, correct assumption for every caller that does
+not track this dimension: "no prior committed finding" ⇒ `priorFindingActive`
+noMatch ⇒ DL-01 cannot fire. On the **first pass** (`prior === null`) the boolean
+is `false`, so DL-01 correctly cannot fire — no throw needed. §2.2 preserved: the
+engine reads threaded state, never constructs an `AuthStoreReader`.
+
+**[I] DL-01 resolves end-to-end against real data (proof, honest scope).**
+`tools/conformance/dl-live-path.test.ts` now proves BOTH: with a real cross-domain
+executable download and NO prior finding, DL-01 is `unmatched` (first three
+conjuncts match, `priorFindingActive` noMatch); with a prior primary finding
+threaded in, DL-01 **MATCHES and produces a finding** — the first time DL-01 fires
+against real evidence through the full pass. **Production status, stated plainly:**
+the service-worker still runs single-pass with `prior=null`
+(`service-worker.ts:155`, "not wired into this minimal first-run path yet" — A1.1's
+multi-pass session work), so DL-01 does **not** fire live yet. The engine resolves
+it the moment the multi-pass session runtime threads `PriorPassState` across passes
+and calls `recordCommittedPass` at commit. Corpus: DL is S-9 (in-browser-only), so
+DL-01 has 0 corpus firings BY DESIGN — never a corpus figure.
+
+**[I] Backward compatibility.** `session-store.ts`'s `deserializePriorPassState`
+and `auth-store.ts`'s `isPriorPassState` accept a persisted state missing the new
+field (treated as `false`) and reject a present-but-non-boolean value — a state
+persisted before this field existed simply had no prior finding recorded.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-03** — stated plainly, not self-attested: "Implement Option C for
+priorFindingActive, Architecture Owner ruling given: adopt … Binding requirement,
+not a preference: the update happens at the pass-commit boundary unconditionally."
+
+- **Status:** SIGNED 2026-09-03. `anyPriorPrimaryFindingActive` field +
+  `recordCommittedPass` reducer implemented; throw/`blocked` retired; Stage 2
+  threading wired; binding-requirement test green; `verify:all` exit 0; corpus
+  matrix neutral vs HEAD. DL-01 resolves in the engine; live firing awaits the
+  multi-pass session runtime (A1.1), reported not implied.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+**Related:** [[DEC-42]] (the nullOperand sentinel in the same `evaluatePredicate`;
+orthogonal to this boolean), [[DEC-40]] (why PM-01 is dormant),
+`docs/priorFindingActive-analysis-history-REVIEW.md` (the packet whose Option C
+this implements), `docs/How-To-Start-Coding.md` (the store-does-not-exist-yet
+premise this removes for DL-01).
