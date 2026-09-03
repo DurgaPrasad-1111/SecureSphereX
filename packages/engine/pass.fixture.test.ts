@@ -200,7 +200,7 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
   // A Session that never intervened imposes no floor, even at a high tier —
   // the distinction §11.3 actually draws (see DEFECT-28's sibling reasoning
   // in stage7-8.ts's header).
-  const neverIntervened: PriorPassState = { highestInterventionTier: null, interventionPresented: false };
+  const neverIntervened: PriorPassState = { highestInterventionTier: null, interventionPresented: false, anyPriorPrimaryFindingActive: false };
   const pass4 = await runAnalysisPass(ssoFlow, ruleSet, uncalledStoreReader, neverIntervened);
   assert.equal(pass4.aggregation.effectiveTier, 'Low',
     'no intervention -> no floor, even with a prior pass on record');

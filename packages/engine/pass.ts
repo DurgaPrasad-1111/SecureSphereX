@@ -122,7 +122,9 @@ export async function runAnalysisPass(
   const evaluations = assembleEvaluationSet(evidence, dispatch);
 
   // ── Stage 2 — Predicate Matching ───────────────────────────────────────
-  const ruleOutcomes = matchAllRules(dispatch, ruleSet);
+  // Option C: thread the committed prior-pass boolean to `priorFindingActive`
+  // (DL-01 only). `prior === null` (first pass) ⇒ false ⇒ DL-01 cannot fire.
+  const ruleOutcomes = matchAllRules(dispatch, ruleSet, prior?.anyPriorPrimaryFindingActive ?? false);
 
   // ── Stage 3 — Correlation Finding Generation ───────────────────────────
   const findings = generateCorrelationFindings(evidence, dispatch, ruleOutcomes, ruleSet);

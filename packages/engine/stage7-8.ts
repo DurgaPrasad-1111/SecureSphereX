@@ -52,7 +52,7 @@
  * computation does not.
  */
 
-import type { RiskTier } from '../contracts/passresult.contract.v1';
+import type { RiskTier, ScoringEntry } from '../contracts/passresult.contract.v1';
 import type { RuleSet } from '../contracts/ruleset.format.v1';
 
 /**
@@ -90,6 +90,21 @@ export interface PriorPassState {
    * through, not used in the floor math.
    */
   readonly interventionPresented: boolean;
+  /**
+   * Option C (priorFindingActive, Architecture-Owner ruling 2026-09-03): true
+   * once ANY prior COMMITTED pass in this Session produced a primary finding
+   * with non-zero effective weight. This is the value DL-01's
+   * `priorFindingActive` predicate reads (threaded into Stage 2). Monotonic OR
+   * over committed passes, exactly like `highestInterventionTier` is a maximum.
+   *
+   * Maintained by `recordCommittedPass` at the PASS-COMMIT boundary — NOT by
+   * `recordIntervention`. That distinction is load-bearing: a primary finding
+   * with non-zero weight can occur on a pass that presents no intervention (a
+   * Tier 0/1 pass, or a Low/Medium result), which would never call
+   * `recordIntervention`. Folding this into `recordIntervention` would silently
+   * miss every such finding — the exact bug the binding requirement forbids.
+   */
+  readonly anyPriorPrimaryFindingActive: boolean;
 }
 
 export interface TierEscalation {
@@ -179,5 +194,50 @@ export function recordIntervention(prior: PriorPassState | null, newlyPresentedT
       ? newlyPresentedTier
       : previousHighest;
 
-  return { highestInterventionTier, interventionPresented: true };
+  // Carry `anyPriorPrimaryFindingActive` through unchanged — it is owned by
+  // `recordCommittedPass`, not this function. Dropping it here would reset a
+  // committed prior finding every time an intervention is recorded.
+  return {
+    highestInterventionTier,
+    interventionPresented: true,
+    anyPriorPrimaryFindingActive: prior?.anyPriorPrimaryFindingActive ?? false,
+  };
+}
+
+/**
+ * Option C pass-commit reducer (Architecture-Owner ruling 2026-09-03). Folds
+ * one just-COMMITTED pass into `PriorPassState.anyPriorPrimaryFindingActive`,
+ * for the NEXT pass's `priorFindingActive` to read.
+ *
+ * BINDING REQUIREMENT — this runs at the pass-commit boundary UNCONDITIONALLY,
+ * on every committed pass, never inside `recordIntervention`. A primary finding
+ * with non-zero effective weight sets the flag even when the pass presented no
+ * intervention (Tier 0/1, or a Low/Medium result); `recordIntervention` fires
+ * only on an intervention and would miss those.
+ *
+ * Monotonic OR: once true within a Session it stays true. Reduces over
+ * `ScoringEntry` (one per finding, P-3), which already carries both the
+ * `ruleType` and the suppression-adjusted `effectiveWeight` — the exact filter
+ * the ruling specifies (`ruleType === 'primary' && effectiveWeight > 0`). No
+ * `subsumed` / `countedInScore` filter is applied: the predicate's criterion is
+ * effective weight, not score inclusion.
+ *
+ * Pure, no store, no I/O — same class as `recordIntervention`; A1.3 defers only
+ * PERSISTING the returned value across navigation / service-worker restarts.
+ * The other two fields carry through unchanged (this reducer owns only the
+ * boolean), so it composes with `recordIntervention` in either order.
+ */
+export function recordCommittedPass(
+  prior: PriorPassState | null,
+  scoring: readonly ScoringEntry[],
+): PriorPassState {
+  const thisPassHasPrimaryFinding = scoring.some(
+    (entry) => entry.ruleType === 'primary' && entry.effectiveWeight > 0,
+  );
+  return {
+    highestInterventionTier: prior?.highestInterventionTier ?? null,
+    interventionPresented: prior?.interventionPresented ?? false,
+    anyPriorPrimaryFindingActive:
+      (prior?.anyPriorPrimaryFindingActive ?? false) || thisPassHasPrimaryFinding,
+  };
 }

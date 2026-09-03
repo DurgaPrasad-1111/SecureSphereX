@@ -27,15 +27,18 @@
  * confirmed by direct scan, zero of the ten `*Findings` interfaces in
  * `evaluation.contract.v1.ts` contain a field with any of those names.
  *
- * ONE GENUINE, SEPARATE BLOCKER — `priorFindingActive` (DL-01 only) reads
- * "a PRIOR COMMITTED PASS of the current Analysis Session"
- * (`ruleset.format.v1.ts` lines 140-151), which requires Analysis
- * History / the Authentication History Store. The store does not exist
- * until week 4 (`docs/How-To-Start-Coding.md`) — not a DEC-15 matter, a
- * different, already-known dependency. `matchPredicate` throws a typed
- * `PriorFindingActiveUnavailableError` rather than fabricate a
- * true/false default; `matchAllRules` isolates it per-rule so the other
- * ten rules still get a real answer.
+ * `priorFindingActive` (DL-01 only) reads "a PRIOR COMMITTED PASS of the
+ * current Analysis Session" (`ruleset.format.v1.ts` lines 140-151). Option C
+ * (Architecture-Owner ruling, docs/priorFindingActive-analysis-history-REVIEW.md,
+ * 2026-09-03): it is answered by a single derived boolean threaded in as
+ * `priorPrimaryFindingActive` — the `anyPriorPrimaryFindingActive` field of
+ * `PriorPassState`, reduced at the pass-commit boundary from committed findings
+ * (`ruleType === 'primary' && effectiveWeight > 0`). It reads COMMITTED state
+ * only, never the in-flight finding set (§9.1, keeps aggregation pure). No store
+ * is constructed here (§2.2 preserved) — the engine reads threaded prior state,
+ * not an `AuthStoreReader`. On the first pass (`prior === null`) the boolean is
+ * `false`, so DL-01 correctly cannot fire. This retired the previous throw/
+ * `blocked` path: there is no longer a genuinely unanswerable predicate here.
  *
  * §5.6, "Non-Matching Is Not Suppression": "Where the evidence required by
  * a predicate is absent, the predicate simply does not match and no
@@ -55,17 +58,6 @@ import type {
 import type { ModuleDispatchResult } from './orchestrator';
 
 export type EvaluationSetForMatching = Readonly<Record<ModuleId, ModuleDispatchResult>>;
-
-export class PriorFindingActiveUnavailableError extends Error {
-  constructor(ruleId: string) {
-    super(
-      `Rule "${ruleId}"'s predicate uses priorFindingActive, which reads Analysis History ` +
-      `from the Authentication History Store — the store does not exist yet ` +
-      `(docs/How-To-Start-Coding.md: "the store does not exist until week 4"). Not fabricated.`,
-    );
-    this.name = 'PriorFindingActiveUnavailableError';
-  }
-}
 
 /** Sentinel distinguishing "this module was unevaluable, nothing to read"
  * from a genuine `null` Findings value (e.g. `registrableDomain: null`,
@@ -179,12 +171,16 @@ const NULL_OPERAND: PredicateResult = 'nullOperand';
  * OPERAND EVALUATION ORDER IS PRESERVED EXACTLY as the previous
  * `Array.every`/`Array.some` implementation: `and` stops at the first
  * operand that is not `match`, `or` stops at the first operand that IS
- * `match`. This matters beyond style — `priorFindingActive` throws, so
- * evaluating an operand the old code short-circuited past would turn a
- * currently-`unmatched` rule (DL-01 on every present fixture, whose first
- * conjunct reads the unevaluable `downloadContext` module) into a thrown
- * `PriorFindingActiveUnavailableError`. Fixing DEFECT-22 must not silently
- * change which rules reach the store dependency.
+ * `match`. The sixth parameter `priorPrimaryFindingActive` (Option C) is the
+ * committed prior-pass boolean read ONLY by the `priorFindingActive` leaf; it
+ * defaults to `false` (first pass / no prior finding) and is threaded through
+ * every recursive call unchanged so a nested `priorFindingActive` sees it. The
+ * DEC-42 `nullOperand` sentinel and this boolean are orthogonal: nullOperand is
+ * a leaf result that propagates like `unevaluable`, `priorPrimaryFindingActive`
+ * is an input the `priorFindingActive` leaf resolves against — neither affects
+ * the other. (Historical note: `priorFindingActive` used to THROW here; Option
+ * C retired that, so short-circuit order no longer changes whether a rule hits
+ * an unanswerable predicate — it simply resolves to match/noMatch.)
  */
 export function evaluatePredicate(
   predicate: Predicate,
@@ -192,6 +188,10 @@ export function evaluatePredicate(
   ruleSet: RuleSet,
   ruleId: string,
   boundItem: unknown = undefined,
+  // Option C: the `anyPriorPrimaryFindingActive` boolean from PriorPassState,
+  // threaded in. Read ONLY by the `priorFindingActive` leaf; false on the
+  // first pass (no prior committed pass). Not a store handle — §2.2.
+  priorPrimaryFindingActive: boolean = false,
 ): PredicateResult {
   switch (predicate.op) {
     case 'is': {
@@ -206,7 +206,7 @@ export function evaluatePredicate(
       // "we looked and found the opposite." Previously this was
       // `!matchPredicate(...)`, where `is` had already collapsed
       // UNEVALUABLE to `false` and `!false` fabricated a match.
-      const inner = evaluatePredicate(predicate.operand, evaluations, ruleSet, ruleId, boundItem);
+      const inner = evaluatePredicate(predicate.operand, evaluations, ruleSet, ruleId, boundItem, priorPrimaryFindingActive);
       if (inner === 'unevaluable') return 'unevaluable';
       if (inner === NULL_OPERAND) return NULL_OPERAND;   // DEC-42 req 3: null cannot be flipped to a match
       return inner === 'match' ? 'noMatch' : 'match';
@@ -218,7 +218,7 @@ export function evaluatePredicate(
       // nullOperand reaches an enclosing not() intact rather than being
       // laundered into a plain noMatch that a subsequent not() could flip.
       for (const operand of predicate.operands) {
-        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
+        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem, priorPrimaryFindingActive);
         if (result !== 'match') return result;
       }
       return 'match';
@@ -232,7 +232,7 @@ export function evaluatePredicate(
       let sawUnevaluable = false;
       let sawNullOperand = false;
       for (const operand of predicate.operands) {
-        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem);
+        const result = evaluatePredicate(operand, evaluations, ruleSet, ruleId, boundItem, priorPrimaryFindingActive);
         if (result === 'match') return 'match';   // a real match always wins (non-poisoning, req 4a)
         if (result === 'unevaluable') sawUnevaluable = true;
         else if (result === NULL_OPERAND) sawNullOperand = true;
@@ -302,7 +302,7 @@ export function evaluatePredicate(
       let sawUnevaluable = false;
       let sawNullOperand = false;
       for (const item of collection) {
-        const result = evaluatePredicate(predicate.where, evaluations, ruleSet, ruleId, item);
+        const result = evaluatePredicate(predicate.where, evaluations, ruleSet, ruleId, item, priorPrimaryFindingActive);
         if (result === 'match') return 'match';
         if (result === 'unevaluable') sawUnevaluable = true;
         else if (result === NULL_OPERAND) sawNullOperand = true;
@@ -311,7 +311,11 @@ export function evaluatePredicate(
       return sawUnevaluable ? 'unevaluable' : sawNullOperand ? NULL_OPERAND : 'noMatch';
     }
     case 'priorFindingActive':
-      throw new PriorFindingActiveUnavailableError(ruleId);
+      // Option C: answered by the threaded prior-pass boolean, not a throw.
+      // COMMITTED prior state only (it was reduced at the previous pass's
+      // commit); the current in-flight finding set is never consulted here,
+      // so aggregation stays a pure function of (evaluations, ruleSet, prior).
+      return priorPrimaryFindingActive ? 'match' : 'noMatch';
   }
 }
 
@@ -330,12 +334,18 @@ export function matchPredicate(
   ruleSet: RuleSet,
   ruleId: string,
   boundItem: unknown = undefined,
+  priorPrimaryFindingActive: boolean = false,
 ): boolean {
-  return evaluatePredicate(predicate, evaluations, ruleSet, ruleId, boundItem) === 'match';
+  return evaluatePredicate(predicate, evaluations, ruleSet, ruleId, boundItem, priorPrimaryFindingActive) === 'match';
 }
 
-export function matchRule(rule: RuleDefinition, evaluations: EvaluationSetForMatching, ruleSet: RuleSet): boolean {
-  return matchPredicate(rule.predicate, evaluations, ruleSet, rule.id);
+export function matchRule(
+  rule: RuleDefinition,
+  evaluations: EvaluationSetForMatching,
+  ruleSet: RuleSet,
+  priorPrimaryFindingActive: boolean = false,
+): boolean {
+  return matchPredicate(rule.predicate, evaluations, ruleSet, rule.id, undefined, priorPrimaryFindingActive);
 }
 
 /**
@@ -354,11 +364,11 @@ export function matchRule(rule: RuleDefinition, evaluations: EvaluationSetForMat
  * `unevaluable` variant carries exactly `reason` + `unevaluableModules`.
  * `matched`/`unmatched` map to `RuleOutcome`'s `matched`/`notMatched`.
  *
- * `blocked` is retained as a separate status, NOT folded into `unevaluable`:
- * it means the predicate reached `priorFindingActive`, which needs Analysis
- * History from a store that does not exist yet. That is a missing
- * DEPENDENCY, not an unevaluable module, and collapsing the two would lose
- * the distinction the error message carries.
+ * The former `blocked` status was retired with the `priorFindingActive` throw
+ * (Option C, 2026-09-03). It existed solely to mark "the predicate reached
+ * `priorFindingActive`, which needs a store that does not exist yet"; that
+ * predicate now resolves against threaded prior state, so no rule is ever
+ * `blocked` and the variant is gone rather than kept as dead, misleading code.
  */
 export type RuleMatchResult =
   | { readonly ruleId: string; readonly status: 'matched' | 'unmatched' }
@@ -368,8 +378,7 @@ export type RuleMatchResult =
       readonly reason: UnevaluableReason | 'undeclared_required_module';
       /** Which of the rule's `requiredModules` were unevaluable (§15.2). */
       readonly unevaluableModules: readonly ModuleId[];
-    }
-  | { readonly ruleId: string; readonly status: 'blocked'; readonly reason: string };
+    };
 
 /**
  * The `requiredModules` pre-check §15.2 mandates: which of this rule's
@@ -390,10 +399,15 @@ function unevaluableRequiredModules(
  * not be tested is never reported as one that found nothing, regardless of
  * how its predicate would have short-circuited.
  *
- * `priorFindingActive` is isolated per-rule (currently only DL-01) so one
- * genuinely-blocked rule doesn't prevent an answer for the other ten.
+ * `priorPrimaryFindingActive` — Option C: `PriorPassState.anyPriorPrimaryFindingActive`,
+ * threaded to the `priorFindingActive` leaf (DL-01 only). Defaults to `false`
+ * so callers that have no prior pass (or don't use DL-01) need not supply it.
  */
-export function matchAllRules(evaluations: EvaluationSetForMatching, ruleSet: RuleSet): readonly RuleMatchResult[] {
+export function matchAllRules(
+  evaluations: EvaluationSetForMatching,
+  ruleSet: RuleSet,
+  priorPrimaryFindingActive: boolean = false,
+): readonly RuleMatchResult[] {
   return ruleSet.rules.map((rule): RuleMatchResult => {
     // §15.2 pre-check, before the predicate is touched.
     const blockedModules = unevaluableRequiredModules(rule, evaluations);
@@ -410,30 +424,23 @@ export function matchAllRules(evaluations: EvaluationSetForMatching, ruleSet: Ru
       };
     }
 
-    try {
-      const result = evaluatePredicate(rule.predicate, evaluations, ruleSet, rule.id);
-      if (result === 'match') return { ruleId: rule.id, status: 'matched' };
-      // DEC-42 req 2: a nullOperand at the root is a non-firing rule, NOT an
-      // unevaluable one — the module evaluated and produced null. It maps to
-      // `unmatched` with NO entry in unevaluableModules, exactly like noMatch.
-      if (result === 'noMatch' || result === NULL_OPERAND) return { ruleId: rule.id, status: 'unmatched' };
-      // Every declared required module WAS evaluable, yet the predicate still
-      // read an unevaluable one — the rule's `requiredModules` under-declares
-      // what its predicate actually reads (DEFECT-16's shape). Reported
-      // honestly as unevaluable with an empty module list rather than
-      // silently downgraded to `unmatched`, which is the exact conflation
-      // E-6 forbids.
-      return {
-        ruleId: rule.id,
-        status: 'unevaluable',
-        reason: 'undeclared_required_module',
-        unevaluableModules: [],
-      };
-    } catch (err) {
-      if (err instanceof PriorFindingActiveUnavailableError) {
-        return { ruleId: rule.id, status: 'blocked', reason: err.message };
-      }
-      throw err;
-    }
+    const result = evaluatePredicate(rule.predicate, evaluations, ruleSet, rule.id, undefined, priorPrimaryFindingActive);
+    if (result === 'match') return { ruleId: rule.id, status: 'matched' };
+    // DEC-42 req 2: a nullOperand at the root is a non-firing rule, NOT an
+    // unevaluable one — the module evaluated and produced null. It maps to
+    // `unmatched` with NO entry in unevaluableModules, exactly like noMatch.
+    if (result === 'noMatch' || result === NULL_OPERAND) return { ruleId: rule.id, status: 'unmatched' };
+    // Every declared required module WAS evaluable, yet the predicate still
+    // read an unevaluable one — the rule's `requiredModules` under-declares
+    // what its predicate actually reads (DEFECT-16's shape). Reported
+    // honestly as unevaluable with an empty module list rather than
+    // silently downgraded to `unmatched`, which is the exact conflation
+    // E-6 forbids.
+    return {
+      ruleId: rule.id,
+      status: 'unevaluable',
+      reason: 'undeclared_required_module',
+      unevaluableModules: [],
+    };
   });
 }

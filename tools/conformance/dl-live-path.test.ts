@@ -13,14 +13,16 @@
  * DL rules fire 0 times against the corpus BY DESIGN. This live-path is the only
  * place DL becomes real — never a corpus figure.
  *
- * ⚠️ DL-01 HAS A SECOND BLOCKER, unrelated to DEFECT-38: its predicate ends in
- * `priorFindingActive`, which reads Analysis History and is not wired
- * (stage2.ts throws -> the rule is `blocked`, never fabricated). So DL-01's
- * downloadContext conjuncts now evaluate, but the rule cannot MATCH until
- * priorFindingActive is wired. This test asserts DL-01 reaches `blocked` (not
- * unevaluable-on-downloadContext), which is the proof DEFECT-38's blocker is
- * gone and a DIFFERENT one remains — the same two-blocker honesty S-10 gave
- * CRED-04.
+ * DL-01's second blocker (priorFindingActive) is now RESOLVED (Option C,
+ * 2026-09-03): the predicate reads the threaded `PriorPassState.
+ * anyPriorPrimaryFindingActive` instead of throwing, so the throw/`blocked`
+ * path is retired. This test proves DL-01 both stays unmatched with no prior
+ * committed finding AND fires end-to-end once a prior primary finding is
+ * threaded in — DEFECT-38's downloadContext blocker gone AND priorFindingActive
+ * answered. (Production still runs single-pass with prior=null in the
+ * service-worker — see GROUND-TRUTH-STATUS.md — so DL-01 does not yet fire
+ * live; the engine resolves it the moment the multi-pass session runtime is
+ * wired.)
  *
  * Run: node --experimental-strip-types tools/conformance/dl-live-path.test.ts
  */
@@ -35,6 +37,7 @@ import { collectUrl, collectDomainRepresentation, collectTransport, collectLogin
 import { assembleEvidence } from '../../apps/extension/assemble-evidence.ts';
 import { computeDownloadContextEvidence, type DownloadRecord } from '../../apps/extension/download-context.ts';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
+import type { PriorPassState } from '../../packages/engine/stage7-8.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
 import type { AuthStoreReader } from '../../packages/contracts/boundary.interfaces.v1.ts';
 
@@ -45,7 +48,7 @@ const forbiddenStore: AuthStoreReader = { lookup: async () => { throw new Error(
 const PAGE = 'https://shop.example.com/checkout';
 const EMPTY_DOM = '<!doctype html><html><head><title>Shop</title></head><body><p>No login form.</p></body></html>';
 
-async function passWithDownload(rec: DownloadRecord | undefined) {
+async function passWithDownload(rec: DownloadRecord | undefined, prior: PriorPassState | null = null) {
   const dom = new JSDOM(EMPTY_DOM, { url: PAGE });
   const base = {
     url: collectUrl(PAGE),
@@ -56,7 +59,7 @@ async function passWithDownload(rec: DownloadRecord | undefined) {
   };
   const parts = rec ? { ...base, downloadContext: computeDownloadContextEvidence(rec) } : base;
   const evidence = assembleEvidence(parts, PAGE, '2026-09-03');
-  return runAnalysisPass(evidence, ruleSet, forbiddenStore, null);
+  return runAnalysisPass(evidence, ruleSet, forbiddenStore, prior);
 }
 
 const dlRule = (o: { ruleOutcomes: readonly { ruleId: string; status: string }[] }, id: string) =>
@@ -116,21 +119,38 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
 
 // ── DL-01: cross-domain executable download reaches priorFindingActive ────
 // The first three conjuncts (executable ext, referrer present, cross-domain)
-// now EVALUATE thanks to DEFECT-38. The fourth (priorFindingActive) throws ->
-// rule `blocked`. Asserting `blocked` (not unevaluable, not matched) proves the
-// downloadContext blocker is gone and priorFindingActive is the one that remains.
+// EVALUATE thanks to DEFECT-38. The fourth (priorFindingActive) now RESOLVES
+// against threaded prior state (Option C, 2026-09-03) — the throw/`blocked`
+// path is retired. This proves BOTH: (a) with no prior committed finding the
+// whole `and` correctly does not match, and (b) with a prior primary finding
+// threaded in, DL-01 fires end-to-end through the real pass — the first time
+// DL-01 produces a finding against real evidence.
 {
   const rec: DownloadRecord = {
     url: 'https://cdn.evil.tld/installer.exe', filename: 'installer.exe',
     mime: 'application/x-msdownload', referrer: 'https://shop.example.com/checkout', observedAt: 1,
   };
-  const out = await passWithDownload(rec);
-  const dl01 = dlRule(out, 'DL-01');
-  assert.ok(dl01 !== undefined, 'DL-01 must have an outcome');
-  assert.equal(dl01!.status, 'blocked',
-    `DL-01 must reach 'blocked' (priorFindingActive), proving downloadContext no longer blocks it; got '${dl01!.status}'`);
-  assert.ok(!fired(out, 'DL-01'), 'DL-01 must not produce a finding while priorFindingActive is unwired');
-  console.log('  [4] DL-01 reaches priorFindingActive -> blocked (downloadContext blocker GONE; separate blocker remains) ✓');
+
+  // (a) No prior committed pass -> priorFindingActive noMatch -> DL-01 unmatched.
+  const noPrior = await passWithDownload(rec, null);
+  const dl01NoPrior = dlRule(noPrior, 'DL-01');
+  assert.ok(dl01NoPrior !== undefined, 'DL-01 must have an outcome');
+  assert.equal(dl01NoPrior!.status, 'unmatched',
+    `DL-01 with no prior finding must be 'unmatched' (first three conjuncts match, priorFindingActive noMatch); got '${dl01NoPrior!.status}'`);
+  assert.ok(!fired(noPrior, 'DL-01'), 'DL-01 must not fire without a prior committed finding');
+
+  // (b) A prior committed pass carried a primary finding -> priorFindingActive
+  // matches -> the full `and` matches -> DL-01 FIRES against real evidence.
+  const priorWithFinding: PriorPassState = {
+    highestInterventionTier: null, interventionPresented: false, anyPriorPrimaryFindingActive: true,
+  };
+  const withPrior = await passWithDownload(rec, priorWithFinding);
+  const dl01WithPrior = dlRule(withPrior, 'DL-01');
+  assert.equal(dl01WithPrior!.status, 'matched',
+    `DL-01 must MATCH with a prior primary finding threaded in; got '${dl01WithPrior!.status}'`);
+  assert.ok(fired(withPrior, 'DL-01'),
+    'DL-01 must produce a finding end-to-end once priorFindingActive resolves true');
+  console.log('  [4] DL-01 resolves priorFindingActive: unmatched with no prior, FIRES with a prior primary finding (Option C) ✓');
 }
 
 // ── notCollected: no download for this pass -> downloadContext unevaluable ──
@@ -148,4 +168,4 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
   console.log('  [5] No download record -> downloadContext notCollected -> DL rules unevaluable (no misattribution) ✓');
 }
 
-console.log('DL LIVE-PATH PROVEN: DL-02 fires on confirmed inconsistency + compound extension; SILENT on unknown-extension (report.pdf) and known-consistent downloads (DEFECT-39 fixed, DEC-41); DL-01 downloadContext blocker removed (priorFindingActive remains); no-record path unevaluable, never a global-key guess (DEFECT-38).');
+console.log('DL LIVE-PATH PROVEN: DL-02 fires on confirmed inconsistency + compound extension; SILENT on unknown-extension (report.pdf) and known-consistent downloads (DEFECT-39 fixed, DEC-41); DL-01 fully resolves — unmatched with no prior finding, FIRES with a prior primary finding threaded in (Option C / DEC-43); no-record path unevaluable, never a global-key guess (DEFECT-38).');

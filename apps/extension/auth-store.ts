@@ -431,7 +431,8 @@ function isPriorPassState(v: unknown): v is PriorPassState {
   const o = v as Record<string, unknown>;
   const hit = o['highestInterventionTier'];
   return (hit === null || hit === 'Low' || hit === 'Medium' || hit === 'High')
-    && typeof o['interventionPresented'] === 'boolean';
+    && typeof o['interventionPresented'] === 'boolean'
+    && (o['anyPriorPrimaryFindingActive'] === undefined || typeof o['anyPriorPrimaryFindingActive'] === 'boolean');
 }
 
 /** eTLD+1 is a PSL concern (harness-only, forbidden here) — the registrable

@@ -137,9 +137,15 @@ export function deserializePriorPassState(value: unknown): PriorPassState | null
   const hit = v['highestInterventionTier'];
   if (!(hit === null || isRiskTier(hit))) return null;
   if (typeof v['interventionPresented'] !== 'boolean') return null;
+  // Option C field. Backward-compatible: a state persisted before this field
+  // existed simply had no prior primary finding recorded, so a missing value
+  // is `false`; a present-but-non-boolean value is ill-formed and rejected.
+  const appf = v['anyPriorPrimaryFindingActive'];
+  if (appf !== undefined && typeof appf !== 'boolean') return null;
   return {
     highestInterventionTier: hit,
     interventionPresented: v['interventionPresented'],
+    anyPriorPrimaryFindingActive: appf === true,
   };
 }
 

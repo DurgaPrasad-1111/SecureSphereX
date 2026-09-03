@@ -19,10 +19,10 @@
 import assert from 'node:assert/strict';
 
 import {
-  computeRawTier, thresholdsFrom, computeEffectiveTier, recordIntervention, tierRank,
+  computeRawTier, thresholdsFrom, computeEffectiveTier, recordIntervention, recordCommittedPass, tierRank,
 } from './stage7-8.ts';
 import type { PriorPassState } from './stage7-8.ts';
-import type { RiskTier } from '../contracts/passresult.contract.v1.ts';
+import type { RiskTier, ScoringEntry } from '../contracts/passresult.contract.v1.ts';
 
 // --- Stage 7: score -> tier (§9.4) ----------------------------------------
 
@@ -51,7 +51,7 @@ assert.equal(tierRank('Medium') < tierRank('High'), true, 'RiskTier ordering');
   assert.equal(first.interventionLocked, false);
 
   // No intervention was presented, so nothing floors a later drop.
-  const noFloor: PriorPassState = { highestInterventionTier: null, interventionPresented: false };
+  const noFloor: PriorPassState = { highestInterventionTier: null, interventionPresented: false, anyPriorPrimaryFindingActive: false };
   const later = computeEffectiveTier('Low', noFloor);
   assert.equal(later.effectiveTier, 'Low',
     '§11.3 floors only on an INTERVENED tier — a High pass that never interrupted anyone imposes none');
@@ -199,6 +199,77 @@ for (const first of ALL_TIERS) {
   const ruleSet = JSON.parse(readFileSync(join(repoRoot, 'rulesets', 'rules-v0.1.0.json'), 'utf8'));
   assert.deepEqual(thresholdsFrom(ruleSet), { medium: 30, high: 60 },
     'thresholds come from the rule set (§13.2), never hard-coded');
+}
+
+// --- Option C: recordCommittedPass at the pass-commit boundary ------------
+//
+// The BINDING REQUIREMENT test. `anyPriorPrimaryFindingActive` must be set by
+// the pass-commit reducer UNCONDITIONALLY — never gated on an intervention.
+// The decisive case: a pass produces a primary finding with non-zero effective
+// weight but stays LOW (no intervention presented, so `recordIntervention` is
+// never called). If the update were folded into `recordIntervention`, this
+// finding would be silently missed. `recordCommittedPass` must capture it.
+
+const scoringEntry = (over: Partial<ScoringEntry>): ScoringEntry => ({
+  findingId: 'f1' as ScoringEntry['findingId'],
+  ruleId: 'CRED-06' as ScoringEntry['ruleId'],
+  ruleType: 'primary',
+  parentRuleId: null,
+  baseWeight: 40,
+  suppressionsApplied: [],
+  maxReduction: 0,
+  effectiveWeight: 40,
+  subsumed: false,
+  parentQualified: null,
+  countedInScore: true,
+  ...over,
+});
+
+{
+  // A primary finding with non-zero weight, on a pass that NEVER intervened
+  // (no recordIntervention call anywhere in this sequence).
+  const primaryLowPass: readonly ScoringEntry[] = [scoringEntry({ effectiveWeight: 40 })];
+  const afterCommit = recordCommittedPass(null, primaryLowPass);
+  assert.equal(afterCommit.anyPriorPrimaryFindingActive, true,
+    'BINDING: a prior primary finding with non-zero weight sets the flag even with NO intervention presented');
+  assert.equal(afterCommit.interventionPresented, false,
+    'proof the flag was set WITHOUT any intervention — recordIntervention was never called');
+  assert.equal(afterCommit.highestInterventionTier, null);
+
+  // recordIntervention ALONE must NOT set the flag — it owns only the tier/lock.
+  const afterInterventionOnly = recordIntervention(null, 'High');
+  assert.equal(afterInterventionOnly.anyPriorPrimaryFindingActive, false,
+    'recordIntervention must NOT set anyPriorPrimaryFindingActive — that is recordCommittedPass\'s job');
+
+  // A pass with NO primary finding does not set it.
+  const noPrimary = recordCommittedPass(null, []);
+  assert.equal(noPrimary.anyPriorPrimaryFindingActive, false);
+
+  // An AGGRAVATOR-only pass does not set it (filter is ruleType === 'primary').
+  const aggravatorOnly = recordCommittedPass(null, [scoringEntry({ ruleType: 'aggravator', effectiveWeight: 40 })]);
+  assert.equal(aggravatorOnly.anyPriorPrimaryFindingActive, false,
+    'an aggravator finding must not set the primary-finding flag');
+
+  // A primary finding fully suppressed to effectiveWeight 0 does not set it.
+  const zeroWeight = recordCommittedPass(null, [scoringEntry({ effectiveWeight: 0, maxReduction: 1 })]);
+  assert.equal(zeroWeight.anyPriorPrimaryFindingActive, false,
+    'a primary finding with zero effective weight must not set the flag (filter is effectiveWeight > 0)');
+
+  // Monotonic OR: once true, a later pass with no primary finding keeps it true.
+  const stillTrue = recordCommittedPass(afterCommit, []);
+  assert.equal(stillTrue.anyPriorPrimaryFindingActive, true,
+    'monotonic: the flag never clears within a Session once a prior primary finding was committed');
+
+  // Composition: recordCommittedPass then recordIntervention preserves BOTH.
+  const composed = recordIntervention(afterCommit, 'Medium');
+  assert.equal(composed.anyPriorPrimaryFindingActive, true, 'recordIntervention carries the flag through');
+  assert.equal(composed.interventionPresented, true);
+  assert.equal(composed.highestInterventionTier, 'Medium');
+  // ...and the reverse order preserves the tier/lock the intervention set.
+  const composedReverse = recordCommittedPass(composed, [scoringEntry({ effectiveWeight: 40 })]);
+  assert.equal(composedReverse.highestInterventionTier, 'Medium', 'recordCommittedPass carries the tier through');
+  assert.equal(composedReverse.interventionPresented, true);
+  assert.equal(composedReverse.anyPriorPrimaryFindingActive, true);
 }
 
 console.log('all stage7-8 fixture assertions passed');

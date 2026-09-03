@@ -24,7 +24,7 @@ import type { Predicate, RuleSet } from '../contracts/ruleset.format.v1.ts';
 import type { ModuleDispatchResult } from './orchestrator.ts';
 import { evaluateAllModules } from './orchestrator.ts';
 import {
-  matchPredicate, matchRule, matchAllRules, PriorFindingActiveUnavailableError,
+  matchPredicate, matchRule, matchAllRules,
 } from './stage2.ts';
 import { cleanLogin } from '../../fixtures/clean-login.ts';
 import { noCredential } from '../../fixtures/no-credential.ts';
@@ -329,16 +329,22 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
   assert.equal(matchPredicate(anyHiddenViaField, evaluations, testRuleSet, 'TEST'), false);
 }
 
-// --- Unit: 'priorFindingActive' throws, isolated by matchAllRules --------
+// --- Unit: 'priorFindingActive' resolves against the threaded prior boolean --
+// (Option C, 2026-09-03 — the throw/`blocked` path is retired; the predicate
+//  now answers from PriorPassState.anyPriorPrimaryFindingActive.)
 
 {
   const predicate: Predicate = { op: 'priorFindingActive' };
-  assert.throws(
-    () => matchPredicate(predicate, baseEvaluations(), testRuleSet, 'DL-01'),
-    PriorFindingActiveUnavailableError,
-  );
+  // Default (no prior boolean) -> noMatch, not a throw. A first pass has no
+  // prior committed pass, so DL-01 correctly cannot fire.
+  assert.equal(matchPredicate(predicate, baseEvaluations(), testRuleSet, 'DL-01'), false);
+  // Threaded true -> match. This is the value DL-01 reads once a prior pass
+  // committed a primary finding with non-zero effective weight.
+  assert.equal(matchPredicate(predicate, baseEvaluations(), testRuleSet, 'DL-01', undefined, true), true);
+  // Never fabricates a match from nothing: threaded false stays noMatch.
+  assert.equal(matchPredicate(predicate, baseEvaluations(), testRuleSet, 'DL-01', undefined, false), false);
 
-  const ruleSetWithOneBlockedRule: RuleSet = {
+  const ruleSetWithPriorFindingRule: RuleSet = {
     ...testRuleSet,
     rules: [
       {
@@ -357,15 +363,20 @@ function baseEvaluations(): Record<ModuleId, ModuleDispatchResult> {
       },
     ],
   };
-  const results = matchAllRules(baseEvaluations(), ruleSetWithOneBlockedRule);
-  assert.equal(results.length, 2);
-  assert.equal(results[0]?.status, 'blocked');
+  // No prior boolean threaded -> FAKE-DL is 'unmatched' (was 'blocked' before
+  // Option C), and it MATCHES when the prior boolean is threaded true.
+  const noPrior = matchAllRules(baseEvaluations(), ruleSetWithPriorFindingRule);
+  assert.equal(noPrior.length, 2);
+  assert.equal(noPrior[0]?.status, 'unmatched');
+  const withPrior = matchAllRules(baseEvaluations(), ruleSetWithPriorFindingRule, true);
+  assert.equal(withPrior[0]?.status, 'matched',
+    'priorFindingActive matches once a prior primary finding is threaded in');
   // CORRECTED 2026-08-27 (E-6). FAKE-URL declares requiredModules: ['url'],
   // and `url` is unevaluable in baseEvaluations() — so §15.2's pre-check
   // makes this `unevaluable`, NOT `unmatched`. The previous expectation was
   // the E-6 violation itself: its own comment already noted the module was
   // unevaluable while asserting the rule "found nothing".
-  const fakeUrl = results[1];
+  const fakeUrl = noPrior[1];
   assert.equal(fakeUrl?.status, 'unevaluable');
   assert.ok(fakeUrl?.status === 'unevaluable' && fakeUrl.unevaluableModules.includes('url'),
     'the unevaluable module must be named in the outcome (§15.2 unevaluableModules)');
@@ -395,7 +406,8 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
   for (const result of results) {
     // 'unevaluable' added 2026-08-27 — invariant E-6 (evaluation.contract.v1.ts:304)
     // requires Stage 2 to distinguish "could not test" from "tested, no match".
-    assert.ok(['matched', 'unmatched', 'unevaluable', 'blocked'].includes(result.status),
+    // 'blocked' retired 2026-09-03 (Option C): priorFindingActive now resolves.
+    assert.ok(['matched', 'unmatched', 'unevaluable'].includes(result.status),
       `${name}/${result.ruleId}: bad status`);
     // Every unevaluable outcome must carry §15.2's diagnostic payload.
     if (result.status === 'unevaluable') {
@@ -404,20 +416,13 @@ for (const [name, evidence] of Object.entries(FIXTURES)) {
     }
   }
 
-  // DL-01 is the only rule using priorFindingActive, so it's the only one
-  // that can EVER be reported 'blocked'. On these 4 fixtures it never is:
-  // CORRECTED 2026-08-27 — DL-01 declares requiredModules ['downloadContext'],
-  // which is unevaluable on all four (no fixture has download evidence), so
-  // §15.2's pre-check reports 'unevaluable' before the predicate is touched.
-  // It previously reported 'unmatched' via 'and' short-circuit — the exact
-  // E-6 conflation this change fixes. The dedicated case where
-  // priorFindingActive IS reached is covered in the unit tests above
-  // (ruleSetWithOneBlockedRule, whose FAKE-DL declares requiredModules: []).
-  const blocked = results.filter((r) => r.status === 'blocked');
-  assert.ok(
-    blocked.every((r) => r.ruleId === 'DL-01'),
-    `${name}: only DL-01 may ever be reported blocked, got: ${blocked.map((r) => r.ruleId).join(', ')}`,
-  );
+  // DL-01 declares requiredModules ['downloadContext'], unevaluable on all four
+  // fixtures (no download evidence), so §15.2's pre-check reports 'unevaluable'
+  // before the predicate is touched — it never reaches priorFindingActive here.
+  // No rule is ever 'blocked' now (Option C retired that status); the resolved
+  // priorFindingActive path is covered by the unit test above.
+  const dl01 = results.find((r) => r.ruleId === 'DL-01');
+  assert.equal(dl01?.status, 'unevaluable', `${name}: DL-01 unevaluable (downloadContext not collected)`);
 
   // DEFECT-19: CRED-04 can never match against real dispatch, for any
   // fixture, because redirect.ts always reports both domain fields null.

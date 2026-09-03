@@ -265,9 +265,9 @@ for (const [name, fixtureEvidence] of Object.entries(FIXTURES)) {
   // CRED-04 is never matched (DEFECT-19) — confirmed again at the Stage 3
   // boundary: no finding for it, in any fixture.
   assert.ok(!findings.some((f) => f.ruleId === 'CRED-04'), `${name}: CRED-04 must never produce a finding`);
-  // DL-01 never matches today either (Stage 2 can only report it
-  // 'unmatched' or 'blocked', never 'matched' — priorFindingActive always
-  // throws before DL-01's 'and' could complete).
+  // DL-01 never matches in these fixtures: none thread a prior committed
+  // finding, so priorFindingActive is noMatch (Option C) and DL-01's `and`
+  // does not complete — 'unmatched' or 'unevaluable', never 'matched'.
   assert.ok(!findings.some((f) => f.ruleId === 'DL-01'), `${name}: DL-01 must never produce a finding`);
 }
 

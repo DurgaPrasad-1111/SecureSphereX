@@ -195,7 +195,7 @@ const clock = () => day;
 {
   const store = new AuthStore({ backend: memoryBackend(), isPrivateContext: false, config: cfg(), today: clock });
   const first = await store.reportInterventionPresented('sess_x', 'Medium');
-  assert.deepEqual(first, { highestInterventionTier: 'Medium', interventionPresented: true });
+  assert.deepEqual(first, { highestInterventionTier: 'Medium', interventionPresented: true, anyPriorPrimaryFindingActive: false });
   // Monotonic (§11.3): a later lower tier does not lower the recorded maximum.
   const second = await store.reportInterventionPresented('sess_x', 'Low');
   assert.equal(second.highestInterventionTier, 'Medium', 'intervention tier is a session maximum, never lowered');

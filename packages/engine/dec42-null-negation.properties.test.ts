@@ -124,7 +124,11 @@ fc.assert(fc.property(genDepth, (depth) => {
     // and it must not be reported unevaluable for a null field at all when the
     // predicate reduced to nullOperand — it should be 'unmatched'.
   }
-  assert.notEqual(res!.status, 'blocked');
+  // A null-field rule must always resolve to a real Stage-2 outcome — never a
+  // dangling one. (Pre-Option-C this guarded against the retired 'blocked'
+  // store-dependency status; now it asserts the positive property directly.)
+  assert.ok(['matched', 'unmatched', 'unevaluable'].includes(res!.status),
+    `null-field rule must resolve to a real status; got '${res!.status}'`);
   // permissionContext evaluated, so it must never appear as unevaluable:
   if (res!.status === 'unevaluable') {
     assert.ok(!res!.unevaluableModules.includes('permissionContext'),

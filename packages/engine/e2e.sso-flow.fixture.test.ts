@@ -211,16 +211,15 @@ const statusOf = (ruleId: string): string => {
 //  CRED-06 unmatched — url.isSecureScheme is true, so `not(is(...))` is false.
 //  CRED-07 unmatched — neither form field is hidden or autocomplete-disabled.
 //  CRED-A1 unmatched — javascript.credentialInterfaceInjected is present(false).
-//  DL-01   unmatched — NOT 'blocked'. Its predicate does contain
-//          priorFindingActive, but that operand is never reached: the `and`
-//          is evaluated by Array.every, which short-circuits on the FIRST
-//          false conjunct, and `inSet(downloadContext.declaredExtension,
-//          executableTypes)` is already false because downloadContext is
-//          unevaluable (the UNEVALUABLE sentinel is not a string). So the
-//          store-dependency throw never fires on this fixture. Worth stating
-//          explicitly: DL-01's blocked-ness is INPUT-DEPENDENT, not a
-//          property of the rule — a fixture with real downloadContext
-//          evidence would reach priorFindingActive and throw.
+//  DL-01   unevaluable — §15.2 pre-check: its requiredModules include
+//          downloadContext, which is unevaluable on this fixture (no download
+//          evidence), so the rule is unevaluable BEFORE the predicate is
+//          touched (asserted below). priorFindingActive is never reached here.
+//          (Option C, 2026-09-03: priorFindingActive no longer throws — it
+//          resolves against a threaded prior-pass boolean — so the former
+//          'blocked' status is gone entirely. A fixture WITH real
+//          downloadContext evidence would reach priorFindingActive and simply
+//          resolve to match/noMatch from that boolean, never throw.)
 //  DL-02   unmatched — downloadContext is unevaluable, so
 //          `not(is(downloadContext.extensionMimeConsistent))` is unevaluable,
 //          not a match. Before the DEFECT-22 fix this rule fabricated a match
