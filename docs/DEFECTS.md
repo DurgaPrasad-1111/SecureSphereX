@@ -2816,3 +2816,75 @@ baked in.
   [[DEFECT-19]] (the same "ruleset-level → Architecture-Owner decision packet"
   handling), [[DEFECT-22]] (the `not`/three-state operator reasoning this is
   adjacent to).
+
+---
+
+## DEFECT-40 — PM-01 sibling of DEFECT-39: `not(is(precededByUserGesture))` treats unknown-gesture as no-gesture (found 2026-09-03; LATENT under DEC-40; RULESET-level)
+
+Finding: the systemic sweep for DEFECT-39's pattern (every `not(is(x))`
+predicate whose target `x` is a three-state `boolean | null` findings field)
+found **exactly one sibling** — PM-01.
+
+**The sweep, in full** (all 19 `is` nodes across 15 unique paths in
+`rules-v0.1.0.json`, cross-referenced against `evaluation.contract.v1.ts`):
+- **13 non-negated `is()`** targets are all true `boolean` fields — and even
+  were any nullable, `is()` on `null` is `noMatch` (silent), the restrictive/
+  safe direction. No risk.
+- **3 `not(is())`** predicates, the only form that fires on `null`:
+  - `CRED-06 · url.isSecureScheme` — `boolean` (non-nullable), producer
+    `scheme === 'https'`, never null. **SAFE.**
+  - `DL-02 · downloadContext.extensionMimeConsistent` — `boolean | null`,
+    [[DEFECT-39]].
+  - `PM-01 · permissionContext.precededByUserGesture` — `boolean | null`,
+    **this defect.**
+
+### This instance
+`PermissionContextFindings.precededByUserGesture` is `boolean | null`
+(`evaluation.contract.v1.ts:230`). `permissionContext.ts:83-84` maps it
+three-state with a DOCUMENTED null path (module header, `:47-61`): `present →
+value`, **`absent → null`**, `notCollected → unevaluable`. PM-01's predicate
+conjunct is `not(is(permissionContext.precededByUserGesture))`
+(`rules-v0.1.0.json`). By the same mechanism as DEFECT-39 (`is` tests only
+`=== true`, `stage2.ts:180`), a `null` here — "a permission was requested but
+the gesture context could not be determined" — is read as `not(is(null))` =
+match, i.e. **"no user gesture," which contributes to firing.** Unknown gesture
+is treated as gesture-less.
+
+### Two honest distinctions from DEFECT-39 — why it is separate, and lower urgency
+1. **Currently LATENT / masked.** PM-01 is [[DEC-40]] accepted-non-functional:
+   `permissionContext` is fully stubbed (`notCollected`), so the module is
+   `unevaluable` and never produces a finding at all. This defect cannot
+   manifest today. It ACTIVATES the moment `permissionContext` is wired (DEC-40's
+   revisit trigger).
+2. **Conditional null, not guaranteed.** DEFECT-39's `null` is hit constantly
+   (any unmapped extension). Here `null` occurs only if a producer emits
+   `absent` for gesture context — plausible but not guaranteed, since a
+   well-instrumented producer can usually determine gesture at request time.
+   And in the common no-prompt case `requestedPermission` is also `absent`, so
+   PM-01's first conjunct (`requestedPermission != null`) is false and the `and`
+   short-circuits before reaching the gesture conjunct — so the defect only
+   bites when a permission IS observed but its gesture context is not.
+
+### Root cause and fix — identical class to DEFECT-39
+Same ownership: **RULESET-level.** The module's three-state output is correct;
+the frozen predicate `not(is(x))` cannot distinguish `null` from `false`. Fix is
+the same Annex A shape — e.g. `eq(precededByUserGesture, false)` in place of
+`not(is(precededByUserGesture))`, so only a KNOWN-no-gesture request fires and an
+unknown-gesture request does not. No engine change (`eq` exists, `stage2.ts:227`).
+
+⚠️ **For the Architecture Owner hand-editing DEFECT-39's DL-02 predicate:** the
+identical fix applies to PM-01's predicate, and both could be corrected in ONE
+Annex A amendment if fixing both frozen predicates at once is preferred — OR
+this one can wait until PM-01 is wired (DEC-40), since it is inert until then.
+That sequencing is the Architecture Owner's call; the DEFECT-39 packet
+(`docs/DL-02-extension-mime-REVIEW.md`) Option A describes the amendment
+mechanics that apply equally here.
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** OPEN, LATENT (masked by [[DEC-40]]'s non-functional acceptance of
+  PM-01). RULESET-level root, same as [[DEFECT-39]]; fixable in the same Annex A
+  amendment or deferred to PM-01's wiring. NOT folded into DEFECT-39 —
+  a distinct predicate on a distinct rule and field.
+- **Related:** [[DEFECT-39]] (the pattern; same root and fix class), [[DEC-40]]
+  (why this is currently inert), `docs/DL-02-extension-mime-REVIEW.md` (the
+  amendment mechanics).
