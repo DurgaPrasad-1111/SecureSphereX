@@ -4816,3 +4816,74 @@ orthogonal to this boolean), [[DEC-40]] (why PM-01 is dormant),
 `docs/priorFindingActive-analysis-history-REVIEW.md` (the packet whose Option C
 this implements), `docs/How-To-Start-Coding.md` (the store-does-not-exist-yet
 premise this removes for DL-01).
+
+---
+
+## DEC-44 — DEC-43 Option 1: multi-pass session persistence wired live (per-navigation home, documentId attribution)
+
+**Context.** DEC-43 adopted Option C — `PriorPassState.anyPriorPrimaryFindingActive`
+answering `priorFindingActive` — but the production service-worker still ran
+single-pass with `prior=null`, so DL-01 resolved only in the engine test, never
+live. Step 1's mapping found three further facts: (a) `recordIntervention` was
+*also* unwired live (only tests called it); (b) two competing `PriorPassState`
+homes existed — the `(tabId, navigationId)` `SessionRecord.priorPassState` and a
+separate per-origin `ssx:auth-prior:` store in `auth-store.ts`; (c) the analyze
+path had `tabId` but no `navigationId`, so it could not key the session.
+
+**Ruling — Option 1, implemented (Architecture-Owner directed in-session, 2026-09-03).**
+
+**Home consolidation.** `priorPassState` lives ONLY on the `(tabId, navigationId)`
+`SessionRecord`. The per-origin `ssx:auth-prior:` home is **retired** —
+`reportInterventionPresented`, `SESSION_PRIOR_PREFIX`, `isPriorPassState`, and its
+`clearAll` clause are removed. Keyed per-origin, it would have carried an
+intervention across navigations on the same origin, contradicting §11.4 ("a new
+navigation creates a new Session, unaffected by a prior Session's lock"); that is
+why it was never wired live. The **frozen** `InterventionReporter` contract
+(`boundary.interfaces.v1.ts:254`) is untouched — auth-store's 2-arg method never
+implemented the 3-arg contract, so retiring it dangles nothing.
+
+**Session granularity is per-navigation.** `priorFindingActive` reads prior passes
+of the same `(tabId, navigationId)` Session (Tier 0/1 page-load passes → the Tier 2
+action-gate pass), matching DL-01's "a page already carrying findings delivers a
+cross-site executable." `startSession` resets `priorPassState` to `null` on every
+navigation, so a finding never leaks across navigations — the security boundary
+was already spec-correct and was not re-invented.
+
+**documentId attribution (the crux — binding reqs 3 + 4 reconciled).** The
+content-script message carries NO navigationId (req 3: nothing page-side names the
+navigation). The browser attaches `runtime.MessageSender.documentId`, a per-document
+id it mints and page JS cannot forge, fixed at the sending document (req 4: it
+travels with the message from generation). The SW builds the bridge from
+`webNavigation.onCommitted.documentId` ONLY (a genuine browser event): a
+`DocumentIndex` (documentId → session key) plus a persisted `SessionRecord.documentId`
+so the index rebuilds after a worker restart. A LATE evidence message from a prior
+page thus attributes to THAT navigation, never the tab's current one — proven,
+including across a simulated restart. The onCommitted/onMessage documentId identity
+is a browser guarantee not executable under node; the live SW logs any unresolved
+documentId (`resolveSessionParts`) so a real break surfaces at runtime, and the
+pass falls back to `prior=null` rather than mis-attributing.
+
+**Concurrency.** `SessionStore` gained a per-key async serialization queue
+(`#withKeyLock`) wrapping every read-modify-write (`startSession`, `updateSession`,
+`recordPassOutcome`), fixing the non-atomic `get → patch → set` lost-update race
+for passes landing close together on one session key. Cross-tab is already race-free
+(distinct keys). `endTabSessions` on `chrome.tabs.onRemoved` cleans up closed-tab
+records.
+
+**[I] What is genuinely live now vs still a gap.** DL-01 now fires end-to-end
+through the production composition (SessionStore + DocumentIndex + runPassInSession
++ real engine), proven by `multi-pass-session.test.ts` case 1 (pass 1 CRED-01 →
+session flag → pass 2 DL-01 fires). Known gap, stated plainly: the Tier-2 Warn/Block
+UI does not exist, so `interventionWasPresented` is structurally `false` — the
+`recordIntervention` half of the commit reducer is real plumbing that never fires
+in practice until that UI lands. `recordCommittedPass` (the DL-01-relevant half)
+IS live and unconditional.
+
+- **Status:** SIGNED 2026-09-03. Multi-pass persistence live; auth-prior retired;
+  four test-plan cases green; verify:all exit 0; corpus matrix unchanged
+  (12 TP / 0 FP — no engine source touched).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+**Related:** [[DEC-43]] (the engine mechanism this wires into production),
+[[DEC-42]] (nullOperand, orthogonal), §11.4 (the intervention-lock/session
+semantics), §3.1 (new navigation = new Session).
