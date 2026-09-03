@@ -191,17 +191,13 @@ const clock = () => day;
   assert.ok(r.status === 'available' && (r.bestCrossOriginMatch?.similarity ?? 0) >= 0.9);
 }
 
-/* ══ §11.4 intervention lock via engine PriorPassState ══════════════════ */
-{
-  const store = new AuthStore({ backend: memoryBackend(), isPrivateContext: false, config: cfg(), today: clock });
-  const first = await store.reportInterventionPresented('sess_x', 'Medium');
-  assert.deepEqual(first, { highestInterventionTier: 'Medium', interventionPresented: true, anyPriorPrimaryFindingActive: false });
-  // Monotonic (§11.3): a later lower tier does not lower the recorded maximum.
-  const second = await store.reportInterventionPresented('sess_x', 'Low');
-  assert.equal(second.highestInterventionTier, 'Medium', 'intervention tier is a session maximum, never lowered');
-  const third = await store.reportInterventionPresented('sess_x', 'High');
-  assert.equal(third.highestInterventionTier, 'High', 'a higher tier raises it');
-}
+/* ── §11.4 intervention lock: the per-origin `ssx:auth-prior:` store that used
+ * to live here was RETIRED (DEC-43 Option 1). PriorPassState is now owned
+ * solely by the per-(tabId,navigationId) SessionStore, keyed by navigation as
+ * §11.4 requires ("a new navigation creates a new Session"); the per-origin
+ * home would have carried an intervention across navigations on the same
+ * origin, contradicting that. recordIntervention is exercised at the commit
+ * boundary in session-pass / multi-pass-session.test.ts, not here. ── */
 
 /* ══ fingerprint similarity stub sanity ══════════════════════════════════ */
 {

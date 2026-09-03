@@ -17,6 +17,7 @@
 import {
   SessionStore, type SessionStorageBackend, type SessionKeyParts,
 } from './session-store.ts';
+import { DocumentIndex, runPassInSession } from './session-pass.ts';
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
 import { computeDownloadContextEvidence, downloadKey, type DownloadRecord } from './download-context.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
@@ -37,6 +38,9 @@ const chromeSessionBackend: SessionStorageBackend = {
 };
 const store = new SessionStore(chromeSessionBackend);
 const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext: inPrivateContext() });
+// documentId -> (tabId, navigationId). Built from onCommitted (a real browser
+// event), rebuilt from persisted records on wake. Never page-supplied.
+const docIndex = new DocumentIndex();
 const redirectTracker = new RedirectTracker();
 const loginTracker = new LoginSuccessTracker();
 
@@ -59,7 +63,14 @@ function today(): string { return new Date().toISOString().slice(0, 10); }
 chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const parts: SessionKeyParts = { tabId: details.tabId, navigationId: deriveNavigationId(details) };
-  void store.startSession(parts, details.url, today());
+  // details.documentId is the browser-minted per-document id (Chrome 106+;
+  // manifest min is 116). It is the SAME string the browser later attaches to a
+  // content-script message as sender.documentId — that identity is what the
+  // whole attribution design rests on. `?? ''` guards a browser that somehow
+  // omits it (older-than-116, impossible per manifest, but fail-safe not crash).
+  const documentId = details.documentId ?? '';
+  docIndex.record(documentId, parts);
+  void store.startSession(parts, details.url, today(), documentId);
   // §20.5 conjunct 2 — a main-frame navigation is the "subsequent navigation"
   // after a credential submit. Records the time against any pending submit.
   loginTracker.recordNavigation(details.tabId, Date.now());
@@ -106,7 +117,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   const tabId = sender.tab?.id;
   if (tabId === undefined) return;
   if (msg?.type === 'ssx-evidence') {
-    void analyzeAndReflect(tabId, msg.targetUrl as string, msg.parts as CollectedParts, Boolean(msg.sessionStateEstablished));
+    // sender.documentId is browser-attached to the sending document, fixed at
+    // send time — the attribution key. Never read a navigationId off `msg`.
+    void analyzeAndReflect(tabId, sender.documentId, msg.targetUrl as string, msg.parts as CollectedParts, Boolean(msg.sessionStateEstablished));
   } else if (msg?.type === 'ssx-cred-submit') {
     void recordCredentialSubmit(tabId, msg.origin as string,
       msg.fieldComposition as CredentialFieldKind[], msg.titleTokens as string[]);
@@ -131,7 +144,7 @@ async function recordCredentialSubmit(
 }
 
 async function analyzeAndReflect(
-  tabId: number, targetUrl: string, parts: CollectedParts, sessionStateEstablished: boolean = false,
+  tabId: number, documentId: string | undefined, targetUrl: string, parts: CollectedParts, sessionStateEstablished: boolean = false,
 ): Promise<void> {
   try {
     const ruleSet = await loadRuleSet();
@@ -149,10 +162,21 @@ async function analyzeAndReflect(
     if (redirect) merged = { ...merged, redirect };
     if (downloadContext) merged = { ...merged, downloadContext };
     const evidence = assembleEvidence(merged, targetUrl, today());
-    // A1.5: the real AuthStore is the ACEM's reader. prior=null for a first
-    // pass; the §11.4 lock is A1.1's concern and not wired into this minimal
-    // first-run path yet.
-    const outcome = await runAnalysisPass(evidence, ruleSet, authStore, null);
+
+    // DEC-43 multi-pass wiring. Resolve THIS message's document to its session
+    // (by the browser-attached documentId, not "current nav for tab"), thread
+    // the committed priorPassState into the pass, and fold the outcome back at
+    // the commit boundary. If the document can't be attributed to a session,
+    // fall back to a bare pass with prior=null and no commit-back.
+    const sessionParts = documentId !== undefined ? await resolveSessionParts(documentId) : null;
+    const outcome = sessionParts !== null
+      ? await runPassInSession({
+          store, parts: sessionParts, evidence, ruleSet, storeReader: authStore,
+          // Tier-2 Warn/Block UI does not exist yet, so no intervention is ever
+          // presented — the plumbing is real, the value is structurally false.
+          interventionWasPresented: false,
+        })
+      : await runAnalysisPass(evidence, ruleSet, authStore, null);
 
     const effectiveTier = outcome.aggregation.effectiveTier;
     const verdict = {
@@ -231,13 +255,41 @@ chrome.downloads.onCreated.addListener((item) => {
   })();
 });
 
+/**
+ * Resolve a message's document to its session by the browser-attached
+ * documentId. On a cold worker the in-memory index is empty, so rebuild it once
+ * from persisted records (each carries its documentId) and re-resolve. A
+ * still-unresolved documentId is the diagnostic the whole design turns on: it
+ * means the onCommitted documentId and the onMessage sender.documentId did NOT
+ * match (or onCommitted was never seen for this document) — logged, and the pass
+ * falls back to prior=null rather than mis-attributing to another navigation.
+ */
+async function resolveSessionParts(documentId: string): Promise<SessionKeyParts | null> {
+  let parts = docIndex.resolve(documentId);
+  if (parts === null) {
+    docIndex.rebuildFrom(await store.reconstructAll());
+    parts = docIndex.resolve(documentId);
+    if (parts === null) {
+      console.warn('SSX: unresolved documentId (no session attribution) —', documentId);
+    }
+  }
+  return parts;
+}
+
 /* ── worker-wake reconstruction (A1.1) ──────────────────────────────────── */
 async function reconstructOnWake(): Promise<void> {
-  const sessions = await store.reconstructAll();
-  void sessions;
+  // Rebuild the documentId index so a message arriving right after wake can be
+  // attributed without a per-message reconstruct.
+  docIndex.rebuildFrom(await store.reconstructAll());
 }
 chrome.runtime.onStartup.addListener(() => { void reconstructOnWake(); });
 chrome.runtime.onInstalled.addListener(() => { void reconstructOnWake(); });
 void reconstructOnWake();
+
+/* ── tab close: drop that tab's session records + index entries ──────────── */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  docIndex.forgetTab(tabId);
+  void store.endTabSessions(tabId);
+});
 
 export { reconstructOnWake, deriveNavigationId };

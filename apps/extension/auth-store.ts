@@ -46,8 +46,6 @@ import type {
   AuthStoreLookupResult, AuthRecordRequest, AuthRecordOutcome,
   CrossOriginMatch, AuthStoreEntrySummary,
 } from '../../packages/contracts/boundary.interfaces.v1.ts';
-import { recordIntervention, type PriorPassState } from '../../packages/engine/stage7-8.ts';
-import type { RiskTier } from '../../packages/contracts/passresult.contract.v1.ts';
 
 /* ── tunable establishment parameters (§13.2, §18) ────────────────────────
  * All empirical (§18.2); defaults are deliberately RESTRICTIVE per §20.5
@@ -97,7 +95,6 @@ export interface AuthEntry {
 
 const ENTRY_PREFIX = 'ssx:auth:';
 const META_KEY = 'ssx:auth-meta';
-const SESSION_PRIOR_PREFIX = 'ssx:auth-prior:';
 
 interface StoreMeta {
   /** Day stamps of recent establishments — the G-05 rate-bound log. */
@@ -371,19 +368,6 @@ export class AuthStore implements AuthStoreReader, AuthStoreWriter, AuthStoreUse
     }
   }
 
-  /* ── §11.4 intervention lock, via the engine's PriorPassState ──────────
-   * Reuses `recordIntervention` (stage7-8.ts) — the SAME monotonic state the
-   * engine maintains, persisted per session so it survives worker restart
-   * (A1.1's lesson). Not a copy of the lock logic. */
-  async reportInterventionPresented(analysisSessionId: string, tier: RiskTier): Promise<PriorPassState> {
-    const key = SESSION_PRIOR_PREFIX + analysisSessionId;
-    const raw = await this.#backend.get(key);
-    const prior = isPriorPassState(raw[key]) ? raw[key] : null;
-    const next = recordIntervention(prior, tier);
-    await this.#backend.set({ [key]: next });
-    return next;
-  }
-
   /* ── user transparency & control (§20.9, AuthStoreUserControl) ───────── */
 
   async listEntries(): Promise<readonly AuthStoreEntrySummary[]> {
@@ -403,7 +387,7 @@ export class AuthStore implements AuthStoreReader, AuthStoreWriter, AuthStoreUse
 
   async clearAll(): Promise<void> {
     const all = await this.#backend.get(null);
-    const keys = Object.keys(all).filter((k) => k.startsWith(ENTRY_PREFIX) || k === META_KEY || k.startsWith(SESSION_PRIOR_PREFIX));
+    const keys = Object.keys(all).filter((k) => k.startsWith(ENTRY_PREFIX) || k === META_KEY);
     if (keys.length > 0) await this.#backend.remove(keys);
   }
 }
@@ -426,14 +410,6 @@ function isStoreMeta(v: unknown): v is StoreMeta {
   return Array.isArray(o['establishmentLog']) && Array.isArray(o['anomalies']) && Array.isArray(o['impersonationObservations']);
 }
 
-function isPriorPassState(v: unknown): v is PriorPassState {
-  if (typeof v !== 'object' || v === null) return false;
-  const o = v as Record<string, unknown>;
-  const hit = o['highestInterventionTier'];
-  return (hit === null || hit === 'Low' || hit === 'Medium' || hit === 'High')
-    && typeof o['interventionPresented'] === 'boolean'
-    && (o['anyPriorPrimaryFindingActive'] === undefined || typeof o['anyPriorPrimaryFindingActive'] === 'boolean');
-}
 
 /** eTLD+1 is a PSL concern (harness-only, forbidden here) — the registrable
  *  domain in a CrossOriginMatch is filled with the host for now, pending the

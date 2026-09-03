@@ -67,6 +67,17 @@ export interface SessionRecord {
   readonly sessionId: string;
   readonly tabId: number;
   readonly navigationId: number;
+  /**
+   * The browser-minted per-document id from `webNavigation.onCommitted`
+   * (`details.documentId`, Chrome 106+). Stored so the SW's documentId→session
+   * index can be rebuilt after a worker restart. It is the ONLY value that lets
+   * a late evidence message be attributed to the navigation that GENERATED it
+   * (via `runtime.MessageSender.documentId`), rather than to whatever navigation
+   * is current on the tab at receipt — see service-worker.ts. Never
+   * page-supplied. Empty string only for records created before this field
+   * existed (backward-compat) or by non-SW callers (tests that don't need it).
+   */
+  readonly documentId: string;
   readonly targetUrl: string;
   /** Day-granular, per §20.3's temporal-minimisation discipline applied by
    *  convention across the platform. Set once at creation. */
@@ -112,10 +123,15 @@ export function deserializeSession(value: unknown): SessionRecord | null {
     return null;
   }
   const prior = deserializePriorPassState(v['priorPassState']);
+  // Backward-compatible: a record persisted before documentId existed simply
+  // has no attribution key; treat a missing/ill-typed value as '' (the SW's
+  // document index skips empty ids). A present value must be a string.
+  const documentId = typeof v['documentId'] === 'string' ? v['documentId'] : '';
   return {
     sessionId: v['sessionId'],
     tabId: v['tabId'],
     navigationId: v['navigationId'],
+    documentId,
     targetUrl: v['targetUrl'],
     createdOn: v['createdOn'],
     reachedTier: v['reachedTier'],
@@ -166,23 +182,51 @@ export class SessionStore {
     this.#backend = backend;
   }
 
+  /**
+   * Per-key async serialization. A service worker is single-threaded JS, but
+   * `updateSession`/`recordPassOutcome` are read-modify-write across an await
+   * (`getSession` → patch → `set`), so two passes landing on the SAME session
+   * key close together (Tier 0/1/2) could interleave and lose an update. This
+   * chains each mutation for a key behind the previous one. Different keys
+   * (different tab/navigation) never contend, so cross-tab passes stay parallel.
+   */
+  readonly #locks = new Map<string, Promise<unknown>>();
+  async #withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.#locks.get(key) ?? Promise.resolve();
+    // Chain regardless of the previous op's success/failure, so one rejection
+    // cannot wedge the key forever.
+    const run = prev.then(() => fn(), () => fn());
+    this.#locks.set(key, run);
+    try {
+      return await run;
+    } finally {
+      // Only clear if we are still the tail — a newer waiter may have chained on.
+      if (this.#locks.get(key) === run) this.#locks.delete(key);
+    }
+  }
+
   /** §3.1: create a Session bound to one navigation. Idempotent per key —
    *  re-committing the same navigation does not clobber an advanced Session. */
-  async startSession(parts: SessionKeyParts, targetUrl: string, createdOn: string): Promise<SessionRecord> {
+  async startSession(
+    parts: SessionKeyParts, targetUrl: string, createdOn: string, documentId: string = '',
+  ): Promise<SessionRecord> {
     const key = sessionKey(parts);
-    const existing = await this.getSession(parts);
-    if (existing !== null) return existing;
-    const record: SessionRecord = {
-      sessionId: key,
-      tabId: parts.tabId,
-      navigationId: parts.navigationId,
-      targetUrl,
-      createdOn,
-      reachedTier: 0,
-      priorPassState: null,
-    };
-    await this.#backend.set({ [key]: record });
-    return record;
+    return this.#withKeyLock(key, async () => {
+      const existing = await this.getSession(parts);
+      if (existing !== null) return existing;
+      const record: SessionRecord = {
+        sessionId: key,
+        tabId: parts.tabId,
+        navigationId: parts.navigationId,
+        documentId,
+        targetUrl,
+        createdOn,
+        reachedTier: 0,
+        priorPassState: null,
+      };
+      await this.#backend.set({ [key]: record });
+      return record;
+    });
   }
 
   async getSession(parts: SessionKeyParts): Promise<SessionRecord | null> {
@@ -191,22 +235,58 @@ export class SessionStore {
     return deserializeSession(raw[key]);
   }
 
-  /** Applies a partial update and writes it through. Missing session is a
-   *  no-op returning null — a Tier 1 event for a navigation whose commit was
-   *  never seen must not fabricate a Session. */
+  /** Applies a partial update and writes it through, atomically per key. Missing
+   *  session is a no-op returning null — a Tier 1 event for a navigation whose
+   *  commit was never seen must not fabricate a Session. */
   async updateSession(
     parts: SessionKeyParts,
     patch: Partial<Pick<SessionRecord, 'reachedTier' | 'priorPassState'>>,
   ): Promise<SessionRecord | null> {
-    const current = await this.getSession(parts);
-    if (current === null) return null;
-    const next: SessionRecord = { ...current, ...patch };
-    await this.#backend.set({ [sessionKey(parts)]: next });
-    return next;
+    return this.#withKeyLock(sessionKey(parts), async () => {
+      const current = await this.getSession(parts);
+      if (current === null) return null;
+      const next: SessionRecord = { ...current, ...patch };
+      await this.#backend.set({ [sessionKey(parts)]: next });
+      return next;
+    });
+  }
+
+  /**
+   * The pass-commit boundary (DEC-43). Atomically folds one committed pass into
+   * this session's `priorPassState` via `reduce`, which the caller builds from
+   * `recordCommittedPass` (unconditionally) plus `recordIntervention` (only when
+   * an intervention was presented). `reduce` re-reads the LATEST persisted state
+   * inside the lock, so a concurrent pass on the same key cannot be lost. Missing
+   * session is a no-op returning null — an unattributed pass leaves no residue.
+   */
+  async recordPassOutcome(
+    parts: SessionKeyParts,
+    reduce: (prior: PriorPassState | null) => PriorPassState,
+  ): Promise<SessionRecord | null> {
+    return this.#withKeyLock(sessionKey(parts), async () => {
+      const current = await this.getSession(parts);
+      if (current === null) return null;
+      const next: SessionRecord = { ...current, priorPassState: reduce(current.priorPassState) };
+      await this.#backend.set({ [sessionKey(parts)]: next });
+      return next;
+    });
   }
 
   async endSession(parts: SessionKeyParts): Promise<void> {
-    await this.#backend.remove(sessionKey(parts));
+    await this.#withKeyLock(sessionKey(parts), async () => {
+      await this.#backend.remove(sessionKey(parts));
+    });
+  }
+
+  /** Remove every Session record for a tab (all its navigations). Called on
+   *  `chrome.tabs.onRemoved` so closed-tab sessions don't linger until the
+   *  browser clears `chrome.storage.session`. Returns the removed keys. */
+  async endTabSessions(tabId: number): Promise<readonly string[]> {
+    const all = await this.#backend.get(null);
+    const prefix = `${SESSION_KEY_PREFIX}${tabId}:`;
+    const keys = Object.keys(all).filter((k) => k.startsWith(prefix));
+    if (keys.length > 0) await this.#backend.remove(keys);
+    return keys;
   }
 
   /**
