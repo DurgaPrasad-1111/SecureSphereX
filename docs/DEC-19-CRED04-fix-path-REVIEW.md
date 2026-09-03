@@ -96,7 +96,7 @@ predicate already expresses — a future rule can read either actual domain. Los
 in expressiveness. Cost is the wider contract and two fields to keep grounded rather than
 one.
 
-`[ ] APPROVE OPTION B`
+`[X] APPROVE OPTION B`  — ratified by the Architecture Owner in session, 2026-09-03; implemented in 602fbeb
 
 ---
 
@@ -126,6 +126,6 @@ one.
 
 ---
 
-`[ ] APPROVE OPTION A   [ ] APPROVE OPTION B   [ ] OTHER (reason: ______________________)`
+`[ ] APPROVE OPTION A   [X] APPROVE OPTION B   [ ] OTHER (reason: ______________________)`
 
-*Signed by: ____________________  Date: __________*
+*Signed by: Jayanth (Architecture Owner) — ruled directly in session  Date: 2026-09-03*

@@ -4455,3 +4455,64 @@ override; G-01 remains the operative phishing guard. Conjunct 4 UNDER-reports
   ruling that SUPERSEDES the earlier self-applied "Signed by: Jayanth" line
   (which the implementing session had written) — a ratification, not another
   self-attestation.
+
+---
+
+## DEC-39 — DEFECT-19 resolved via Option B: producer-derived redirect registrable domains
+
+**[R]** DEFECT-19 left CRED-04 structurally unfirable: `redirect.ts` hard-coded
+`RedirectFindings.initialRegistrableDomain` / `.finalRegistrableDomain` to
+`null`, so CRED-04's `notSameSite(final, initial)` conjunct could never match.
+`docs/DEC-19-CRED04-fix-path-REVIEW.md` laid out two fix paths without a
+recommendation:
+- **Option A** — thread `crossedRegistrableDomain` through as a single boolean
+  (smaller contract, but collapses the predicate to same-site-yes/no and
+  requires editing the frozen ruleset for CRED-04 and PM-01).
+- **Option B** — add two `Observation<string>` domain fields to
+  `RedirectEvidence`, producer-derived (larger contract surface, but keeps the
+  two-domain comparison the predicate already expresses and needs NO ruleset
+  change — the DEFECT-15 swap pattern).
+
+**[I] Decision: OPTION B.** The two-domain shape was preferred because it keeps
+`RedirectFindings`'s existing string fields meaningful (no dead null surface),
+requires no edit to the frozen `rulesets/rules-v0.1.0.json` (CRED-04 and PM-01
+predicates already reference the two domain paths), and mirrors the precedent
+DEFECT-15 set for `url.registrableDomain`.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-03** — stated plainly, not self-attested: the ruling to mark the review
+packet `[X] APPROVE OPTION B` and formalize it here was given by the Architecture
+Owner in-session, not written by the implementing agent on its own authority.
+
+**[I] Implemented in `602fbeb`** (committed 2026-09-03), end to end:
+- Annex A amendment added `RedirectEvidence.initialRegistrableDomain` /
+  `.finalRegistrableDomain` (`Observation<string>`), hand-typed by the
+  Architecture Owner into the frozen contract.
+- Both producers derive them via the shared V-15-gated PSL resolver
+  (`packages/engine/psl.ts`): the harness extractor
+  (`apps/harness/extract/redirect.ts`, un-stubbed) and the extension collector
+  (`apps/extension/redirect-observer.ts`).
+- `packages/engine/modules/redirect.ts` reads them (`present`→value,
+  `absent`→null, `notCollected`→unevaluable), mirroring DEFECT-15. §2.6:
+  a projection, not a module-side derivation.
+- No ruleset change. Proven by `tools/conformance/cred04-live-path.test.ts`
+  (in `verify:all`): CRED-04 fires on a cross-domain redirect to a credential
+  form, stays silent same-site and without a form.
+
+**[I] What this does NOT do.** ⚠️ S-10 is not lifted — CRED-04 remains
+DIVERGENT (the harness sees server-side redirect chains the extension may not),
+so its corpus recall must be reported separately and MUST NOT be folded into a
+headline. And against the current 617-snapshot corpus CRED-04 fires 0 times: the
+≥2-hop cross-domain redirects (30) and the credential-form pages (80) are
+disjoint populations — a data property, not a defect. The mechanism is proven;
+corpus firings await a snapshot with a multi-hop cross-domain redirect landing
+on a credential form.
+
+**Related:** [[DEC-14]] (the non-functional-rule precedent DEFECT-19 was
+flagged against), [[DEFECT-19]] (resolved by this), [[DEFECT-15]] (the
+`url.registrableDomain` swap pattern this mirrors), [[DEFECT-34]] (the PSL
+resolver the derivation uses).
+
+- **Status:** SIGNED 2026-09-03. Option B ratified in-session and implemented
+  in `602fbeb`; DEFECT-19 RESOLVED.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
