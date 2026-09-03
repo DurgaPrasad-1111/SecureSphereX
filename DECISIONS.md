@@ -4516,3 +4516,65 @@ resolver the derivation uses).
 - **Status:** SIGNED 2026-09-03. Option B ratified in-session and implemented
   in `602fbeb`; DEFECT-19 RESOLVED.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+---
+
+## DEC-40 — PM-01 accepted NON-FUNCTIONAL for Phase I (permissionContext has no trustworthy passive source)
+
+**[R]** Post-[[DEC-39]], PM-01 is no longer blocked on redirect (its `or`-arm
+works; redirect is fully evaluable). It is blocked on `permissionContext`,
+whose two gating conjuncts — `requestedPermission != null` and
+`not(precededByUserGesture)` — have no trustworthy passive source. Verified
+against real data: PM-01 fired 0/617, `permissionContext.requestedPermission`
+`notCollected` on all 617. Full analysis in
+`docs/download-permission-context-REVIEW.md` §2.
+
+**[I] The "no passive alternative" finding was INDEPENDENTLY RE-VERIFIED against
+current Chrome extension API documentation before this ratification** — not
+accepted from the single earlier investigation. Re-checked 2026-09-03 against
+`developer.chrome.com`:
+- **`chrome.permissions`** governs the EXTENSION's own permissions only
+  (`request`/`contains`/`remove`/`getAll`, `onAdded`/`onRemoved`, all scoped to
+  the extension). It provides NO way to observe or enumerate a web page's
+  permission requests and NO event that fires when a site requests camera /
+  microphone / geolocation / notifications / clipboard. Confirmed current, not
+  historical.
+- No other extension API exposes a passive observer for page-originated
+  sensitive-permission prompts. The only route to `requestedPermission` /
+  `precededByUserGesture` remains in-page `navigator.*` instrumentation.
+
+**[I] That route collides with a signed ban, which STAYS INTACT.** In-page
+patching of `navigator.mediaDevices.getUserMedia` / `Notification.requestPermission`
+/ `navigator.geolocation.*` / `navigator.clipboard.*` is barred by [[DEC-30]]'s
+reasoning: a hostile page detects the patched function, disables it, or feeds it
+false data, making the evidence actively misleading — worse than absent.
+**DEC-30 is not revisited or weakened by this decision.** PM-01 is accepted
+non-functional rather than obtained by a falsifiable observation.
+
+**Decision:** ☑ PM-01 ACCEPTED NON-FUNCTIONAL for Phase I — the same shape as
+[[DEC-14]]'s acceptance of CRED-05/CRED-A1, and NOT permanently retired. The
+rule stays SIGNED and PRESENT (`lifecycleState: Active`) in
+`rules-v0.1.0.json`; no ruleset edit is made (the acceptance is recorded here,
+not by changing rule state), so the frozen artifact is untouched and its digest
+stands.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-03** — stated plainly, not self-attested.
+
+**Revisit trigger (as previously specified, [[DEC-37]] shape — Phase II, not
+permanent):** reopen if EITHER (a) a future Chrome extension API provides a
+trustworthy PASSIVE observer for page-originated sensitive-permission requests
+(one that a hostile page cannot detect or falsify), OR (b) DEC-30's in-page
+monkey-patch ban is itself revisited under a Phase-II decision that establishes
+a tamper-evident instrumentation approach. Until then PM-01 does not fire, and
+that is recorded, not left as a latent gap.
+
+**Related:** [[DEC-14]] (the non-functional-acceptance precedent this follows),
+[[DEC-30]] (the monkey-patch ban, kept intact), [[DEC-37]] (the Phase-II
+revisit-trigger shape), [[DEC-39]] (removed redirect as PM-01's blocker, leaving
+permissionContext as the sole one), `docs/download-permission-context-REVIEW.md`
+(the investigation).
+
+- **Status:** SIGNED 2026-09-03. PM-01 accepted non-functional for Phase I;
+  DEC-30 intact; re-verified against current Chrome API docs before ratifying.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
