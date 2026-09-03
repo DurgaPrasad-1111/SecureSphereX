@@ -2664,3 +2664,82 @@ end-to-end by `tools/conformance/cred02-live-path.test.ts` (positive ESTABLISHED
 impersonation fires; PROVISIONAL-only, no-credential-form, version-mismatch, and
 cold-start all correctly do not).
 - **Status:** FIXED.
+
+---
+
+## DEFECT-38 — download observer's comment claims per-tab scoping; actual behavior is a GLOBAL single-key last-write-wins → evidence MISATTRIBUTION (found and FIXED 2026-09-03)
+
+Finding: `apps/extension/service-worker.ts`'s `chrome.downloads.onCreated`
+listener carried the comment *"records the most recent download **per initiating
+tab**"* — but the code did no such thing:
+
+```js
+chrome.downloads.onCreated.addListener((item) => {
+  void chrome.storage.session.set({
+    'ssx:last-download': { url: item.url, filename: item.filename, mime: item.mime, referrer: item.referrer },
+  });
+});
+```
+
+A single global key `ssx:last-download`, last-write-wins, **no tab filter** —
+while every other observer in the same file is correctly tab-scoped
+(`redirectKey(details.tabId)`, `loginTracker.recordNavigation(details.tabId,
+…)`). The download listener was the one exception, and its comment described a
+scoping it did not implement.
+
+### Two problems, not one
+
+1. **Minimization gap.** One global slot means the extension retains a download
+   record with no session boundary — broader collection than any analysis pass
+   needs.
+
+2. **Evidence MISATTRIBUTION — the correctness bug, and the worse of the two.**
+   Because the key is global and unkeyed by tab, a download from an unrelated
+   tab is read as belonging to whatever site the engine next analyzes:
+   - **False positive on an innocent page.** SW analyzes site A; two minutes
+     earlier someone downloaded `installer.exe` from an unrelated tab on site B;
+     DL-01/DL-02 evaluating site A read site B's download as site A's, and can
+     fire on a page that downloaded nothing.
+   - **Silent masking of a real malicious download.** A benign download
+     overwrites the global key first, so a genuinely malicious one that followed
+     is never the value the pass reads — a false negative with no trace.
+
+   `DownloadItem` carries no `tabId` (re-verified against current Chrome docs,
+   2026-09-03: only `url` / `finalUrl` / `referrer` / `byExtensionId`), so the
+   API gives no direct tab reference to key by — which is exactly why the naive
+   global key is a trap rather than an obvious omission.
+
+### Fix (same pass) — active-tab-at-event-time, honest notCollected otherwise
+
+`chrome.downloads.onCreated` now captures the tab that had focus the instant the
+download began, via `chrome.tabs.query({active: true, currentWindow: true})`,
+and keys storage by that `tabId` — not a global key, not referrer/URL string
+inference. Referrer/URL correlation was REJECTED as the fix: empty referrers are
+common (Referrer-Policy / cross-origin / HTTPS→HTTP strip them), domain matching
+is ambiguous (two tabs on one registrable domain; CDN/redirector hosts differ
+from the initiating page), and it is exactly the self-declared-heuristic class
+this project already requires be labelled, never silently trusted (cf. G-6's
+"not real reachability analysis").
+
+The active-tab technique is still a heuristic — a background-triggered or
+non-focused-tab download is not attributed — and that boundary is applied
+through the project's OWN existing principle, not a new policy: when attribution
+is confident (an active tab exists at event time), the download becomes that
+session's `DownloadContextEvidence`; when it is not (no active tab), **nothing
+is recorded**, the producer yields `notCollected`, and the downloadContext
+module returns `unevaluable(required_evidence_not_collected)` — the same
+"reason, never a silent guess" standard every other module already holds. The
+old global last-write-wins key is never a fallback.
+
+Combined discovery-and-fix in one pass, the same shape as [[DEFECT-7]]
+(snapshot-identity collision, found and fixed together).
+
+- **Owner:** Unassigned — solo execution, DEC-7 context applies.
+- **Status:** FIXED 2026-09-03 in `apps/extension/service-worker.ts` (scoped
+  listener) and `apps/extension/download-context.ts` (producer + confident/
+  notCollected boundary), proven by `tools/conformance/dl-live-path.test.ts`.
+  ⚠️ S-9: DL is in-browser-only, so this is validated on the live/extension path,
+  never against the corpus.
+- **Related:** [[DEFECT-7]] (same found-and-fixed-together shape), [[DEC-30]]
+  (the "no falsifiable heuristic" discipline this honors), `docs/download-permission-context-REVIEW.md`
+  (the investigation that surfaced it).

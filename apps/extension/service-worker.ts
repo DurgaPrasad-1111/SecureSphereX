@@ -18,6 +18,7 @@ import {
   SessionStore, type SessionStorageBackend, type SessionKeyParts,
 } from './session-store.ts';
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
+import { computeDownloadContextEvidence, downloadKey, type DownloadRecord } from './download-context.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
 import { RedirectTracker, computeRedirectEvidence, redirectKey } from './redirect-observer.ts';
 import {
@@ -139,7 +140,15 @@ async function analyzeAndReflect(
     // (notCollected), so the redirect module is honestly unevaluable.
     const stored = await chrome.storage.session.get(redirectKey(tabId));
     const redirect = stored[redirectKey(tabId)] as RedirectEvidence | undefined;
-    const evidence = assembleEvidence(redirect ? { ...parts, redirect } : parts, targetUrl, today());
+    // DEFECT-38: merge THIS tab's scoped download record (if any) into parts.
+    // Absent -> assembler stub -> notCollected -> module unevaluable, honestly.
+    const dlStored = await chrome.storage.session.get(downloadKey(tabId));
+    const dlRec = dlStored[downloadKey(tabId)] as DownloadRecord | undefined;
+    const downloadContext = dlRec ? computeDownloadContextEvidence(dlRec) : undefined;
+    let merged: CollectedParts = parts;
+    if (redirect) merged = { ...merged, redirect };
+    if (downloadContext) merged = { ...merged, downloadContext };
+    const evidence = assembleEvidence(merged, targetUrl, today());
     // A1.5: the real AuthStore is the ACEM's reader. prior=null for a first
     // pass; the §11.4 lock is A1.1's concern and not wired into this minimal
     // first-run path yet.
@@ -193,13 +202,33 @@ function reflectBadge(tabId: number, tier: string): void {
 }
 
 /* ── DL family (step 7b): observe downloads. Requires the "downloads"
- * permission, declared in the manifest. This records the most recent download
- * per initiating tab; wiring it into a full downloadContext evidence pass is a
- * follow-up (the DL modules are S-9 in-browser-only and become real HERE). ── */
+ * permission (already in the manifest).
+ *
+ * DEFECT-38: scoped to the tab that had FOCUS at event time, keyed by tabId —
+ * NOT a global last-write-wins key. DownloadItem carries no tabId, so
+ * chrome.tabs.query({active,currentWindow}) at onCreated is the attribution
+ * heuristic (chrome.tabs.query returns tab .id without the "tabs" permission).
+ * It is a HEURISTIC and bounded honestly: a background-triggered or
+ * non-focused-tab download has no confident active tab, so NOTHING is stored —
+ * the producer then yields notCollected and the module is unevaluable, never a
+ * misattributed guess. Referrer/URL string correlation was rejected (empty
+ * referrers, ambiguous domains — the self-declared-heuristic class this project
+ * requires be labelled, not silently trusted). ── */
 chrome.downloads.onCreated.addListener((item) => {
-  void chrome.storage.session.set({
-    'ssx:last-download': { url: item.url, filename: item.filename, mime: item.mime, referrer: item.referrer },
-  });
+  void (async () => {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = activeTab?.id;
+    // Not confidently attributable to a focused tab -> record NOTHING. The
+    // pass will see no download for any tab and downloadContext stays
+    // notCollected (module unevaluable). Never the old global key.
+    if (tabId === undefined) return;
+    await chrome.storage.session.set({
+      [downloadKey(tabId)]: {
+        url: item.url, filename: item.filename, mime: item.mime,
+        referrer: item.referrer, observedAt: Date.now(),
+      },
+    });
+  })();
 });
 
 /* ── worker-wake reconstruction (A1.1) ──────────────────────────────────── */
