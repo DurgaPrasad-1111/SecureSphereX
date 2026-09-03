@@ -204,36 +204,54 @@ def walk_predicate(pred, ctx, findings):
         findings['V-12'].append(f"unrecognized predicate op {op!r}")
 
 
-def check_v16_negated_is_on_nullable(pred, findings, rule_id, negated=False):
-    """V-16: flag any `is(x)` on a three-state (`boolean | null`) field that
-    sits under an ODD number of `not` wrappers — i.e. `not(is(x))`, however the
-    AST nests it. That form matches BOTH `false` and `null`, because the engine
-    `is` operator tests only `=== true` (stage2.ts): so `not(is(null))` reads
-    "unknown" as "confirmed false", firing every time the field is unknown, not
-    just sometimes. This is DEFECT-39 (DL-02, extensionMimeConsistent) and
-    DEFECT-40 (PM-01, precededByUserGesture). The correct form is
-    `eq(x, false)`, which matches only a confirmed `false`.
+def check_v16_null_fold_on_nullable(pred, findings, rule_id, negated=False):
+    """V-16: flag any predicate on a three-state (`boolean | null`) field whose
+    effective match set — accounting for negation PARITY through the full
+    ancestor path (not just a direct not-chain) — includes `null`. That form
+    silently folds "unknown" into a definite value, firing every time the field
+    is unknown, not just sometimes. DEFECT-39 (DL-02, extensionMimeConsistent),
+    DEFECT-40 (PM-01, precededByUserGesture).
 
-    Non-negated `is(x)` on the same field is SAFE (null -> noMatch -> silent,
-    the restrictive direction) and is not flagged. Even negation depth cancels
-    (not(not(is(x))) == is(x)), handled by the parity toggle."""
+    For x in {true, false, null}, null is in the match set (a BUG) when:
+      - is(x) under ODD negation          -> not(is(x)): {false, null}
+      - eq(x, v) under ODD negation, v!=null -> not(eq(x,v)): complement incl. null
+      - neq(x, v) under EVEN negation, v!=null -> neq(x,v): complement incl. null
+    Safe forms (null EXCLUDED, not flagged): eq(x, true|false) (the DEC-41 fix),
+    not(neq(x, v)), and any explicit null comparison eq(x,null)/neq(x,null).
+
+    `negated` toggles on each `not` and is PASSED THROUGH `and`/`or`/`exists`
+    unchanged, so a nullable `is`/`eq`/`neq` nested under `not(and(...))` or
+    `not(or(...))` is caught, not only a bare `not(is(x))`."""
     op = pred.get('op')
-    if op == 'is':
+
+    def flag(form, path, fix):
+        findings['V-16'].append(
+            f"{rule_id}: {form} over a three-state (boolean | null) field {path!r} — its match "
+            f"set includes null, so it treats unknown as a definite value (DEFECT-39/40). {fix}")
+
+    if op in ('is', 'eq', 'neq'):
         path = pred.get('path', '')
         field = path.split('.')[-1]  # module.field or $.field -> terminal segment
-        if negated and field in THREE_STATE_BOOLEAN_FIELDS:
-            findings['V-16'].append(
-                f"{rule_id}: not(is({path})) over a three-state (boolean | null) field — "
-                f"treats null (unknown) as false (DEFECT-39/40). Use eq({path}, false) so only "
-                f"a confirmed false matches.")
-    elif op == 'not':
-        check_v16_negated_is_on_nullable(pred['operand'], findings, rule_id, not negated)
+        if field in THREE_STATE_BOOLEAN_FIELDS:
+            if op == 'is' and negated:
+                flag(f"not(is({path}))", path, f"Use eq({path}, false) so only a confirmed false matches.")
+            elif op == 'eq' and negated and pred.get('value') is not None:
+                v = pred.get('value')
+                flag(f"not(eq({path}, {str(v).lower()}))", path,
+                     f"Use eq({path}, {str(not v).lower()}) to match the other confirmed value, or handle null explicitly.")
+            elif op == 'neq' and (not negated) and pred.get('value') is not None:
+                v = pred.get('value')
+                flag(f"neq({path}, {str(v).lower()})", path,
+                     f"neq matches null too; use eq({path}, {str(not v).lower()}) for a confirmed value, or neq({path}, null) to test known-ness.")
+        return
+    if op == 'not':
+        check_v16_null_fold_on_nullable(pred['operand'], findings, rule_id, not negated)
     elif op in ('and', 'or'):
         for o in pred.get('operands', []):
-            check_v16_negated_is_on_nullable(o, findings, rule_id, negated)
+            check_v16_null_fold_on_nullable(o, findings, rule_id, negated)
     elif op == 'exists':
-        check_v16_negated_is_on_nullable(pred['where'], findings, rule_id, negated)
-    # eq/neq/gte/.../sameSite/inSet/priorFindingActive carry no nested `is` to negate.
+        check_v16_null_fold_on_nullable(pred['where'], findings, rule_id, negated)
+    # gte/lte/gt/lt/sameSite/inSet/priorFindingActive carry no boolean-field null-fold.
 
 
 def predicate_depth(pred):
@@ -397,7 +415,7 @@ def validate(rs, ruleset_path):
         if depth > MAX_PREDICATE_DEPTH:
             findings['V-12'].append(f"{r['id']}: predicate depth {depth} exceeds bound {MAX_PREDICATE_DEPTH}")
         walk_predicate(r['predicate'], {'in_exists': False, 'collection': None}, findings)
-        check_v16_negated_is_on_nullable(r['predicate'], findings, r['id'])  # V-16
+        check_v16_null_fold_on_nullable(r['predicate'], findings, r['id'])  # V-16
 
     # also walk suppression guards (same path/param/set/ItemPath rules apply)
     for s in rs['suppressions']:

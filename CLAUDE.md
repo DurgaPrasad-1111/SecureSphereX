@@ -69,8 +69,9 @@ validator · G-9 property tests (Stage 1b) · G-10 deterministic replay (Stage 6
 
 **Two corrections to §3:** G-8 runs **sixteen** static checks V-1..V-16, not twelve.
 V-1..V-13 come from `ruleset_format_v1.ts`; V-14 verifies `integrityDigest` (DEFECT-17),
-V-15 gates `pslVersion` reconciliation (DEC-27), and V-16 flags `not(is(x))` over a
-three-state `boolean | null` field (DEFECT-39/40, DEC-41) — none are in the contract, all
+V-15 gates `pslVersion` reconciliation (DEC-27), and V-16 flags any predicate that folds `null` into its match set (`not(is(x))`,
+`neq(x, v)`, `not(eq(x, v))`, negation-parity-aware) over a three-state `boolean | null`
+field (DEFECT-39/40, DEC-41) — none are in the contract, all
 are in `validate-ruleset.py`. The contract-conformance check is a separate gate,
 **G-11**, not G-8 (`DECISIONS.md` DEC-4) — G-8 is the rule-set validator only.
 

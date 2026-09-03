@@ -72,4 +72,49 @@ const v16Line = (out: string) => out.split('\n').find((l) => l.startsWith('V-16'
   console.log('  [2] FAILING fixture: not(is) on both fields -> V-16 FAIL naming DL-02 + PM-01, NON-CONFORMANT ✓');
 }
 
-console.log('V-16 PROVEN: passes the fixed ruleset; catches the exact not(is(nullable)) form of DEFECT-39 (DL-02) and DEFECT-40 (PM-01). Had V-16 existed before today, both would have failed CI at authoring.');
+// ── 3. FAILING fixture: the neq equivalent — neq(x, false) on a nullable field ─
+// The sweep found ZERO neq/not(eq) instances in the real ruleset today (clean),
+// so this proves V-16 catches the form PREVENTIVELY. neq(x, false) matches
+// {true, null} — null folded in — the same class as not(is(x)).
+{
+  const rs = JSON.parse(readFileSync(REAL, 'utf8')) as {
+    rules: { id: string; predicate: { operands: unknown[] } }[];
+  };
+  for (const r of rs.rules) {
+    if (r.id === 'DL-02') {
+      r.predicate.operands[0] = { op: 'neq', path: 'downloadContext.extensionMimeConsistent', value: false };
+    }
+  }
+  const broken = join(tmpdir(), 'ssx-v16-neq-broken.json');
+  writeFileSync(broken, JSON.stringify(rs, null, 2));
+  const { out } = validate(broken);
+  assert.match(v16Line(out), /^V-16\s+FAIL/, `V-16 must FAIL on neq(x, false) over a nullable field; got: ${v16Line(out)}`);
+  assert.match(out, /neq\(downloadContext\.extensionMimeConsistent, false\)/, 'V-16 must name the neq form');
+  console.log('  [3] neq equivalent: neq(extensionMimeConsistent, false) -> V-16 FAIL (caught preventively; none exist today) ✓');
+}
+
+// ── 4. FAILING fixture: nullable `is` nested under not(and(...)) — proves the
+// negation walk follows the FULL ancestor path through and/or, not just a bare
+// not(is(x)) chain. No current rule uses this shape; this is the generality proof.
+{
+  const rs = JSON.parse(readFileSync(REAL, 'utf8')) as {
+    rules: { id: string; predicate: { operands: unknown[] } }[];
+  };
+  for (const r of rs.rules) {
+    if (r.id === 'DL-02') {
+      r.predicate.operands[0] = { op: 'not', operand: { op: 'and', operands: [
+        { op: 'is', path: 'downloadContext.extensionMimeConsistent' },  // nullable
+        { op: 'is', path: 'downloadContext.hasCompoundExtension' },      // plain boolean
+      ] } };
+    }
+  }
+  const broken = join(tmpdir(), 'ssx-v16-nested-broken.json');
+  writeFileSync(broken, JSON.stringify(rs, null, 2));
+  const { out } = validate(broken);
+  assert.match(v16Line(out), /^V-16\s+FAIL/,
+    `V-16 must catch a nullable is() nested under not(and(...)) — full-path negation, not just direct not-chains; got: ${v16Line(out)}`);
+  assert.match(out, /extensionMimeConsistent/, 'V-16 must name the nullable field inside the not(and())');
+  console.log('  [4] not(and(is(extensionMimeConsistent), is(hasCompoundExtension))) -> V-16 FAIL: negation parity walks through and/or ✓');
+}
+
+console.log('V-16 PROVEN: passes the fixed ruleset; catches not(is), neq(x,val), and nullable is nested under not(and()) — the full null-fold class — over a three-state field. DEFECT-39 (DL-02) and DEFECT-40 (PM-01) would both have failed CI at authoring; the neq form is caught preventively (none exist today).');
