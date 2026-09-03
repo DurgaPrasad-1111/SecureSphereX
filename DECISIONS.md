@@ -4887,3 +4887,37 @@ IS live and unconditional.
 **Related:** [[DEC-43]] (the engine mechanism this wires into production),
 [[DEC-42]] (nullOperand, orthogonal), §11.4 (the intervention-lock/session
 semantics), §3.1 (new navigation = new Session).
+
+---
+
+## Annex A amendment (2026-09-03) — `evidence.contract.v1.ts:264-267` comment corrected (DEFECT-18 transmissionEndpointDomains half closed)
+
+**Comment-only amendment to the frozen contract**, hand-typed by the Architecture
+Owner into `packages/contracts/evidence.contract.v1.ts` — no type, field, or
+signature change. Same class as the [[DEC-19]] redirect amendment and Amendment B
+([[DEC-14]]): a hand edit to the frozen artifact, never by Claude Code.
+
+**What changed.** The doc-comment on `ScriptRuntimeEvidence.transmissionEndpointDomains`
+(lines 264-267) was stale: *"Until a producer populates this, javascript.ts
+reports transmissionEndpointDomains as [] unconditionally and CRED-05's `exists`
+over it is vacuously false (DEFECT-18)."* That premise no longer holds. Amendment B
+(`ce05ded`) added the producer-PSL-resolved field, `apps/harness/extract/scriptRuntime.ts`
+populates it, and the **DEFECT-18 engine-consumption fix (2026-09-03)** made
+`packages/engine/modules/javascript.ts` READ it (`present`→value, `absent`→`[]`,
+`notCollected`→unevaluable). The corrected comment now reads, in one clean
+sentence-set: the producer DOES populate it, `javascript.ts` READS it, CRED-05's
+`exists` is no longer vacuously false, and **the only remaining CRED-05 blocker is
+the separate transmission-observation gate** (`clientSideTransmissionObserved`,
+Tier 4). The `injectingScriptOriginDomain` half of DEFECT-18 is unchanged and still
+open (no evidence source in this category).
+
+**Verification.** Comment-only, so no type-check or behavioural impact;
+`verify:all` was already green over this text. The frozen artifact's change is
+visible in `git status` per the block-frozen hook's own durable-control note.
+
+- **Amended by:** Jayanth (Architecture Owner), by hand, 2026-09-03.
+
+**Related:** [[DEC-14]] (Amendment B, the field this comments), [[DEC-19]] (the
+prior hand-typed Annex A amendment this session), DEFECT-18 (the two-half gap this
+tracks), `packages/engine/modules/javascript.ts` (the engine-consumption fix that
+made the old comment stale).

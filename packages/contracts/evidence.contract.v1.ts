@@ -262,9 +262,7 @@ export interface ScriptRuntimeEvidence {
    *  module is exactly what §2.6 and E-4 forbid, and that derivation belongs
    *  at Stage 1 in the producer or is R-01 territory reserved for Stage 2.
    *
-   *  Closes the amendment DEC-14 deferred. Until a producer populates this,
-   *  javascript.ts reports transmissionEndpointDomains as [] unconditionally
-   *  and CRED-05's `exists` over it is vacuously false (DEFECT-18). */
+   *  Closes the amendment DEC-14 deferred. The producer DOES populate this (apps/harness/extract/scriptRuntime.ts, PSL-resolved), and as of the DEFECT-18 engine-consumption fix (2026-09-03) javascript.ts READS it (present → value, absent → [], notCollected → unevaluable). CRED-05's exists over it is no longer vacuously false; the only remaining CRED-05 blocker is the separate transmission-observation gate (clientSideTransmissionObserved, Tier 4). */
   readonly transmissionEndpointDomains: Observation<readonly string[]>;
   readonly dynamicScriptLoadCount: Observation<number>;
   readonly dynamicScriptOrigins: Observation<readonly string[]>;
