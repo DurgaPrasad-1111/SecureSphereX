@@ -2746,7 +2746,7 @@ Combined discovery-and-fix in one pass, the same shape as [[DEFECT-7]]
 
 ---
 
-## DEFECT-39 — DL-02 fires on ordinary benign downloads: `not(is(extensionMimeConsistent))` treats "unknown" as "inconsistent" (found 2026-09-03; HIGH; RULESET-level, decision pending)
+## DEFECT-39 — DL-02 fires on ordinary benign downloads: `not(is(extensionMimeConsistent))` treats "unknown" as "inconsistent" (found 2026-09-03; HIGH; RESOLVED 2026-09-03 via DEC-41)
 
 **Severity: HIGH.** Structurally invisible to the corpus (S-9: downloadContext
 is in-browser-only), so no existing gate catches it — it surfaces only the first
@@ -2807,11 +2807,12 @@ residual-unknown behavior question) in decision-packet format, no recommendation
 baked in.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN, HIGH. Root cause is the frozen DL-02 predicate; awaiting an
-  Architecture-Owner ruling via `docs/DL-02-extension-mime-REVIEW.md`. DL-02 is
-  NOT complete until this is resolved. DEFECT-38's producer wiring is unaffected
-  and correct — this is a separate, pre-existing rule/predicate defect that the
-  wiring merely made observable.
+- **Status:** RESOLVED 2026-09-03 via [[DEC-41]] (Architecture-Owner ruling,
+  in-session). DL-02's predicate amended `not(is(extensionMimeConsistent))` ->
+  `eq(extensionMimeConsistent, false)`, so an UNKNOWN pairing (null) no longer
+  matches; DL-02 fires only on a CONFIRMED-inconsistent pairing. Digest
+  recomputed, V-1..V-15 CONFORMANT. Proven by `tools/conformance/dl-live-path.test.ts`
+  — the exact report.pdf case that exposed this is now silent.
 - **Related:** [[DEFECT-38]] (surfaced it — the producer that made DL-02 real),
   [[DEFECT-19]] (the same "ruleset-level → Architecture-Owner decision packet"
   handling), [[DEFECT-22]] (the `not`/three-state operator reasoning this is
@@ -2819,7 +2820,7 @@ baked in.
 
 ---
 
-## DEFECT-40 — PM-01 sibling of DEFECT-39: `not(is(precededByUserGesture))` treats unknown-gesture as no-gesture (found 2026-09-03; LATENT under DEC-40; RULESET-level)
+## DEFECT-40 — PM-01 sibling of DEFECT-39: `not(is(precededByUserGesture))` treats unknown-gesture as no-gesture (found 2026-09-03; RESOLVED 2026-09-03 via DEC-41; was LATENT under DEC-40)
 
 Finding: the systemic sweep for DEFECT-39's pattern (every `not(is(x))`
 predicate whose target `x` is a three-state `boolean | null` findings field)
@@ -2881,10 +2882,12 @@ That sequencing is the Architecture Owner's call; the DEFECT-39 packet
 mechanics that apply equally here.
 
 - **Owner:** Unassigned — solo execution, DEC-7 context applies.
-- **Status:** OPEN, LATENT (masked by [[DEC-40]]'s non-functional acceptance of
-  PM-01). RULESET-level root, same as [[DEFECT-39]]; fixable in the same Annex A
-  amendment or deferred to PM-01's wiring. NOT folded into DEFECT-39 —
-  a distinct predicate on a distinct rule and field.
+- **Status:** RESOLVED 2026-09-03 via [[DEC-41]] (fixed in the SAME amendment as
+  DEFECT-39, as flagged): PM-01's predicate amended
+  `not(is(precededByUserGesture))` -> `eq(precededByUserGesture, false)`, so a
+  null (unknown gesture) no longer matches. Proven at the predicate-unit level
+  (`tools/conformance/pm01-predicate-unit.test.ts`) since PM-01 stays
+  unevaluable end-to-end under [[DEC-40]] — dormant-but-correct.
 - **Related:** [[DEFECT-39]] (the pattern; same root and fix class), [[DEC-40]]
   (why this is currently inert), `docs/DL-02-extension-mime-REVIEW.md` (the
   amendment mechanics).

@@ -4578,3 +4578,60 @@ permissionContext as the sole one), `docs/download-permission-context-REVIEW.md`
 - **Status:** SIGNED 2026-09-03. PM-01 accepted non-functional for Phase I;
   DEC-30 intact; re-verified against current Chrome API docs before ratifying.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+---
+
+## DEC-41 — Ruleset amendment: DL-02 and PM-01 predicates `not(is(x))` → `eq(x, false)`, closing DEFECT-39 and DEFECT-40
+
+**[R]** [[DEFECT-39]] (HIGH) and its swept sibling [[DEFECT-40]] share one root
+cause: a `not(is(x))` predicate over a three-state (`boolean | null`) findings
+field. The engine `is` operator tests only `=== true` (`stage2.ts:180`), so
+`not(is(x))` matches BOTH `false` (a confirmed negative) and `null` (unknown) —
+treating "we could not determine it" as "it is false." Two fields in the entire
+ruleset are `boolean | null`, and the systemic sweep (DEFECT-40) confirmed both
+are targeted by `not(is())`:
+- `downloadContext.extensionMimeConsistent` (DL-02) — `null` on every extension
+  outside the 14-entry map, so DL-02 fired on ordinary benign downloads.
+- `permissionContext.precededByUserGesture` (PM-01) — `null` when gesture context
+  is unobservable; latent under [[DEC-40]] (PM-01 non-functional) but the same
+  bug.
+
+**[I] Fix — one class, one amendment: `not(is(x))` → `eq(x, false)`.** The
+engine already has `eq` (`ruleset.format.v1.ts:125` — `{op:'eq', path, value}`,
+value may be boolean), so this is a RULESET JSON edit only, no engine change.
+`eq(x, false)` matches only a CONFIRMED `false`; `null` (unknown) no longer
+matches, so both rules stay silent under uncertainty — the restrictive default
+this project favors (cf. `notSameSite` on a null domain is a noMatch). DL-02's
+`hasCompoundExtension` arm and PM-01's other conjuncts are unchanged.
+
+**[I] Applied directly to `rulesets/rules-v0.1.0.json` this session**, not
+hand-typed separately, after CHECKING the actual frozen-file hook
+(`.claude/hooks/block-frozen.mjs`): its `isFrozenPath` matches only
+`packages/contracts/`, `spec/`, and `d0_\d+_schema.json` — the ruleset matches
+none, so it is NOT hook-protected. (It is a governance-"frozen" artifact by
+CLAUDE.md convention, but `released: false`, i.e. mutable, and this edit corrects
+a HIGH-severity defect.) `integrityDigest` recomputed with
+`tools/ci/compute-ruleset-digest.mjs`:
+`sha256:088ba46e4e2391736c06f9e7254b343a015c98bb632f6a7e73d78146d5fd74ec`,
+V-14 MATCH, full validator V-1..V-15 CONFORMANT.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-03** — stated plainly, not self-attested: the ruling to apply both
+predicate edits (rather than leave them for a hand edit) was given by the
+Architecture Owner in-session, conditioned on the hook check above.
+
+**[I] No rule/parameter/weight/threshold change** beyond the two predicate
+operators — eleven rules before and after, same parameters, refinement sets,
+suppressions, subsumption. Only the two `not(is)` nodes became `eq(...,false)`.
+
+- **Status:** SIGNED 2026-09-03. Both predicates amended and validated; DEFECT-39
+  and DEFECT-40 RESOLVED. DL-02 now silent on unknown-extension downloads and
+  fires only on confirmed inconsistency (proven by
+  `tools/conformance/dl-live-path.test.ts`); PM-01's fix is proven at the
+  predicate-unit level (dormant under DEC-40).
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+
+**Related:** [[DEFECT-39]], [[DEFECT-40]] (both closed by this),
+[[DEC-31]]/[[DEC-39]] (prior digest-recompute ruleset amendments), [[DEC-40]]
+(why PM-01's half is dormant), `docs/DL-02-extension-mime-REVIEW.md` (the packet
+whose Option A this implements).

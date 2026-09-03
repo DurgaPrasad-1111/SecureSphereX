@@ -74,7 +74,10 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
   console.log('  [1] DL-02 fires on compound extension invoice.pdf.exe ✓');
 }
 
-// ── DL-02 POSITIVE 2: extension/mime mismatch (.exe served as image/png) ──
+// ── DL-02 POSITIVE: CONFIRMED inconsistency (.exe served as image/png) — this
+// is extensionMimeConsistent = FALSE (a KNOWN-inconsistent pairing), which
+// eq(x, false) matches. The over-fire fix (DEC-41) does NOT weaken true
+// detection: a genuine mismatch still fires.
 {
   const rec: DownloadRecord = {
     url: 'https://cdn.evil.tld/setup.exe', filename: 'setup.exe',
@@ -85,22 +88,30 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
   console.log('  [2] DL-02 fires on extension/MIME mismatch (.exe as image/png) ✓');
 }
 
-// ── DL-02 NEGATIVE: consistent benign download (archive.zip / application/zip) ─
-// NOTE: the benign case uses `zip`, which IS in the module's EXTENSION_MIME_MAP,
-// so zip+application/zip resolves to extensionMimeConsistent=TRUE -> DL-02 silent.
-// A `.pdf`/application/pdf download does NOT stay silent, because `pdf` is absent
-// from that 14-entry (executable-focused) map -> consistency=null ->
-// `not(is(null))` matches -> DL-02 fires. That over-fire on honest non-executable
-// downloads is a PRE-EXISTING module/ruleset behavior (not DEFECT-38), flagged in
-// the report as a candidate finding, not silently encoded as "expected" here.
+// ── DL-02 NEGATIVE 1: UNKNOWN extension — the exact report.pdf case that
+// exposed DEFECT-39. `pdf` is not in EXTENSION_MIME_MAP -> extensionMimeConsistent
+// = null (unknown). After DEC-41 (not(is) -> eq(x,false)), null no longer matches
+// -> DL-02 SILENT. Under the old predicate this FIRED (null-as-false); that is
+// the regression this asserts is gone.
+{
+  const rec: DownloadRecord = {
+    url: 'https://shop.example.com/report.pdf', filename: 'report.pdf',
+    mime: 'application/pdf', referrer: 'https://shop.example.com/checkout', observedAt: 1,
+  };
+  const out = await passWithDownload(rec);
+  assert.ok(!fired(out, 'DL-02'), `DEFECT-39: DL-02 must NOT fire on an UNKNOWN-extension download (report.pdf -> extensionMimeConsistent null); fired: ${out.findings.map(f=>f.ruleId).join(',')}`);
+  console.log('  [3a] DL-02 SILENT on unknown-extension report.pdf/application/pdf (DEFECT-39 fixed: null is no longer treated as false) ✓');
+}
+
+// ── DL-02 NEGATIVE 2: KNOWN-consistent download stays silent too ──────────
 {
   const rec: DownloadRecord = {
     url: 'https://shop.example.com/archive.zip', filename: 'archive.zip',
     mime: 'application/zip', referrer: 'https://shop.example.com/checkout', observedAt: 1,
   };
   const out = await passWithDownload(rec);
-  assert.ok(!fired(out, 'DL-02'), `DL-02 must NOT fire on a consistent in-map download (zip/application/zip); fired: ${out.findings.map(f=>f.ruleId).join(',')}`);
-  console.log('  [3] DL-02 silent on a consistent in-map download archive.zip/application/zip ✓');
+  assert.ok(!fired(out, 'DL-02'), `DL-02 must NOT fire on a KNOWN-consistent download (zip/application/zip -> true); fired: ${out.findings.map(f=>f.ruleId).join(',')}`);
+  console.log('  [3b] DL-02 silent on a known-consistent archive.zip/application/zip ✓');
 }
 
 // ── DL-01: cross-domain executable download reaches priorFindingActive ────
@@ -137,4 +148,4 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
   console.log('  [5] No download record -> downloadContext notCollected -> DL rules unevaluable (no misattribution) ✓');
 }
 
-console.log('DL LIVE-PATH PROVEN: DL-02 fires on compound-ext + ext/MIME mismatch, silent on benign; DL-01 downloadContext blocker removed (priorFindingActive remains); no-record path is honestly unevaluable, never a global-key guess (DEFECT-38).');
+console.log('DL LIVE-PATH PROVEN: DL-02 fires on confirmed inconsistency + compound extension; SILENT on unknown-extension (report.pdf) and known-consistent downloads (DEFECT-39 fixed, DEC-41); DL-01 downloadContext blocker removed (priorFindingActive remains); no-record path unevaluable, never a global-key guess (DEFECT-38).');
