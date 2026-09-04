@@ -49,11 +49,15 @@
  * default — the frozen rule set has zero composites, so `null` is the
  * only value any rule could honestly report.
  *
- * `matched`/`unmatched`/`blocked` → finding/no finding/no finding: per
- * §5.6's precedent (non-matching is not suppression, and by the same
- * principle, not a fabricated match) — `blocked` (today, DL-01 only,
- * `PriorFindingActiveUnavailableError`) produces no finding, exactly like
- * `unmatched`, never a guessed one.
+ * `matched`/`unmatched` → finding / no finding: per §5.6's precedent
+ * (non-matching is not suppression, and by the same principle, not a
+ * fabricated match) — an unmatched rule produces no finding, never a guessed
+ * one. (Historical note: `priorFindingActive` on DL-01 once produced a third
+ * `blocked` status, via `PriorFindingActiveUnavailableError`, when the
+ * analysis-history dependency was unavailable. That throw/`blocked` path was
+ * RETIRED by DEC-43 Option C — the conjunct is now answered by the threaded
+ * `PriorPassState.anyPriorPrimaryFindingActive` boolean, so no rule blocks
+ * here any more; both the error type and the `blocked` status are gone.)
  *
  * A GENUINE GAP FOUND WHILE RE-READING, NOT FIXED HERE — logged as
  * DEFECT-21 (docs/DEFECTS.md), which is the authoritative record; not

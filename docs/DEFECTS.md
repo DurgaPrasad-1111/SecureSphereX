@@ -2983,8 +2983,14 @@ re-runs analysis for the current document without a fresh navigation).
   DL-02 fires only if the user happens to navigate/reload after a download. DL
   is S-9 (in-browser-only), so neither shows up in corpus metrics — the gap is
   invisible to the offline suite and was only surfaced by the live-browser round.
-- **Status:** OPEN — a decision for later, deliberately NOT implemented now
-  (per instruction). The fix is a design choice for the Architecture Owner:
-  whether `downloads.onCreated` (or another signal) should re-trigger analysis
-  on the current session, and if so how the download record attaches to that
-  re-pass. No urgency; recorded so it is not left implicit.
+- **Status:** RESOLVED 2026-09-04 via [[DEC-45]] (Option A). The Architecture
+  Owner directed the resolution and delegated the option choice; the implementing
+  session built the SW download re-pass: `chrome.downloads.onCreated` now runs a
+  combined re-pass for the tab's current session, reusing that session's cached
+  content-script evidence + the fresh download, through `runPassInSession` (the
+  first SW-initiated analysis trigger). Three binding requirements met — routed
+  through the existing `#withKeyLock`; cached evidence carries no credential value
+  (asserted by test); staleness bounded by `EVIDENCE_CACHE_MAX_AGE_MS`. DL-01 now
+  fires end-to-end through the cache+re-pass path (`test:downloadrepass`). The
+  live-Chrome download E2E remains a manual check (headed Playwright download
+  crashes the context), but the trigger gap this defect recorded is closed.

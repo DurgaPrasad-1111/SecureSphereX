@@ -33,3 +33,6 @@ tranco-top1m.zip
 tranco_top10k.csv
 # Editor config, not project source.
 .vscode/
+
+# Local scratch login page for manual/live CRED-01 testing — never committed.
+test-page/

@@ -4883,6 +4883,15 @@ IS live and unconditional.
   four test-plan cases green; verify:all exit 0; corpus matrix unchanged
   (12 TP / 0 FP — no engine source touched).
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-03
+- ⚠ **Provenance (corrected 2026-09-04, same distinction as DEC-45 / the v1.0.0
+  tag):** this entry records the **advising session's technical determination**
+  on Step 1's design — the `documentId` attribution mechanism, the per-key
+  lock-queue shape, and which of two competing `PriorPassState` homes to keep —
+  made **within the Architecture Owner's authorization to proceed with the
+  multi-pass session work**, NOT a personal, line-by-line Architecture-Owner
+  ruling on each mechanism. The "Signed by: Jayanth" line above should be read as
+  that authorization-to-proceed, not per-detail sign-off. Stated plainly, to the
+  same honesty standard as every other provenance correction this session.
 
 **Related:** [[DEC-43]] (the engine mechanism this wires into production),
 [[DEC-42]] (nullOperand, orthogonal), §11.4 (the intervention-lock/session
