@@ -6,8 +6,8 @@
  * and reuses the shared verdict renderer for "View security findings".
  *
  *   Medium (30–59): Proceed anyway · Go back · View security findings.
- *     Proceeding logs the A-01 user-trusted-origin record (SW side); it never
- *     teaches the auth store trust.
+ *     Proceeding records a per-navigation override suppression (SW side); it
+ *     changes no scoring and never teaches the auth store trust.
  *   High (≥60): hard block. Go back · View security findings only — NO proceed.
  */
 

@@ -28,7 +28,7 @@ import {
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
 import type { AnalysisPassOutcome } from '../../packages/engine/pass.ts';
 import { recordIntervention } from '../../packages/engine/stage7-8.ts';
-import { decideIntervention, type ProceedRecord } from './intervention-logic.ts';
+import { decideIntervention, type InterventionOverrideSuppression } from './intervention-logic.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
 import type { RiskTier } from '../../packages/contracts/passresult.contract.v1.ts';
 import type {
@@ -84,6 +84,9 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   // attributed to the session it belongs to.
   tabToNav.set(details.tabId, parts.navigationId);
   void store.startSession(parts, details.url, today(), documentId);
+  // §9.4: consume a pending "proceed" hint into a PER-NAVIGATION override for
+  // this just-committed session (before the content script's pass runs).
+  void consumeArmedOverride(details.tabId, parts.navigationId, details.url);
   // §20.5 conjunct 2 — a main-frame navigation is the "subsequent navigation"
   // after a credential submit. Records the time against any pending submit.
   loginTracker.recordNavigation(details.tabId, Date.now());
@@ -230,11 +233,14 @@ async function maybeRecordLoginSuccess(
   const { result, pending } = loginTracker.resolveLanding(tabId, { credentialFormPresent, sessionStateEstablished });
   if (!result.success || pending === null) return;
 
-  // G-02 (§20.6): if the user proceeded past an intervention on THIS origin this
-  // session (an A-01 record), the auth store must NOT learn trust from it. This
-  // wires the previously-hardcoded-false override — proceeding never teaches trust.
-  const proceeded = await getProceeded(tabId);
-  const overridden = proceeded !== null && proceeded.origin === pending.origin;
+  // G-02 (§20.6): if the user proceeded past an intervention on THIS origin in
+  // the tab's CURRENT navigation session, the auth store must NOT learn trust
+  // from it. Wires the previously-hardcoded-false override — proceeding never
+  // teaches trust. Keyed per-navigation, so a stale prior-navigation proceed
+  // cannot leak into a later session's write.
+  const navId = tabToNav.get(tabId);
+  const override = navId !== undefined ? await getOverride(tabId, navId) : null;
+  const overridden = override !== null && override.origin === pending.origin;
   const req = buildAuthRecordRequest(pending, inPrivateContext(), overridden);
   if (req === null) return;                         // malformed origin — never write
   // The write is GUARDED inside recordAuthentication (G-01…G-05) and feeds the
@@ -269,12 +275,39 @@ async function applyOutcome(tabId: number, targetUrl: string, outcome: AnalysisP
   reflectBadge(tabId, effectiveTier);
 }
 
-/* ── Tier-2 intervention (§9.4, §11.3/§11.4) ──────────────────────────────── */
-function proceededKey(tabId: number): string { return `ssx:proceeded:${tabId}`; }
+/* ── Tier-2 intervention (§9.4, §11.3/§11.4) ──────────────────────────────────
+ * The override suppression is keyed PER NAVIGATION SESSION (tabId, navigationId)
+ * — the same model DEC-43/44 established — NOT by origin across navigations. A
+ * proceed cannot pre-know the navigationId of the page it re-opens, so it writes
+ * a one-shot ARMED hint (per tab); the very next onCommitted for that tab
+ * consumes it into a per-navigation override record and clears the hint. The
+ * override therefore dies with its navigation and never lingers as a per-origin
+ * trust (the retired ssx:auth-prior: bug), and never crosses to another site. */
+function overrideKey(tabId: number, navigationId: number): string { return `ssx:intv-override:${tabId}:${navigationId}`; }
+function overrideArmedKey(tabId: number): string { return `ssx:intv-override-armed:${tabId}`; }
 
-async function getProceeded(tabId: number): Promise<ProceedRecord | null> {
-  const raw = await chrome.storage.session.get(proceededKey(tabId));
-  return (raw[proceededKey(tabId)] as ProceedRecord | undefined) ?? null;
+async function getOverride(tabId: number, navigationId: number): Promise<InterventionOverrideSuppression | null> {
+  const k = overrideKey(tabId, navigationId);
+  return ((await chrome.storage.session.get(k))[k] as InterventionOverrideSuppression | undefined) ?? null;
+}
+
+/**
+ * Consume a pending armed proceed-hint at navigation commit: if the tab was armed
+ * and the committed URL's origin matches, write the per-navigation override for
+ * (tabId, navigationId); otherwise clear the hint (the user navigated elsewhere).
+ * Called from onCommitted, so the override is in place before the content script
+ * runs and maybeIntervene checks it.
+ */
+async function consumeArmedOverride(tabId: number, navigationId: number, committedUrl: string): Promise<void> {
+  const armedRaw = (await chrome.storage.session.get(overrideArmedKey(tabId)))[overrideArmedKey(tabId)] as
+    { origin: string } | undefined;
+  if (armedRaw === undefined) return;
+  await chrome.storage.session.remove(overrideArmedKey(tabId)); // one-shot
+  let origin: string;
+  try { origin = new URL(committedUrl).origin; } catch { return; }
+  if (origin !== armedRaw.origin) return;                        // navigated elsewhere -> discard
+  const record: InterventionOverrideSuppression = { origin, tier: 'Medium', kind: 'intervention-override-suppression', at: Date.now() };
+  await chrome.storage.session.set({ [overrideKey(tabId, navigationId)]: record });
 }
 
 /**
@@ -291,7 +324,8 @@ async function maybeIntervene(
 ): Promise<void> {
   let origin: string;
   try { origin = new URL(targetUrl).origin; } catch { return; } // no origin -> nothing to scope
-  const action = decideIntervention(effectiveTier, await getProceeded(tabId), origin);
+  const override = sessionParts !== null ? await getOverride(tabId, sessionParts.navigationId) : null;
+  const action = decideIntervention(effectiveTier, override, origin);
   if (action === 'none') return;
   // §11.4 lock: record that an intervention was presented at this tier.
   if (sessionParts !== null) {
@@ -303,25 +337,33 @@ async function maybeIntervene(
 }
 
 /**
- * User proceeded past a Medium interstitial. Logs the A-01 user-trusted-origin
- * record (§6.4), scoped to this origin + this session in chrome.storage.session:
- * it (a) suppresses a re-interstitial for the origin, and (b) is the G-02 signal
- * that the auth store must NOT learn trust from this session. It never writes
- * cross-session trust and never touches the engine suppression pipeline
- * (DEC-16 stays open). Then returns the tab to the page the user chose to trust.
+ * User proceeded past a Medium interstitial. Arms a one-shot override hint for
+ * the tab (consumed by the next onCommitted into a PER-NAVIGATION override), then
+ * returns the tab to the page. The resulting override (a) suppresses a
+ * re-interstitial for that navigation only, and (b) is the G-02 signal that the
+ * auth store must NOT learn trust from this session. It changes no scoring, grants
+ * no trust, never touches the engine suppression pipeline (the real A-01 / DEC-16
+ * stays open), and never persists as a per-origin record across navigations.
  */
 async function handleProceed(tabId: number, targetUrl: string): Promise<void> {
   let origin: string;
   try { origin = new URL(targetUrl).origin; } catch { return; }
-  const record: ProceedRecord = { origin, tier: 'Medium', suppressionId: 'A-01', at: Date.now() };
-  await chrome.storage.session.set({ [proceededKey(tabId)]: record });
-  console.info(`SSX A-01 logged (user proceeded) origin=${origin} tab=${tabId} — trust NOT taught (G-02 blocks any store write)`);
+  await chrome.storage.session.set({ [overrideArmedKey(tabId)]: { origin, at: Date.now() } });
+  console.info(`SSX intervention override armed (user proceeded) origin=${origin} tab=${tabId} — per-navigation only; trust NOT taught (G-02 blocks any store write)`);
   await chrome.tabs.update(tabId, { url: targetUrl });
 }
 
 /** User chose safety. Leave the flagged page entirely (a neutral blank page). */
 async function handleGoBack(tabId: number): Promise<void> {
   await chrome.tabs.update(tabId, { url: 'about:blank' });
+}
+
+/** Drop a closed tab's per-navigation override records + any armed hint. */
+async function clearTabOverrides(tabId: number): Promise<void> {
+  const all = await chrome.storage.session.get(null);
+  const prefix = `ssx:intv-override:${tabId}:`;
+  const keys = Object.keys(all).filter((k) => k.startsWith(prefix) || k === overrideArmedKey(tabId));
+  if (keys.length > 0) await chrome.storage.session.remove(keys);
 }
 
 /* ── DL family (step 7b): observe downloads. Requires the "downloads"
@@ -421,6 +463,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   docIndex.forgetTab(tabId);
   evidenceCache.forgetTab(tabId);
   tabToNav.delete(tabId);
+  void clearTabOverrides(tabId);
   void store.endTabSessions(tabId);
 });
 

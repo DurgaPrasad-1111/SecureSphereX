@@ -1,22 +1,27 @@
 /**
  * Tier-2 intervention (§9.4, §11.3/§11.4): the tier→action decision, the Medium
  * three-action semantics, High-has-no-bypass, monotonic escalation across passes,
- * and that proceeding logs an A-01 record whose effect is to make the auth-store
- * write carry interventionOverriddenInSession=true — proceeding NEVER teaches trust.
+ * that proceeding drives interventionOverriddenInSession=true (never teaches
+ * trust), and that the shared verdict renderer works on the interstitial's
+ * "view findings" path — not just from popup.ts.
  *
  *   node --experimental-strip-types apps/extension/intervention.test.ts
  */
 
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 
-import { decideIntervention, type ProceedRecord } from './intervention-logic.ts';
+import { decideIntervention, type InterventionOverrideSuppression } from './intervention-logic.ts';
 import { computeEffectiveTier, recordIntervention } from '../../packages/engine/stage7-8.ts';
 import type { PriorPassState } from '../../packages/engine/stage7-8.ts';
 import { buildAuthRecordRequest, buildLoginFingerprint, type PendingAuth } from './login-success.ts';
+import { renderVerdict, type StoredVerdict } from './verdict-view.ts';
 import type { AnalysisSessionId } from '../../packages/contracts/evidence.contract.v1.ts';
 
 const ORIGIN = 'https://login.acmebank.example';
-const proceed: ProceedRecord = { origin: ORIGIN, tier: 'Medium', suppressionId: 'A-01', at: 1 };
+const override: InterventionOverrideSuppression = {
+  origin: ORIGIN, tier: 'Medium', kind: 'intervention-override-suppression', at: 1,
+};
 
 // ── 1. tier → action matrix (§9.4) ──────────────────────────────────────────
 assert.equal(decideIntervention('Low', null, ORIGIN), 'none', 'Low (<30) -> passive badge only');
@@ -25,19 +30,19 @@ assert.equal(decideIntervention('High', null, ORIGIN), 'block', 'High (>=60) -> 
 console.log('  [1] tier matrix: Low none / Medium interstitial / High block ✓');
 
 // ── 2. Medium three-action semantics ────────────────────────────────────────
-// PROCEED: an A-01 record for THIS origin suppresses the re-interstitial.
-assert.equal(decideIntervention('Medium', proceed, ORIGIN), 'none', 'proceed on this origin -> no re-interstitial');
+// PROCEED: an override record for THIS origin suppresses the re-interstitial.
+assert.equal(decideIntervention('Medium', override, ORIGIN), 'none', 'proceed on this origin -> no re-interstitial');
 // A proceed on a DIFFERENT origin must NOT carry over.
-assert.equal(decideIntervention('Medium', { ...proceed, origin: 'https://evil.example' }, ORIGIN), 'interstitial',
+assert.equal(decideIntervention('Medium', { ...override, origin: 'https://evil.example' }, ORIGIN), 'interstitial',
   'a proceed on another origin must not suppress this one');
-// GO BACK / VIEW FINDINGS create no proceed record, so the interstitial stands.
+// GO BACK / VIEW FINDINGS create no override record, so the interstitial stands.
 assert.equal(decideIntervention('Medium', null, ORIGIN), 'interstitial', 'go-back / view-findings do not proceed');
 console.log('  [2] Medium actions: proceed suppresses (this origin only); go-back / view-findings keep the interstitial ✓');
 
-// ── 3. High has NO bypass — a Medium proceed cannot unlock a later High ─────
-assert.equal(decideIntervention('High', proceed, ORIGIN), 'block',
-  'High must BLOCK even with an A-01 proceed record for the origin (§6.4: A-01 never applies to the High-only rules)');
-console.log('  [3] High no-bypass: an A-01 proceed does not unlock a High block ✓');
+// ── 3. High has NO bypass — a Medium override cannot unlock a later High ────
+assert.equal(decideIntervention('High', override, ORIGIN), 'block',
+  'High must BLOCK even with an override record for the origin (the override never applies to a High block)');
+console.log('  [3] High no-bypass: an override record does not unlock a High block ✓');
 
 // ── 4. Monotonic escalation across passes (§11.3) ───────────────────────────
 // pass 1: raw Medium -> effective Medium -> interstitial -> record the intervention.
@@ -67,5 +72,29 @@ assert.equal(buildAuthRecordRequest(pending, false, true)?.interventionOverridde
   'a proceeded session sets interventionOverriddenInSession=true -> the auth store G-02 refuses to learn (never teaches trust)');
 console.log('  [5] never teaches trust: a proceed sets interventionOverriddenInSession=true (G-02 blocks the store write) ✓');
 
+// ── 6. Shared verdict renderer (the interstitial's "View security findings") ─
+// intervention.ts's viewFindings calls the SAME renderVerdict popup.ts uses;
+// exercise it directly on a DOM node, proving the shared path renders.
+{
+  const el = new JSDOM('<!doctype html><div id="f"></div>').window.document.getElementById('f') as unknown as HTMLElement;
+  const verdict: StoredVerdict = {
+    effectiveTier: 'High', rawTier: 'Medium', score: 62,
+    fired: ['CRED-01', 'CRED-06'],
+    unevaluable: [{ module: 'authContext', reason: 'required_evidence_not_collected' }],
+    targetUrl: 'https://login.acmebank.example/',
+  };
+  renderVerdict(el, verdict);
+  const html = el.innerHTML;
+  assert.ok(html.includes('CRED-01') && html.includes('CRED-06'), 'renders the fired rules');
+  assert.ok(html.includes('>High<') || html.includes('High'), 'renders the tier');
+  assert.ok(html.includes('62'), 'renders the score');
+  assert.ok(html.includes('authContext'), 'renders the unevaluable module + reason');
+  assert.ok(html.includes('raw Medium'), 'shows the raw tier when it differs from effective');
+  renderVerdict(el, null);
+  assert.ok(el.innerHTML.includes('No analysis yet'), 'a null verdict renders the empty state');
+  console.log('  [6] shared verdict-view render (interstitial view-findings path): tier/score/rules/unevaluable + null-state ✓');
+}
+
 console.log('Tier-2 intervention PROVEN: §9.4 tier gating (Low/Medium/High), Medium three-action semantics, '
-  + 'High no-bypass, §11.3 monotonic escalation, and an A-01 proceed that never teaches auth-store trust.');
+  + 'High no-bypass, §11.3 monotonic escalation, an override that never teaches auth-store trust, and the '
+  + 'shared verdict renderer on the interstitial path.');
