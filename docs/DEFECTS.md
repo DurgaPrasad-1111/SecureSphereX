@@ -2911,3 +2911,78 @@ mechanics that apply equally here.
 - **Related:** [[DEFECT-39]] (the pattern; same root and fix class), [[DEC-40]]
   (why this is currently inert), `docs/DL-02-extension-mime-REVIEW.md` (the
   amendment mechanics).
+
+---
+
+## DEFECT-41 — download events are stored but never trigger a re-analysis pass; analysis has exactly one trigger, so DL-01 is structurally live-unreachable and DL-02 is reachable only incidentally (found 2026-09-04; OPEN — a trigger-wiring gap, NOT a DEC-43/44 threading defect)
+
+Finding: in the live extension, analysis has **exactly one trigger** — a content
+script `ssx-evidence` message. `analyzeAndReflect` (which runs
+`runAnalysisPass` / `runPassInSession`) is called from a single site,
+`apps/extension/service-worker.ts:122`, inside `chrome.runtime.onMessage`. The
+content script emits `ssx-evidence` **once per page load**
+(`apps/extension/content-script.ts:97-99`, `setTimeout(collectAndSend, 500)` on
+`DOMContentLoaded`); there is no interval, no re-send on interaction, and no
+MutationObserver-driven re-send. `chrome.downloads.onCreated`
+(`service-worker.ts:241-256`) does exactly one thing — `chrome.storage.session.set`
+of the download record, keyed by the active tab. It calls **no** analysis. The
+`webNavigation` listeners (`onCommitted` / `onDOMContentLoaded` /
+`onBeforeNavigate` / `onErrorOccurred`) do session / `docIndex` / redirect
+bookkeeping only; none run analysis.
+
+Consequence: after a download is stored, the **next** `runAnalysisPass` happens
+only when a fresh content-script load occurs — i.e. the user navigates or
+reloads. A download while remaining on the already-loaded page produces no new
+pass, and the stored record is never consumed.
+
+### DL-01 — structurally unreachable by ordinary browsing
+
+DL-01's predicate needs BOTH `priorFindingActive` (true only via a prior
+committed primary finding in the SAME `(tabId, navigationId)` session) AND a
+consumed `downloadContext` record, **in one pass**. But:
+
+- `priorPassState.anyPriorPrimaryFindingActive` is per-session (per-document);
+  it becomes true only after a prior committed pass **within the same session**.
+- The only pass that can consume the stored download record is a **fresh**
+  content-script load — which is a **new navigation → a new
+  `(tabId, navigationId)` session → `priorPassState` is null →
+  `priorFindingActive` is `false`**.
+
+So the session that HOLDS the prior finding (the original document) never
+receives a second pass after the download, and the pass that CAN see the
+download (a fresh navigation) is a new session where `priorFindingActive` is
+false. The two conjuncts **cannot co-occur in a single live pass**. DL-01 is
+therefore structurally unreachable by real user behavior today.
+
+### DL-02 — reachable only incidentally (same trigger gap, no `priorFindingActive` compounding)
+
+DL-02 has no `priorFindingActive` conjunct, so it does not suffer the co-occurrence
+impossibility. But it shares the underlying gap: it fires only on a pass that
+consumes the download record, and no pass runs after a download unless the user
+incidentally navigates or reloads the tab (the record is tab-keyed and persists
+across that navigation, so a later same-tab pass can read it). Stay on the same
+page after downloading and DL-02 never evaluates the download.
+
+### This is a trigger-wiring gap, not a threading defect
+
+DEC-43 (Option C `priorFindingActive` via `PriorPassState.anyPriorPrimaryFindingActive`)
+and DEC-44 (Option 1 SW session wiring) are **proven correct**:
+`apps/extension/multi-pass-session.test.ts` fires DL-01 pass-1→pass-2 end to
+end — but it does so by calling `runPassInSession` **directly, twice, against
+the same session** (lines 138 & 145), i.e. it proves the engine / session-
+composition layer, not a browser trigger. Nothing in the live SW generates that
+second same-session pass. The missing piece is a **same-session re-analysis
+trigger** after `downloads.onCreated` (and, more generally, any mechanism that
+re-runs analysis for the current document without a fresh navigation).
+
+- **Owning step.** Extension SW trigger wiring (`service-worker.ts`
+  `downloads.onCreated` / the `ssx-evidence` message path).
+- **Impact.** DL-01 cannot fire in a real browser as wired (dormant, not wrong);
+  DL-02 fires only if the user happens to navigate/reload after a download. DL
+  is S-9 (in-browser-only), so neither shows up in corpus metrics — the gap is
+  invisible to the offline suite and was only surfaced by the live-browser round.
+- **Status:** OPEN — a decision for later, deliberately NOT implemented now
+  (per instruction). The fix is a design choice for the Architecture Owner:
+  whether `downloads.onCreated` (or another signal) should re-trigger analysis
+  on the current session, and if so how the download record attaches to that
+  re-pass. No urgency; recorded so it is not left implicit.
