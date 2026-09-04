@@ -27,7 +27,10 @@ import {
 } from './login-success.ts';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
 import type { AnalysisPassOutcome } from '../../packages/engine/pass.ts';
+import { recordIntervention } from '../../packages/engine/stage7-8.ts';
+import { decideIntervention, type ProceedRecord } from './intervention-logic.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
+import type { RiskTier } from '../../packages/contracts/passresult.contract.v1.ts';
 import type {
   RedirectEvidence, CredentialFieldKind, AnalysisSessionId,
 } from '../../packages/contracts/evidence.contract.v1.ts';
@@ -124,6 +127,17 @@ chrome.webNavigation.onErrorOccurred.addListener((details) => {
  *                     G-01's input (did a CRED rule fire on this page?) from
  *                     the login page's own stored verdict. */
 chrome.runtime.onMessage.addListener((msg, sender) => {
+  // Tier-2 interstitial actions come from the extension's OWN intervention page
+  // (a tab), which passes its target tabId explicitly — handled before the
+  // content-script guard below.
+  if (msg?.type === 'ssx-intervention-proceed') {
+    void handleProceed(Number(msg.tabId), msg.targetUrl as string);
+    return;
+  }
+  if (msg?.type === 'ssx-intervention-goback') {
+    void handleGoBack(Number(msg.tabId));
+    return;
+  }
   const tabId = sender.tab?.id;
   if (tabId === undefined) return;
   if (msg?.type === 'ssx-evidence') {
@@ -198,6 +212,11 @@ async function analyzeAndReflect(
     // any pending credential submit for the tab. On all four holding, write
     // through the EXISTING guarded store path (G-01/G-02 inside it).
     void maybeRecordLoginSuccess(tabId, parts, sessionStateEstablished);
+
+    // Tier-2 gate (§9.4): Medium -> interstitial, High -> block. The tier is
+    // already §11.3-floored, and showing the UI records the intervention so a
+    // later pass in this session cannot downgrade below it.
+    await maybeIntervene(tabId, sessionParts, targetUrl, outcome.aggregation.effectiveTier);
   } catch (err) {
     console.error('SSX analyze error:', err);
   }
@@ -211,7 +230,12 @@ async function maybeRecordLoginSuccess(
   const { result, pending } = loginTracker.resolveLanding(tabId, { credentialFormPresent, sessionStateEstablished });
   if (!result.success || pending === null) return;
 
-  const req = buildAuthRecordRequest(pending, inPrivateContext());
+  // G-02 (§20.6): if the user proceeded past an intervention on THIS origin this
+  // session (an A-01 record), the auth store must NOT learn trust from it. This
+  // wires the previously-hardcoded-false override — proceeding never teaches trust.
+  const proceeded = await getProceeded(tabId);
+  const overridden = proceeded !== null && proceeded.origin === pending.origin;
+  const req = buildAuthRecordRequest(pending, inPrivateContext(), overridden);
   if (req === null) return;                         // malformed origin — never write
   // The write is GUARDED inside recordAuthentication (G-01…G-05) and feeds the
   // PROVISIONAL→ESTABLISHED ramp; this producer does not bypass any of it.
@@ -243,6 +267,61 @@ async function applyOutcome(tabId: number, targetUrl: string, outcome: AnalysisP
   };
   await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
   reflectBadge(tabId, effectiveTier);
+}
+
+/* ── Tier-2 intervention (§9.4, §11.3/§11.4) ──────────────────────────────── */
+function proceededKey(tabId: number): string { return `ssx:proceeded:${tabId}`; }
+
+async function getProceeded(tabId: number): Promise<ProceedRecord | null> {
+  const raw = await chrome.storage.session.get(proceededKey(tabId));
+  return (raw[proceededKey(tabId)] as ProceedRecord | undefined) ?? null;
+}
+
+/**
+ * Present the Tier-2 UI for a pass's EFFECTIVE tier (§9.4): Medium -> interstitial,
+ * High -> hard block, Low -> nothing. The tier is already §11.3-floored by the
+ * engine, so showing UI on it is monotonic by construction. When an intervention
+ * is shown, it is recorded into the session (recordIntervention) so a LATER pass
+ * in the SAME session cannot downgrade below it. The interstitial is a
+ * chrome-extension:// page the tab is NAVIGATED to — not an in-page overlay a
+ * hostile page could script away.
+ */
+async function maybeIntervene(
+  tabId: number, sessionParts: SessionKeyParts | null, targetUrl: string, effectiveTier: RiskTier,
+): Promise<void> {
+  let origin: string;
+  try { origin = new URL(targetUrl).origin; } catch { return; } // no origin -> nothing to scope
+  const action = decideIntervention(effectiveTier, await getProceeded(tabId), origin);
+  if (action === 'none') return;
+  // §11.4 lock: record that an intervention was presented at this tier.
+  if (sessionParts !== null) {
+    await store.recordPassOutcome(sessionParts, (latest) => recordIntervention(latest, effectiveTier));
+  }
+  const url = chrome.runtime.getURL('intervention.html')
+    + `?tier=${effectiveTier}&tab=${tabId}&target=${encodeURIComponent(targetUrl)}`;
+  await chrome.tabs.update(tabId, { url });
+}
+
+/**
+ * User proceeded past a Medium interstitial. Logs the A-01 user-trusted-origin
+ * record (§6.4), scoped to this origin + this session in chrome.storage.session:
+ * it (a) suppresses a re-interstitial for the origin, and (b) is the G-02 signal
+ * that the auth store must NOT learn trust from this session. It never writes
+ * cross-session trust and never touches the engine suppression pipeline
+ * (DEC-16 stays open). Then returns the tab to the page the user chose to trust.
+ */
+async function handleProceed(tabId: number, targetUrl: string): Promise<void> {
+  let origin: string;
+  try { origin = new URL(targetUrl).origin; } catch { return; }
+  const record: ProceedRecord = { origin, tier: 'Medium', suppressionId: 'A-01', at: Date.now() };
+  await chrome.storage.session.set({ [proceededKey(tabId)]: record });
+  console.info(`SSX A-01 logged (user proceeded) origin=${origin} tab=${tabId} — trust NOT taught (G-02 blocks any store write)`);
+  await chrome.tabs.update(tabId, { url: targetUrl });
+}
+
+/** User chose safety. Leave the flagged page entirely (a neutral blank page). */
+async function handleGoBack(tabId: number): Promise<void> {
+  await chrome.tabs.update(tabId, { url: 'about:blank' });
 }
 
 /* ── DL family (step 7b): observe downloads. Requires the "downloads"
@@ -289,6 +368,8 @@ chrome.downloads.onCreated.addListener((item) => {
     });
     if (result.status === 'ran') {
       await applyOutcome(tabId, result.targetUrl, result.outcome);
+      // A download re-pass can raise the tier (DL-01/DL-02) — gate on it too.
+      await maybeIntervene(tabId, { tabId, navigationId: navId }, result.targetUrl, result.outcome.aggregation.effectiveTier);
     } else {
       console.info(`SSX download re-pass skipped (${result.reason}) for tab ${tabId}`);
     }

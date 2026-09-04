@@ -34,9 +34,13 @@ await build({ ...common, entryPoints: [join(EXT, 'service-worker.ts')], outfile:
 // are not ES modules.
 await build({ ...common, entryPoints: [join(EXT, 'content-script.ts')], outfile: join(DIST, 'content-script.js'), format: 'iife' });
 await build({ ...common, entryPoints: [join(EXT, 'popup.ts')], outfile: join(DIST, 'popup.js'), format: 'iife' });
+// Tier-2 interstitial / block page (§9.4) — a real extension page the SW
+// navigates the tab to, not an in-page overlay.
+await build({ ...common, entryPoints: [join(EXT, 'intervention.ts')], outfile: join(DIST, 'intervention.js'), format: 'iife' });
 
 // Static assets + the rule set the engine loads at runtime.
 copyFileSync(join(EXT, 'popup.html'), join(DIST, 'popup.html'));
+copyFileSync(join(EXT, 'intervention.html'), join(DIST, 'intervention.html'));
 copyFileSync(join(REPO, 'rulesets', 'rules-v0.1.0.json'), join(DIST, 'rules-v0.1.0.json'));
 
 // The dist manifest — points at the BUILT .js, not the .ts sources.
@@ -57,6 +61,6 @@ const manifest = {
 writeFileSync(join(DIST, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
 console.log('Built extension → apps/extension/dist/');
-for (const f of ['manifest.json', 'service-worker.js', 'content-script.js', 'popup.js', 'popup.html', 'rules-v0.1.0.json']) {
+for (const f of ['manifest.json', 'service-worker.js', 'content-script.js', 'popup.js', 'popup.html', 'intervention.js', 'intervention.html', 'rules-v0.1.0.json']) {
   console.log(existsSync(join(DIST, f)) ? `  ✓ ${f}` : `  ✗ MISSING ${f}`);
 }

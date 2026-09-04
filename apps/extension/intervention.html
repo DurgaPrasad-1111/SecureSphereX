@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureSphere X — Security Warning</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f6f7f9; color: #1a1a1a; padding: 24px;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #17181b; color: #e9e9ea; } }
+  .card {
+    max-width: 560px; width: 100%; background: #fff; border-radius: 12px; padding: 28px 30px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.18); border-top: 6px solid #bf8700;
+  }
+  @media (prefers-color-scheme: dark) { .card { background: #232428; } }
+  .card.block { border-top-color: #cf222e; }
+  .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: #bf8700; margin: 0 0 6px; }
+  .card.block .eyebrow { color: #cf222e; }
+  h1 { font-size: 22px; margin: 0 0 12px; }
+  p { margin: 0 0 14px; }
+  .host { font-weight: 700; word-break: break-all; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  button {
+    font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+  }
+  .primary { background: #1a7f37; color: #fff; }              /* Go back / safety */
+  .danger  { background: transparent; color: #cf222e; border-color: #cf222e; }  /* Proceed anyway */
+  .ghost   { background: transparent; color: inherit; border-color: rgba(128,128,128,.4); }
+  .findings { margin-top: 20px; border-top: 1px solid rgba(128,128,128,.25); padding-top: 14px; display: none; }
+  .findings.show { display: block; }
+  .findings .row { margin: 6px 0; }
+  .findings ul { margin: 4px 0 0; padding-left: 20px; }
+  .findings code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .muted { opacity: .65; }
+  .tier.High { color: #cf222e; font-weight: 700; }
+  .tier.Medium { color: #bf8700; font-weight: 700; }
+  .tier.Low { color: #1a7f37; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div id="card" class="card">
+    <p class="eyebrow" id="eyebrow">Security warning</p>
+    <h1 id="headline">Checking…</h1>
+    <div id="body"></div>
+    <div class="actions" id="actions"></div>
+    <div class="findings" id="findings"></div>
+  </div>
+  <script src="intervention.js"></script>
+</body>
+</html>

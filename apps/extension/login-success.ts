@@ -114,19 +114,22 @@ export function buildLoginFingerprint(
 
 /** Assemble the write request from a successful PendingAuth. Returns null if
  *  the origin string is not a valid Origin (never write a malformed origin).
- *  `interventionOverriddenInSession` is false: the InterventionReporter path
- *  (boundary contract) is not wired yet, so override-state is unobserved — and
- *  false is the value that lets G-02 permit the write; this is a KNOWN GAP,
- *  documented, not a silent assumption. G-01 (credFindingActiveInSession) IS
- *  observed and is the primary phishing guard. */
-export function buildAuthRecordRequest(pending: PendingAuth, isPrivateContext: boolean): AuthRecordRequest | null {
+ *  `interventionOverriddenInSession` (G-02) is now OBSERVED: the service worker
+ *  passes true when the user proceeded past a Tier-2 intervention on this origin
+ *  this session (an A-01 record) — so the auth store refuses to learn trust from
+ *  a session the user overrode. Defaults false for callers with no intervention
+ *  context (and for the unit tests). G-01 (credFindingActiveInSession) remains
+ *  the primary phishing guard. */
+export function buildAuthRecordRequest(
+  pending: PendingAuth, isPrivateContext: boolean, interventionOverriddenInSession = false,
+): AuthRecordRequest | null {
   const origin: Origin | null = toOrigin(pending.origin);
   if (origin === null) return null;
   return {
     origin,
     fingerprint: pending.fingerprint,
     credFindingActiveInSession: pending.credFindingActiveInSession,
-    interventionOverriddenInSession: false,
+    interventionOverriddenInSession,
     isPrivateContext,
     analysisSessionId: pending.analysisSessionId,
   };
