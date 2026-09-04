@@ -2047,7 +2047,9 @@ for the caveat to be discharged.
 - **Related:** [[DEC-14]] (CRED-A1 non-functional), [[DEC-26]] (extraction
   scope), [[DEC-27]] (extraction toolchain), [[DEFECT-19]] (the
   ungroundable-value category this is distinguished from), [[DEFECT-23]] (the
-  CRED-03 instance of `STATIC_EXTRACTION_RECALL_FLOOR`).
+  CRED-03 instance of `STATIC_EXTRACTION_RECALL_FLOOR`), [[DEC-46]] (CRED-A1
+  accepted non-functional for Phase I; this defect is blocker 2 of that ruling —
+  the injecting-origin source that stays fabricated).
 
 ---
 

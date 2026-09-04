@@ -4977,3 +4977,50 @@ single-entry-point property is deliberately relaxed here, and only here.
   entry. This is the implementing session's selection under delegation — **NOT a
   personal Architecture-Owner ruling** — so no self-applied "Signed by: Jayanth"
   line is used here.
+
+---
+
+## DEC-46 — CRED-A1 accepted NON-FUNCTIONAL for Phase I (no groundable injecting-origin source)
+
+**[R]** CRED-A1 (Injected credential interface, aggravator) stays non-functional
+under [[DEC-14]]. This is NOT a wiring gap — three stacked blockers, each real:
+
+1. **No evidence field exists.** `ScriptRuntimeEvidence` carries no
+   `injectingScriptOriginDomain` field at all (unlike `transmissionEndpointDomains`,
+   which contract Amendment B added; no amendment added an injecting-origin field).
+   CRED-A1's left operand is unconditionally `null` at the evidence level.
+2. **The only plausible source is cross-category AND fabricated.**
+   `LoginFormObservation.injectingScriptOrigin` lives in the `loginInterface`
+   category, which §2.6 forbids the `javascript` module from reading; and it is
+   itself unpopulated — both producers hardcode it `null` ([[DEFECT-31]],
+   `FABRICATION_FORCED_BY_SHAPE`). See DEFECT-31 for the finding; it is not
+   restated here.
+3. **Real closure needs injection-provenance CAPTURE capability**, which runs
+   into [[DEC-30]]'s in-page monkey-patch ban for the same reason PM-01 was
+   retired ([[DEC-40]]): a hostile page detects, disables, or falsifies the
+   patched hook, making the evidence actively misleading — worse than absent.
+
+**Decision:** ☑ CRED-A1 ACCEPTED NON-FUNCTIONAL for Phase I — the same shape as
+[[DEC-14]] and [[DEC-40]] (PM-01), and NOT permanently retired. The rule stays
+SIGNED and PRESENT (`lifecycleState: Active`) in `rules-v0.1.0.json`; no ruleset
+edit is made (the acceptance is recorded here, not by changing rule state), so
+the frozen artifact is untouched and its digest stands.
+
+**Revisit trigger ([[DEC-37]] / [[DEC-40]] shape — Phase II, not permanent):**
+reopen ONLY if BOTH (a) [[DEFECT-31]] is independently resolved with a real
+source for the injecting origin, AND (b) a genuine non-falsifiable
+injection-provenance mechanism becomes available (one a hostile page cannot
+detect or falsify — the same bar DEC-30 sets). Absent both, CRED-A1 stays
+closed, recorded, not a latent gap.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-04** — stated plainly, not self-attested.
+
+**Related:** [[DEC-14]] (the non-functional-acceptance precedent), [[DEC-30]]
+(the monkey-patch ban, kept intact), [[DEC-37]] (the Phase-II revisit-trigger
+shape), [[DEC-40]] (PM-01, the identical treatment this mirrors), [[DEFECT-31]]
+(blocker 2's finding, cross-referenced not duplicated).
+
+- **Status:** SIGNED 2026-09-04. CRED-A1 accepted non-functional for Phase I;
+  DEC-30 intact; no ruleset edit; digest stands.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-04
