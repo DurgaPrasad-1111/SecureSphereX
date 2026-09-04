@@ -1,153 +1,125 @@
 # SecureSphere X — Ground-Truth Status
 
-**Audited:** 2026-09-01 · **HEAD:** `a79f6bc` (branch `main`, in sync with `origin/main`) · **Method:** every claim re-verified against code / git / live test execution. Where a doc disagrees with reality it is flagged **⚠ DOC-VS-REALITY**.
+**Audited:** 2026-09-04 · **Branch:** `main`, in sync with `origin/main` · **HEAD at audit:** `5c81898` (this rewrite is the following commit) · **Method:** full rewrite from current code; every claim cross-checked against source / git / executed tests, not carried over from the prior (2026-09-01) audit.
 
-> **Headline finding first:** three CI gates are **RED right now** on `main` — `G-1 Lint (eslint)`, `DEC-32 conformance-config`, and `G-11 contract↔LDD`. The progress narrative implies green CI; it is not. Details in §3. Everything else (typecheck, 12 of 13 test scripts, build, engine gates) is genuinely green.
+> **Headline:** CI is **GREEN** — `npm run verify:all` exits 0 across all 27 gates (typecheck, eslint, architectural G-2/G-3/G-6, depcruise, and 22 test scripts). The three gates that were RED in the 2026-09-01 audit (G-1 Lint, DEC-32 conformance-config, G-11 contract↔LDD) are all fixed. One correction this audit surfaced and now records: **CRED-03 is a live-DIVERGENT rule** (fires offline, unreachable in the extension for IDN homographs) — see §5. The system is a working local-first extension + offline harness; there is still **no backend** (§6), and several rules are non-functional by capability/policy ruling, not by bug.
 
 ---
 
 ## 1. Repository ground truth
 
-- **Branch/HEAD:** `main` @ `a79f6bcc1d2b863909ba474ba3f76b150c458488`, equal to `origin/main`. `git status`: clean except untracked `test-page/` (a local scratch login page, correctly never committed).
-- **Tags:** **zero** (`git tag -l` empty). ⚠ **CP-0's "contracts tagged v1.0.0" criterion is unmet** — consistent with CHECKPOINTS.md's own honest CP-0 = NOT MET record.
-- **Commits:** 50-deep log verified. The commit hashes named in the governance docs resolve: `0501560` (actionRegistrableDomain fix), `422fef4` (PSL wiring), `ce05ded` (contract amendments A/B), `409171d` (DEC-31 pslVersion), `fc9d6a2` (DEFECT-30) all exist as described.
-- **Layout vs CLAUDE.md §1:** matches. Present: `packages/{contracts,engine}`, `apps/{extension,harness}`, `tools/{capture,ci,conformance}`, `rulesets/`, `corpus/`, `fixtures/`. (`tools/conformance/` is a real neutral cross-producer test dir not in CLAUDE.md's original list — an addition, not a discrepancy.)
+- **Branch/HEAD:** `main` @ `5c81898`, equal to `origin/main` at audit time.
+- **Tags:** **`v1.0.0`** exists — an annotated tag on the pre-amendment Stage-0 baseline commit `d721413` (created per the retroactive-Stage-0-tag decision; it deliberately does NOT point at the amended HEAD). CP-0's "contracts tagged v1.0.0" criterion is thereby satisfied on the correct commit.
+- **Working tree:** clean of real changes. `git status` shows only (a) `spec/Logical-Database-Design-Specification-v1_1.md` as ` M` — a git stat-cache artifact, `git diff` is **empty** (no content change); and (b) `test-page/` — a local scratch CRED-01 test page, now in `.gitignore`.
+- **Layout vs CLAUDE.md §1:** matches. `packages/{contracts,engine}`, `apps/{extension,harness}`, `tools/{capture,ci,conformance}`, `rulesets/`, `corpus/`, `fixtures/`.
 
-**Real component sizes (verified line/file counts):**
+**Component sizes (tracked files):**
 
-| Component | Files | Lines | Notes |
-|---|---|---|---|
-| packages/contracts | 6 ts | 2,017 | frozen contracts |
-| packages/engine | 44 ts | 8,407 | 10 modules + 8 pipeline stages + shared psl/classify |
-| apps/extension | 12 ts (+mjs/json/html) | 2,174 | MV3 extension, real |
-| apps/harness | 13 ts | 2,298 | offline extractor + metrics |
-| tools/capture | 3 py | 1,675 | capture.py + sentinel_fill.py + migrate |
-| tools/ci | 4 py + 1 ts | 849 | gates + validators |
-| tools/conformance | 3 ts | 411 | cross-producer tests |
-| fixtures | 4 ts | 594 | 4 hand fixtures |
-| **backend/server/api/db** | **0** | **0** | **no implementation code exists** |
+| Component | Files | Notes |
+|---|---|---|
+| packages/contracts | 6 ts | frozen contracts |
+| packages/engine | 23 ts (+22 tests) | 10 modules + 8 pipeline stages + shared psl/classify |
+| apps/extension | 14 ts (+mjs/json/html) | MV3 extension incl. Tier-2 intervention UI |
+| apps/harness | 10 ts | offline extractor + metrics |
+| tools/conformance | 8 ts | cross-producer + live-path tests |
+| tools/capture | 3 py | capture.py + sentinel_fill.py + migrate |
+| **backend / server / api / db** | **0** | **no implementation code exists** |
 
 ---
 
-## 2. Build & test — real execution results
+## 2. Build & test — executed results (2026-09-04)
 
-- `npm ci` → clean, **0 vulnerabilities**.
-- `npm run typecheck` (`tsc -b`) → **PASS** (exit 0).
-- `npm run build:extension` → **PASS**. `dist/` contains all 6 required artifacts (`manifest.json`, `service-worker.js`, `content-script.js`, `popup.js`, `popup.html`, `rules-v0.1.0.json`).
-- `npm run validate:ruleset` → **CONFORMANT**, all 15 checks V-1…V-15 OK.
-- `npm run digest:ruleset` → prints `sha256:f691…`.
-- `npm run check:conformance-config` → **FAIL (exit 1)** — see §3.
-
-**Every `test:*` script, individually:**
-
-| Script | Result |
-|---|---|
-| test:fixtures | ✅ PASS (7/7) |
-| test:properties | ✅ PASS (B1.5 property assertions) |
-| test:psl | ✅ PASS (tldts vs tldextract, 7 boundary + 5 controls) |
-| test:extension | ✅ PASS (session survives worker termination) |
-| test:conformance | ✅ PASS (8/8 shared fields, incl. actionRegistrableDomain) |
-| test:cred-livepath | ✅ PASS (CRED-01 fires live; localhost caveat correct) |
-| test:redirect | ✅ PASS (8/8 navigation scenarios) |
-| test:cred04livepath | ✅ PASS (CRED-04 fires cross-domain; silent same-site/no-form; S-10 intact) |
-| test:authstore | ✅ PASS (guards G-01…G-05, negative cases) |
-| test:moduleeval | ✅ PASS |
-| test:authcontext | ✅ PASS (version-mismatch → unevaluable) |
-| test:determinism (SSX_CORPUS_STORE=corpus) | ✅ PASS |
-| test:readboundary (SSX_CORPUS_STORE=corpus) | ✅ PASS |
-| **test:tier1e2e** | ⚠ **NOT RUN** — refuses without `SSX_E2E_SNAPSHOT` (a real capture.py output). Honest guard, not a code failure; **not wired into CI**, so it does not gate. It has therefore never actually exercised the capture→extract path in CI. |
+- `npm run typecheck` (`tsc -b`) → **PASS**.
+- `npm run build:extension` → **PASS**; `dist/` has all **8** artifacts (`manifest.json`, `service-worker.js`, `content-script.js`, `popup.js`, `popup.html`, `intervention.js`, `intervention.html`, `rules-v0.1.0.json`).
+- `npm run validate:ruleset` → **CONFORMANT** (V-1…V-15); `npm run test:v16` (V-16 null-fold) → **PASS**.
+- `npm run verify:all` → **EXIT 0**. Every test script green: fixtures 7/7 · properties · psl · extension (session-survival) · conformance 8/8 · cred-livepath · cred02livepath · **cred03livepath (new)** · cred04livepath · dllivepath · pm01unit · redirect 8/8 · authstore · moduleeval · authcontext · loginsuccess · multipass · downloadrepass · intervention · tier1e2e (now wired into the gate and passing).
 
 ---
 
-## 3. CI gates — real status, one by one
+## 3. CI gates — real status
 
-`ci.yml` runs these. Verified by running each locally.
+`ci.yml` / `verify:all`. All green as of 2026-09-04.
 
-| Gate | Runs | Status | Verification |
-|---|---|---|---|
-| G-1 Typecheck | `tsc -b` | ✅ | exit 0 |
-| **G-1 Lint** | `eslint . --max-warnings=0` | ❌ **RED — 51 errors** | Root cause: `eslint.config` sets only `globals.node`; the extension code (`chrome`, `document`, `location`, `MutationObserver`) → **38 `no-undef`**; also lints built `dist/*.js` (should be ignored) + 6 `no-unused-vars`, 3 `no-control-regex`, 1 `no-useless-escape`. Red since the extension work landed. |
-| G-2 Origin casts | `architectural-gates.mjs` | ✅ | **DEFECT-13 confirmed RESOLVED** — file exists (242 lines), does **real TypeScript-AST** analysis for `as Origin` casts, not a stub. |
-| G-3 Engine purity | `architectural-gates.mjs` | ✅ | Real AST scan for `chrome/window/document/localStorage` in engine; passes. |
-| G-6 Transmission audit | `architectural-gates.mjs` | ✅ (weak) | **DEFECT-14 confirmed STILL OPEN** — the script itself prints "G-6 IS NOT REAL REACHABILITY ANALYSIS … co-occurrence heuristic" and "unproven either way." Passes vacuously. |
-| G-4/G-5 Dependency boundaries | `depcruise` | ✅ | no violations, 101 modules |
-| G-7 Fixture round-trip | `test:fixtures` | ✅ | 7/7 |
-| G-8 Rule-set validation | `validate:ruleset` | ✅ | CONFORMANT, V-1…V-15 |
-| G-8 PSL oracle / boundary | shell + `test:psl` | ✅ | passes |
-| **DEC-32 conformance-config** | `check:conformance-config` | ❌ **RED (exit 1)** | The DEFECT-34 guard scans `*conformance*.test.ts` and requires each to assert its oracle's config. `tools/conformance/login-interface.conformance.test.ts` (added A1.2) is a harness-vs-extension test, **not** a PSL-config-oracle test, and asserts no config → the gate fails. Needs a `CONFIG-ECHO-EXEMPT:` line or a narrower scan scope. |
-| **G-11 Contract↔LDD** | `contract-conformance-check.py` | ❌ **RED (exit 2)** | "The LDD changed since `storage-enums.json` was generated." `storage-enums.json` **is** committed (`ea21f34`) but its hash no longer matches the current contracts/LDD; needs `extract-storage-enums.py` re-run + commit. |
-| G-9 Property tests | `test:properties` | ✅ | passes |
-| A1.1–A1.5 + Redirect | 6 test scripts | ✅ | all pass |
-| Boundary-violation job | deliberate-violation | ✅ (not re-run; script present) | |
-
-**GitHub Actions run history:** not reachable from this environment (no network to the Actions API here). Given three gates are locally red, any CI run on the current tree **would fail** unless the runner differs.
+| Gate | Status | Note |
+|---|---|---|
+| G-1 Typecheck (`tsc -b`) | ✅ | exit 0 |
+| G-1 Lint (`eslint --max-warnings=0`) | ✅ | **fixed** (was RED 2026-09-01): nested `**/dist/**` ignored, extension globals scoped to `apps/extension/**`, real lints fixed. A local pre-commit lint hook now guards against recurrence (DEFECT-36). |
+| G-2 Origin casts / G-3 Engine purity | ✅ | real TypeScript-AST scans (`architectural-gates.mjs`) |
+| G-6 Transmission audit | ✅ (heuristic) | **DEFECT-14 still open** — the script itself prints it is a co-occurrence heuristic, not reachability analysis. Passes, not proven. |
+| G-4/G-5 Dependency boundaries | ✅ | depcruise, no violations |
+| G-7 fixtures · G-8 ruleset+PSL · G-9 properties | ✅ | |
+| **DEC-32 conformance-config** | ✅ | **fixed** (was RED): `CONFIG-ECHO-EXEMPT` marker on the harness-vs-extension conformance test. |
+| **G-11 Contract↔LDD** | ✅ | **fixed** (was RED): root cause was CRLF/LF, not a contract change; `.gitattributes` normalizes to LF (DEFECT resolved without regenerating the pinned digest). |
+| V-16 null-fold · live-path suite · multipass · downloadrepass · intervention | ✅ | added this session |
 
 ---
 
-## 4. Governance registers — audited for currency
+## 4. Governance registers — current
 
-- **DECISIONS.md:** 35 entries. **25 signed** (Jayanth, Architecture Owner); **10 CANDIDATE-unsigned-open**: DEC-12, 13, 15, 16, 17, 18, 19, 20, 24, 25. Spot-checked 5 signed decisions against code — all reflected: DEC-33 selector in `capture.py`, DEC-31 `pslVersion` string in the ruleset, DEC-30 `new_cdp_session` used with no `addEventListener` monkey-patch, DEC-35 `sentinel_fill.py` present, DEC-26 `dnsRecords: None` in capture. **DEC-19 resolved via Option B (602fbeb): RedirectEvidence gained initialRegistrableDomain/finalRegistrableDomain; CRED-04 mechanism now proven** — see §5.
-- **DEFECTS.md:** 35 entries — **11 OPEN**, **17 FIXED/RESOLVED**, 7 early entries use an "Owner:" format predating the OPEN/RESOLVED convention. Spot-checks: DEFECT-35 (CORPUS_DIR anchored) ✅ present; DEFECT-34 (single-sourced `psl-config.json`) ✅ present; DEFECT-13 (architectural-gates.mjs) ✅ present & real; DEFECT-15 (loginForm `pageRegistrableDomain` null) ✅ still null as documented; DEFECT-19 (redirect regdomain null) — **RESOLVED (602fbeb)**: `redirect.ts` now reads the producer-derived domains (Option B), mirroring DEFECT-15; was genuinely open before this.
-- **CHECKPOINTS.md:** CP-0 = **NOT MET** (0 tags confirms the unmet "v1.0.0 tag" criterion — accurate). CP-1 = **MET & signed** (engine + 10 modules; `test:properties`/`test:fixtures` green today confirm the gates it cited). CP-2/CP-3/CP-4 = not declared in the file (CP-3's loginInterface-conformance content exists and passes, but no formal CP-3 record).
+- **DECISIONS.md:** **46 entries** (through DEC-46). Provenance sweep this session: DEC-36/37/38 carry real ratification superseding earlier self-applied signatures; DEC-39–43 and DEC-46 are Architecture-Owner rulings "given directly in this session, not self-attested"; DEC-45 is an explicit **delegation** (Option A choice delegated to the implementing session); **DEC-44 is relabelled** as an advising-session technical determination within the AO's authorization (see DEC-44). No entry now reads as silently self-attested.
+- **DEFECTS.md:** **41 entries**. Session-relevant: DEFECT-36 (CI red, fixed + pre-commit hook), DEFECT-37 (`resolveFindingPath` nested-path, fixed), DEFECT-38 (download per-tab key, fixed), DEFECT-39/40 (null-fold under negation, fixed via DEC-41 + V-16 gate), **DEFECT-41 (download re-analysis trigger) — RESOLVED via DEC-45** (SW download re-pass built + tested). DEFECT-14 (G-6 heuristic) and DEFECT-31 (`FABRICATION_FORCED_BY_SHAPE`, underlies CRED-A1/DEC-46) remain open by design.
+- **v1.0.0 / CP-0:** the tag exists on the Stage-0 baseline; CHECKPOINTS.md's CP-0 reasoning is satisfied.
 
 ---
 
-## 5. Detection capability — what actually fires
+## 5. Detection capability — what actually fires (cross-checked against code)
 
-**Modules (10):** `url`, `homograph`, `loginForm` — **real & evaluable live**. `ssl`, `dns` — conformant **stubs**, no rule reads them (DEC-5). `redirect` — **fully evaluable** (602fbeb): the harness extractor builds full RedirectEvidence (incl. both registrable-domain fields) from raw.redirectChain; the engine module reads them. (The EXTENSION producer alone stays webNavigation-limited on redirects — hopCount/chain notCollected — pending chrome.webRequest; that is a producer limit, not a module gap.) `javascript`, `downloadContext`, `permissionContext` — **unevaluable** (capability/policy boundaries; see remaining list). `authContext` — **write path built** (§20.5 login-success inference in `login-success.ts`, `test:loginsuccess` green), **read path pending** (`collectLoginInterface` fingerprint is still `notCollected` on the evaluation path), so **CRED-02 still does not fire**.
+**Modules (10):**
+- `url`, `loginForm` — real & evaluable live.
+- `homograph` — evaluable, BUT with a live-extension IDN gap: `collectDomainRepresentation` cannot decode punycode→Unicode in a content script (unicodeDomain 0/6 NOT OBSERVABLE), so for an IDN host it marks the script-dependent fields `notCollected` → homograph **unevaluable on the extension path for IDN pages**. The harness (`node:url` ICU decode) evaluates it fully. This is the root of CRED-03's divergence.
+- `authContext` — **FULLY WIRED this session** (read + write). Write: §20.5 login-success inference (`login-success.ts`). Read: `collectLoginInterface` now produces the login `fingerprint`; the module looks it up against the AuthStore. `test:cred02livepath` proves CRED-02 fires. (Correcting the prior audit's "read path pending".)
+- `downloadContext` — evaluable when a download record exists; wired into the live SW via the DEC-45 download re-pass.
+- `redirect` — harness path fully evaluable (server-side chain); the extension producer stays webNavigation-limited (hopCount/chain `notCollected`) pending `chrome.webRequest`.
+- `ssl`, `dns` — conformant stubs, no rule reads them (DEC-5).
+- `javascript`, `permissionContext` — unevaluable by capability/policy (DEC-14, DEC-40).
 
-**Rules (11):** CRED-01/06/07 **fire live** (verified: `test:cred-livepath` + user's Chrome screenshot on `login.acmebank.example` → High, CRED-01+CRED-06). CRED-02 (authContext — write path built, read-path `collectLoginInterface` fingerprint pending), CRED-04 (**mechanism proven** — fires on cross-domain redirect to a credential form via the harness path, `test:cred04livepath`; **0 corpus firings** on the 617-snapshot store — the >=2-hop cross-domain redirects (30) and credential-form pages (80) are DISJOINT populations, a data property, not a defect; S-10 keeps it DIVERGENT), CRED-05 (javascript, **DEC-14 non-functional**; DEFECT-18 **partially closed** — see note below), **CRED-A1 (aggravator) — formally ACCEPTED NON-FUNCTIONAL for Phase I, DEC-46** (Architecture-Owner ruling this session; same treatment as PM-01/DEC-40 — three stacked blockers: no injecting-origin evidence field exists, the only source is cross-category + fabricated (DEFECT-31), and injection-provenance capture hits DEC-30's monkey-patch ban; revisit only if DEFECT-31 is resolved AND a non-falsifiable injection-provenance mechanism exists), DL-01/02 (downloadContext), PM-01 (permissionContext) — **do not fire** (dependencies unevaluable). **DL-01 update (DEC-43 + DEC-44, 2026-09-03):** its `priorFindingActive` conjunct is **resolved in the engine** (Option C threads `PriorPassState.anyPriorPrimaryFindingActive` into Stage 2, retiring the throw/`blocked` path) **wired into the SW's pass-composition path** (DEC-44, Option 1): the service-worker reads per-`(tabId,navigationId)`-session prior state via a browser-`documentId` attribution bridge, threads it into the pass, and folds each pass back via `recordCommittedPass` at the commit boundary. `multi-pass-session.test.ts` proves DL-01 fires at the **engine / session-composition layer** — two direct `runPassInSession` calls against one session (pass 1 CRED-01 → session flag → pass 2 DL-01 fires), plus boundary-reset, late-message attribution, and concurrency. ⚠ **DL-01 is ENGINE-CORRECT but LIVE-UNREACHABLE ([[DEFECT-41]]):** in a real browser nothing generates a second same-session pass — analysis is triggered ONLY by a one-shot `ssx-evidence` content-script message (`service-worker.ts:122`; content script sends once per load), and `chrome.downloads.onCreated` only STORES a record, never re-triggers analysis. The only pass that can consume a download is a fresh content-script load = a NEW `(tabId,navigationId)` session where `priorFindingActive` is `false`, so DL-01's `priorFindingActive` + a consumed download record cannot co-occur in one live pass. **DL-02** shares the trigger gap (reachable only if the user incidentally navigates/reloads after a download) without the `priorFindingActive` compounding. Both are engine-correct, live-unreachable **pending a same-session re-analysis trigger** — a design decision for later, NOT a defect in DEC-43/44's threading (which is proven correct). **Remaining gap:** the Tier-2 Warn/Block UI does not exist, so `interventionWasPresented` is structurally `false` (the `recordIntervention` half of the reducer is real plumbing that never fires yet); the `recordCommittedPass` half is live. DL is S-9 (in-browser-only, 0 corpus firings by design). The old per-origin `ssx:auth-prior:` PriorPassState store was retired (contradicted §11.4).
+**Rules (11 — the count IS 11; CRED-03 is real):**
 
-**DEFECT-18 status (transmissionEndpointDomains half FULLY closed producer+engine; injectingScriptOriginDomain half still open — verified 2026-09-03):**
+| Rule | Status | Basis |
+|---|---|---|
+| CRED-01 | **fires live** | `test:cred-livepath` + real-Chrome screenshot |
+| CRED-02 | **fires live** (this session) | `test:cred02livepath` — ESTABLISHED cross-origin impersonation; §20.5 ramp respected |
+| **CRED-03** | **DIVERGENT (S-10)** — fires on the harness/offline producer; **live-UNREACHABLE in the extension for IDN homographs** | `test:cred03livepath` (new). Harness decodes the IDN → homograph evaluable → CRED-03 fires; the content script cannot decode punycode → homograph unevaluable → cannot fire live. Correctly silent on plain ASCII (no deception). **Not blocked like CRED-05/PM-01, not retired — a producer-capability divergence, same class as CRED-04.** Corpus firing count not separately measured. |
+| CRED-04 | **DIVERGENT (S-10)** — fires on harness; extension webNav-limited | `test:cred04livepath`; **0 corpus firings** (≥2-hop cross-domain redirects and credential-form pages are disjoint populations in the corpus) |
+| CRED-05 | **non-functional (DEC-14)** | `clientSideTransmissionObserved` needs Tier-4 sentinel (never run); DEFECT-18's `transmissionEndpointDomains` half is closed, the data half is not. 0 corpus. |
+| CRED-06 | **fires live** | `test:cred-livepath` (insecure scheme) |
+| CRED-07 | **fires live** | off-origin concealed credential collection |
+| CRED-A1 | **accepted non-functional for Phase I (DEC-46)** | three stacked blockers: no injecting-origin evidence field, cross-category + fabricated source (DEFECT-31), injection-provenance capture blocked by DEC-30. Two-part revisit trigger. |
+| DL-01 | **live-reachable via the SW download re-pass (DEC-45)**; real-Chrome download firing UNVERIFIED | `test:downloadrepass` / `test:multipass` / `test:dllivepath` prove it fires through the SW composition (page primary finding → cached evidence + download → DL-01). The DEC-45 trigger closed DEFECT-41. **Live Chrome download E2E is a manual check** (headed Playwright download crashes the context). |
+| DL-02 | **live-reachable via DEC-45**; DEFECT-39 fixed | `test:dllivepath` — fires on real mismatch/compound extension, SILENT on unknown-extension (null no longer treated as inconsistent) |
+| PM-01 | **accepted non-functional for Phase I (DEC-40)** | no trustworthy passive source for `permissionContext`; `test:pm01unit` proves the predicate is correct-but-dormant |
 
-- **`transmissionEndpointDomains` — CLOSED end-to-end.** Producer half: `ScriptRuntimeEvidence.transmissionEndpointDomains` was added as a producer-PSL-resolved field (contract Amendment B, commit `ce05ded`); the extractor `apps/harness/extract/scriptRuntime.ts:179` populates it via `psl.ts` (the same V-15-gated path as `url.registrableDomain`, verified by `tier1-e2e`). Engine half (**this session**): `packages/engine/modules/javascript.ts` now **reads** `evidence.transmissionEndpointDomains` (present→value, absent→`[]`, notCollected→unevaluable), mirroring DEFECT-19's redirect fix — the hardcoded `[]` is gone. So `JavaScriptFindings.transmissionEndpointDomains`, the operand CRED-05's `exists` reads, now carries real domains once the module is evaluable. This removed a **second** structural blocker that sat behind the transmission gate; it did **not** touch that gate. The **only** remaining CRED-05 blocker on this path is the transmission **data** itself — `clientSideTransmissionObserved` stays `notCollected` until the Tier-4 sentinel runs (item 5), which keeps the module unevaluable today.
-- **`injectingScriptOriginDomain` — STILL OPEN, and materially larger than a one-line fix.** It is unconditionally `null` at the **evidence level too**: `ScriptRuntimeEvidence` has **no** injecting-origin field at all (unlike transmissionEndpointDomains, no Amendment B added one). The only field that could ground it, `LoginFormObservation.injectingScriptOrigin`, (a) lives in a different evidence category (`loginInterface`) that §2.6 forbids the javascript module from reading, and (b) is **itself fabricated/unpopulated** — DEFECT-31; both producers set it to `null` unconditionally (`loginInterface.ts:177,227`, `collect-evidence.ts:197,213`). Closing this half needs actual capture-layer capability (injection-provenance tracking, same gate as `credentialInterfaceInjected`, DEC-30 Part 4 — not built) **plus** a contract amendment, not a wiring change. CRED-A1's left operand stays `null`. **Governed by DEC-46** (CRED-A1 accepted non-functional for Phase I, with a two-part revisit trigger); DEFECT-31 is cross-referenced there, not duplicated.
+**Tier-2 intervention UI — BUILT this session** (`test:intervention`): Medium interstitial (Proceed / Go back / View findings) + High hard block, monotonic per §11.3, per-navigation override that never teaches auth-store trust (G-02). This is a chrome-extension:// tab-replace page, not a defeatable overlay. `recordIntervention` now fires live (correcting the prior "interventionWasPresented structurally false"). **Visual rendering in real Chrome is a manual check.**
 
-DEC-14 (CRED-05/CRED-A1 non-functional, Phase I) still governs; one of its four sub-gaps (transmissionEndpointDomains) is now fully closed, the injecting-origin sub-gap is unchanged.
+**Confusion matrix:** last full corpus run (34,631 evaluated, earlier this session): CRED-01/06/07 fire; CRED-05 = 0; credential-bearing subset P≈99.3% / R≈14.9%. **Not re-run today** (~20–40 min; corpus now 35,087 entries). CRED-02/03/DL corpus behavior not separately measured.
 
-**Confusion matrix:** last full run this session (34,631 evaluated): **CRED-01/06/07 fire; CRED-05 = 0**; credential-bearing subset **P=99.3%, R=14.9%**. **Not re-run today** (full corpus pass ≈ 20–40 min); the corpus has since grown to 35,087 INDEX entries. **CRED-05 remaining zero is certain** — `sentinel-runs/` **does not exist**, so `sentinel_fill.py --live` (DEC-35 Tier 4) has never run, and `clientSideTransmissionObserved` stays notCollected.
-
-**Corpus:** `INDEX.jsonl` = **35,087** entries (25,716 phishing / 9,371 benign). Tier-1/Tier-3-enabled real snapshots: the ~640 from commits `17725af`+`a3c722a` (40 recovered + 600 fresh).
+**Corpus:** `INDEX.jsonl` = **35,087** entries; ~640 Tier-1/Tier-3-enabled real snapshots.
 
 ---
 
 ## 6. Backend — confirmed status
 
-**100% specification, zero implementation code.** Repo-wide search for `express/fastify/createServer/listen(/app.get(/PostgreSQL/psycopg/sqlalchemy` across `apps packages tools` → no matches (only `.git/objects/db`, a git internal). No `backend/`, `server/`, `api/`, or `db/` source directory exists. The `spec/` documents (Backend-Architecture-*, API-Contract-*, MR-1…MR-12) describe a backend that has not been started. (MR-item resolution not tracked in code; nothing to resolve since no code exists.)
+**Spec only, zero implementation.** No `backend/`, `server/`, `api/`, or `db/` source. Repo-wide search for server/DB frameworks → no matches. The `spec/` backend documents describe a system not yet started. Blocks nothing in the current local-first extension path.
 
 ---
 
 ## 7. Security posture
 
-- **`npm audit`: 0 vulnerabilities.**
-- **Secrets scan:** no hardcoded secrets/keys/credentials. Every hit for "password" is the credential-field **kind** in classification logic or test fixtures; `PHISHTANK_APP_KEY` is an `os.environ` read, not a literal. Clean.
-- **Extension loaded in real Chrome: YES** — user-provided screenshots this session (`amazon.in` → Low; `login.acmebank.example:8000` → High with CRED-01+CRED-06). This is real user evidence; I cannot independently re-capture a browser session in this environment, but it is not merely a claim.
+- `npm audit`: 0 vulnerabilities.
+- No hardcoded secrets (every "password" hit is a credential-field kind or fixture).
+- Extension loads in real Chrome (user screenshots this session: Low on a benign site, High + CRED-01/06 on the test login page).
+- Tier-4 `sentinel_fill.py`: five DEC-35 guards verified intact and unmodified since sign-off; run **dry-run only** — `--live` has never executed (`sentinel-runs/` does not exist), so CRED-05 remains 0 by construction.
 
 ---
 
-## Component completion — re-derived from verification
+## What is genuinely done vs. needs a human vs. still open
 
-| Component | Real completion | Basis |
-|---|---|---|
-| contracts (frozen) | ~100% | typechecks, consumed everywhere, amendments landed |
-| engine — pipeline (stages 1–8) | ~95% | runs end-to-end; property + fixture tests green |
-| engine — 10 modules | ~75% | 3 real+live, 2 conformant stubs (intentional), redirect **fully evaluable** (602fbeb), 4 unevaluable by capability/policy |
-| rules (11) | ~45% functional | 3 fire live; CRED-04 mechanism proven (0 corpus firings, disjoint populations); 7 blocked by capability/policy/DEC-14 |
-| extension (MV3) | ~75% | builds, loads, collects, evaluates, fires CRED-01/06/07 live; javascript/download/permission/authContext evidence not wired |
-| capture pipeline | ~90% | Tier 1+3 built & validated; sentinel-fill approved but never run live |
-| harness | ~90% | extractor + metrics real; `tier1e2e` never CI-exercised |
-| backend | **0%** | spec only |
-| CI | ~70% | 8 gates green & real; **3 gates RED** (lint, conformance-config, G-11); G-6 admittedly heuristic |
-| corpus | ~85% | 35k snapshots; only ~640 Tier-1/3-enabled |
+**Done & verified (green tests):** engine + 10 modules + Stage 1–8; CRED-01/02/06/07 fire live; CRED-03/CRED-04 mechanisms proven on the harness (both S-10 DIVERGENT live); DL-01/DL-02 fire through the SW download re-pass (DEC-45); Tier-2 intervention UI; all CI gates.
 
-## Prioritized remaining work (ranked by what blocks the most)
+**Needs Jayanth's manual real-Chrome check** (logic proven, live visuals/timing unverified in this environment): SW dormancy→wake (CDP keeps the worker warm under automation); live **download** firing of DL-01/DL-02 in real Chrome; Tier-2 interstitial/block visuals; badge colors across real visits.
 
-1. **Fix the 3 red CI gates** — blocks trustworthy "green" state for everything else. (a) eslint: add browser/webextension globals + ignore `dist/`; (b) `check:conformance-config`: exempt or rescope the login-interface conformance file; (c) G-11: regenerate + commit `storage-enums.json`.
-2. ~~DEFECT-19 (redirect registrable-domain fields)~~ — **DONE (602fbeb)**: amendment landed, Option B wired, CRED-04 mechanism proven. (Corpus firings await a snapshot with a >=2-hop cross-domain redirect landing on a credential form; none in the current 617.)
-3. **`webRequest` permission decision** — unblocks full redirect chain/hopCount **and** the javascript transmission-endpoint **data** (the raw `transmissionEndpoints` / `clientSideTransmissionObserved` observation). Note: the endpoint→registrable-**domain** derivation is already done producer-side (DEFECT-18 partial closure above); what `webRequest`/Tier-4 supplies is the raw transmission observation, and `javascript.ts` still needs the one-line wiring to consume the resolved domains. One decision, two modules.
-4. **authContext read-path fingerprint** — the write path (§20.5 login-success inference → authStore, DEC-38) is **built** this session; CRED-02 is still blocked on wiring `collectLoginInterface` to populate the `fingerprint` on the evaluation **read** path (currently `notCollected`). That read-path wiring is the remaining step; it changes production detection behavior and awaits its own explicit authorization.
-5. **Tier 4 sentinel-fill live run** — approved (DEC-35), never executed; the only path to a non-zero CRED-05.
-6. **Formalize ssl/dns/permissionContext as permanent capability boundaries** in the manifest (documentation, low effort).
-7. **Backend** — largest absolute gap, but blocks nothing in the current local-first extension path; lowest priority for *this* system's near-term function.
+**Open by ruling, not bug:** CRED-05 (DEC-14, needs Tier-4 sentinel `--live`); CRED-A1 (DEC-46); PM-01 (DEC-40); CRED-03/CRED-04 live-extension gaps (producer-capability, S-10 DIVERGENT); G-6 reachability (DEFECT-14); the `webRequest` permission decision (redirect chain + transmission data).
 
-*Everything above is re-derived from executed builds/tests and source inspection on 2026-09-01, not copied from the progress report.*
+**Not built:** backend (0%).
+
+*Re-derived from executed builds/tests and source inspection on 2026-09-04.*
