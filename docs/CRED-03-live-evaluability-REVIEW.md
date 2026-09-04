@@ -65,6 +65,82 @@ harness path too; the extension only avoids it today by accident of the decode g
 - **`[ ] C — decode as-is (enable CRED-03 live now).`** Accepts the international
   FP above. Not recommended.
 
-`[ ] APPROVE A   [ ] APPROVE B   [ ] APPROVE C   [ ] OTHER: __________`
+`[ ] APPROVE A   [X] APPROVE B   [ ] APPROVE C   [ ] OTHER: __________`
+
+⚠ **Provenance (delegated, same honesty standard as DEC-45 / DEC-46):** Option B
+was **selected and its predicate designed by the advising (implementing) session**
+under the Architecture Owner's direction to pursue it — NOT a personal,
+line-by-line Architecture-Owner ruling on the exact predicate. Jayanth may instead
+rule on the predicate directly; otherwise this is the delegated determination.
+
+---
+
+## The exact hand-edit (for the Architecture Owner to apply — NOT applied here)
+
+The false positive comes from the deceptive-identity `or` firing on **any** IDN /
+non-ASCII / confusable-script domain. The discriminator between a Latin↔non-Latin
+HOMOGRAPH and a legitimate single-script IDN is `isMixedScript` (a domain mixing
+scripts within itself to impersonate a Latin brand). Replace the whole `or` with a
+single `isMixedScript` gate.
+
+**BEFORE** (`rules-v0.1.0.json`, CRED-03 `predicate`):
+```json
+{
+  "op": "and",
+  "operands": [
+    {
+      "op": "or",
+      "operands": [
+        { "op": "neq", "path": "homograph.confusableSkeleton", "value": null },
+        { "op": "is", "path": "homograph.isMixedScript" },
+        { "op": "or", "operands": [
+            { "op": "is", "path": "homograph.isIdn" },
+            { "op": "is", "path": "homograph.containsNonAscii" }
+        ]}
+      ]
+    },
+    { "op": "is", "path": "loginForm.credentialFormPresent" }
+  ]
+}
+```
+
+**AFTER** (gate on mixed-script + a credential form):
+```json
+{
+  "op": "and",
+  "operands": [
+    { "op": "is", "path": "homograph.isMixedScript" },
+    { "op": "is", "path": "loginForm.credentialFormPresent" }
+  ]
+}
+```
+
+Both operands use paths/ops already present in the current predicate, so V-2 and
+the static validator accept them unchanged. (Optional, more conservative variant
+if desired: `and(is(isMixedScript), neq(confusableSkeleton, null), credentialFormPresent)`
+— but `isMixedScript` alone already yields the result below.)
+
+**Proven in memory (narrowed predicate + the decode, touching no frozen file):**
+
+| Page | isMixedScript | CRED-03 |
+|---|---|---|
+| `раypal.example` (Latin+Cyrillic homograph) | true | **FIRES ✓** |
+| `xn--80ak6aa92e.com` (apple look-alike) | true | **FIRES ✓** |
+| `пример.рф` (genuine Russian, pure Cyrillic) | false | **silent ✓ (FP gone)** |
+| `accounts.example.com` (ASCII) | false | silent ✓ |
+
+**Tradeoff, stated:** a homograph where EVERY Latin glyph is replaced (fully
+single-script) is not `isMixedScript` and would not be caught by CRED-03 — but it
+is also indistinguishable from a legitimate single-script IDN without a brand
+target list, which is CRED-02's job (auth-store cross-origin fingerprint match).
+Acceptable for Phase I.
+
+**Frozen-artifact mechanics the hand-edit must satisfy** (as with a contract
+amendment — hand-typed by the Architecture Owner, never by Claude Code): after
+changing the predicate, bump CRED-03's `lastModifiedIn` (0.1.0 → the new version),
+recompute the `integrityDigest` (`npm run digest:ruleset`) and update it so V-14
+passes, and decide the §12.2 versioning (in-place amendment vs a new
+`rules-v0.x.0.json`). Then the advising session wires the punycode decoder into
+`collectDomainRepresentation` and re-verifies (Phase 2, pending this edit).
 
 **Signed by:** ______________________  **Date:** ______________
