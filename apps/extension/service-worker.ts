@@ -17,7 +17,7 @@
 import {
   SessionStore, type SessionStorageBackend, type SessionKeyParts,
 } from './session-store.ts';
-import { DocumentIndex, runPassInSession } from './session-pass.ts';
+import { DocumentIndex, runPassInSession, EvidenceCache, runDownloadRepass } from './session-pass.ts';
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
 import { computeDownloadContextEvidence, downloadKey, type DownloadRecord } from './download-context.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
@@ -26,6 +26,7 @@ import {
   LoginSuccessTracker, buildLoginFingerprint, buildAuthRecordRequest,
 } from './login-success.ts';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
+import type { AnalysisPassOutcome } from '../../packages/engine/pass.ts';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1.ts';
 import type {
   RedirectEvidence, CredentialFieldKind, AnalysisSessionId,
@@ -43,6 +44,12 @@ const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext
 const docIndex = new DocumentIndex();
 const redirectTracker = new RedirectTracker();
 const loginTracker = new LoginSuccessTracker();
+// DEC-45: the download-triggered re-pass reuses the most recent content-script
+// evidence per session, and needs each tab's CURRENT navigation to resolve the
+// download's session. Both in-memory: `tabToNav` is rebuilt on wake; the evidence
+// cache is intentionally not (a download after dormancy gets no re-pass).
+const evidenceCache = new EvidenceCache();
+const tabToNav = new Map<number, number>();
 
 /** The bundled rule set, loaded once and cached. */
 let ruleSetPromise: Promise<RuleSet> | null = null;
@@ -70,6 +77,9 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   // omits it (older-than-116, impossible per manifest, but fail-safe not crash).
   const documentId = details.documentId ?? '';
   docIndex.record(documentId, parts);
+  // DEC-45: remember this tab's current navigation so a later download can be
+  // attributed to the session it belongs to.
+  tabToNav.set(details.tabId, parts.navigationId);
   void store.startSession(parts, details.url, today(), documentId);
   // §20.5 conjunct 2 — a main-frame navigation is the "subsequent navigation"
   // after a credential submit. Records the time against any pending submit.
@@ -169,6 +179,10 @@ async function analyzeAndReflect(
     // the commit boundary. If the document can't be attributed to a session,
     // fall back to a bare pass with prior=null and no commit-back.
     const sessionParts = documentId !== undefined ? await resolveSessionParts(documentId) : null;
+    // DEC-45: cache the raw content-script parts for this session so a
+    // download-triggered re-pass can reuse them. Never a credential value — the
+    // collector captures field composition + the page title only (§20.2/20.3).
+    if (sessionParts !== null) evidenceCache.remember(sessionParts, parts, Date.now());
     const outcome = sessionParts !== null
       ? await runPassInSession({
           store, parts: sessionParts, evidence, ruleSet, storeReader: authStore,
@@ -178,19 +192,7 @@ async function analyzeAndReflect(
         })
       : await runAnalysisPass(evidence, ruleSet, authStore, null);
 
-    const effectiveTier = outcome.aggregation.effectiveTier;
-    const verdict = {
-      effectiveTier,
-      rawTier: outcome.aggregation.rawTier,
-      score: outcome.aggregation.score,
-      fired: outcome.findings.map((f) => f.ruleId),
-      unevaluable: Object.entries(outcome.evaluations)
-        .filter(([, e]) => e.result.status === 'unevaluable')
-        .map(([module, e]) => ({ module, reason: e.result.status === 'unevaluable' ? e.result.reason : '' })),
-      targetUrl,
-    };
-    await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
-    reflectBadge(tabId, effectiveTier);
+    await applyOutcome(tabId, targetUrl, outcome);
 
     // §20.5 conjuncts 3 + 4, evaluated on THIS (possibly landing) page against
     // any pending credential submit for the tab. On all four holding, write
@@ -225,6 +227,24 @@ function reflectBadge(tabId: number, tier: string): void {
   chrome.action.setBadgeText({ tabId, text });
 }
 
+/** Persist a pass verdict for a tab and reflect its tier on the badge. Shared by
+ *  the content-script-triggered pass and the DEC-45 download re-pass. */
+async function applyOutcome(tabId: number, targetUrl: string, outcome: AnalysisPassOutcome): Promise<void> {
+  const effectiveTier = outcome.aggregation.effectiveTier;
+  const verdict = {
+    effectiveTier,
+    rawTier: outcome.aggregation.rawTier,
+    score: outcome.aggregation.score,
+    fired: outcome.findings.map((f) => f.ruleId),
+    unevaluable: Object.entries(outcome.evaluations)
+      .filter(([, e]) => e.result.status === 'unevaluable')
+      .map(([module, e]) => ({ module, reason: e.result.status === 'unevaluable' ? e.result.reason : '' })),
+    targetUrl,
+  };
+  await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
+  reflectBadge(tabId, effectiveTier);
+}
+
 /* ── DL family (step 7b): observe downloads. Requires the "downloads"
  * permission (already in the manifest).
  *
@@ -246,12 +266,32 @@ chrome.downloads.onCreated.addListener((item) => {
     // pass will see no download for any tab and downloadContext stays
     // notCollected (module unevaluable). Never the old global key.
     if (tabId === undefined) return;
-    await chrome.storage.session.set({
-      [downloadKey(tabId)]: {
-        url: item.url, filename: item.filename, mime: item.mime,
-        referrer: item.referrer, observedAt: Date.now(),
-      },
+    const rec: DownloadRecord = {
+      url: item.url, filename: item.filename, mime: item.mime,
+      referrer: item.referrer, observedAt: Date.now(),
+    };
+    await chrome.storage.session.set({ [downloadKey(tabId)]: rec });
+
+    // DEC-45 (DEFECT-41 Option A): a download does not, on its own, produce an
+    // analysis pass. Run a combined re-pass for this tab's CURRENT session,
+    // reusing that session's cached content-script evidence + this download,
+    // through runPassInSession — so the SAME per-session #withKeyLock serializes
+    // it against a concurrent content-script pass (binding req 1). The FIRST
+    // SW-initiated analysis trigger. Skipped honestly (logged) when there is no
+    // current session, no cached evidence, or the evidence is too stale (req 3).
+    const navId = tabToNav.get(tabId);
+    if (navId === undefined) return;
+    const ruleSet = await loadRuleSet();
+    const result = await runDownloadRepass({
+      store, cache: evidenceCache, parts: { tabId, navigationId: navId },
+      downloadContext: computeDownloadContextEvidence(rec),
+      ruleSet, storeReader: authStore, now: Date.now(), collectedOn: today(),
     });
+    if (result.status === 'ran') {
+      await applyOutcome(tabId, result.targetUrl, result.outcome);
+    } else {
+      console.info(`SSX download re-pass skipped (${result.reason}) for tab ${tabId}`);
+    }
   })();
 });
 
@@ -280,7 +320,16 @@ async function resolveSessionParts(documentId: string): Promise<SessionKeyParts 
 async function reconstructOnWake(): Promise<void> {
   // Rebuild the documentId index so a message arriving right after wake can be
   // attributed without a per-message reconstruct.
-  docIndex.rebuildFrom(await store.reconstructAll());
+  const sessions = await store.reconstructAll();
+  docIndex.rebuildFrom(sessions);
+  // DEC-45: rebuild each tab's current (latest) navigation so a download arriving
+  // right after wake resolves to the tab's current session. The evidence cache
+  // itself is deliberately NOT rebuilt — a download after dormancy gets no
+  // re-pass (no fresh evidence to combine), the safe direction.
+  for (const s of sessions) {
+    const cur = tabToNav.get(s.tabId);
+    if (cur === undefined || s.navigationId > cur) tabToNav.set(s.tabId, s.navigationId);
+  }
 }
 chrome.runtime.onStartup.addListener(() => { void reconstructOnWake(); });
 chrome.runtime.onInstalled.addListener(() => { void reconstructOnWake(); });
@@ -289,6 +338,8 @@ void reconstructOnWake();
 /* ── tab close: drop that tab's session records + index entries ──────────── */
 chrome.tabs.onRemoved.addListener((tabId) => {
   docIndex.forgetTab(tabId);
+  evidenceCache.forgetTab(tabId);
+  tabToNav.delete(tabId);
   void store.endTabSessions(tabId);
 });
 

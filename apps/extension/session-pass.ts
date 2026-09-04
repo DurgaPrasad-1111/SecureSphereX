@@ -17,14 +17,15 @@
  *     presented), atomically per session key.
  */
 
-import type { SecurityEvidence } from '../../packages/contracts/evidence.contract.v1';
+import type { SecurityEvidence, DownloadContextEvidence } from '../../packages/contracts/evidence.contract.v1';
 import type { RuleSet } from '../../packages/contracts/ruleset.format.v1';
 import type { AuthStoreReader } from '../../packages/contracts/boundary.interfaces.v1';
 import { runAnalysisPass } from '../../packages/engine/pass.ts';
 import type { AnalysisPassOutcome } from '../../packages/engine/pass.ts';
 import { recordCommittedPass, recordIntervention } from '../../packages/engine/stage7-8.ts';
 import type { PriorPassState } from '../../packages/engine/stage7-8.ts';
-import { SessionStore, type SessionKeyParts } from './session-store.ts';
+import { SessionStore, sessionKey, SESSION_KEY_PREFIX, type SessionKeyParts } from './session-store.ts';
+import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
 
 /**
  * documentId → session key. A message's `sender.documentId` is fixed to the
@@ -101,4 +102,109 @@ export async function runPassInSession(args: RunPassInSessionArgs): Promise<Anal
   }
 
   return outcome;
+}
+
+/* ══ DEC-45 — download-triggered re-pass (DEFECT-41 Option A) ═══════════════ */
+
+/**
+ * How old cached content-script evidence may be and still be combined with a
+ * download event (DEC-45 binding requirement 3). Beyond this the re-pass is
+ * SKIPPED — the restrictive, honest direction — rather than treating stale
+ * evidence as current.
+ *
+ * ⚠ PROVISIONAL — PENDING CALIBRATION. 120s is a restrictive first value, not a
+ * measured one: a Session is keyed by (tabId, navigationId), so cached evidence
+ * for a session PROVES no navigation happened since collection (a navigation is
+ * a new session) — this bound only guards intra-page DOM drift on a long-lived
+ * page. The in-memory `EvidenceCache` is additionally lost on worker dormancy, a
+ * shorter practical cap. No existing constant fit this semantic
+ * (`LOGIN_SUCCESS_WINDOW_MS` is the §20.5 nav window, 10s).
+ */
+export const EVIDENCE_CACHE_MAX_AGE_MS = 120_000;
+
+/** One session's most recent content-script parts + when they were collected. */
+export interface CachedEvidence {
+  readonly parts: CollectedParts;
+  readonly collectedAt: number;
+}
+
+/**
+ * The most recent content-script `parts` per session, so a download-triggered
+ * re-pass can reuse them without a fresh content-script round-trip (DEC-45).
+ *
+ * IN-MEMORY ONLY, deliberately: it is lost on worker dormancy, which is itself a
+ * staleness bound (a download after the SW slept gets no re-pass — the safe
+ * direction), and it keeps NO collected evidence in persistent storage. It holds
+ * only what the collector produces, which NEVER includes a credential VALUE
+ * (§20.2/20.3 — the collector reads field composition and the page title, never
+ * an input's value); DEC-45 binding requirement 2, asserted by
+ * `download-repass.test.ts`, not assumed by proximity.
+ */
+export class EvidenceCache {
+  readonly #map = new Map<string, CachedEvidence>();
+
+  remember(parts: SessionKeyParts, collected: CollectedParts, at: number): void {
+    this.#map.set(sessionKey(parts), { parts: collected, collectedAt: at });
+  }
+
+  get(parts: SessionKeyParts): CachedEvidence | null {
+    return this.#map.get(sessionKey(parts)) ?? null;
+  }
+
+  forget(parts: SessionKeyParts): void {
+    this.#map.delete(sessionKey(parts));
+  }
+
+  /** Drop every session's cache for a closed tab (paired with tab teardown). */
+  forgetTab(tabId: number): void {
+    const prefix = `${SESSION_KEY_PREFIX}${tabId}:`;
+    for (const k of [...this.#map.keys()]) if (k.startsWith(prefix)) this.#map.delete(k);
+  }
+}
+
+export interface DownloadRepassArgs {
+  readonly store: SessionStore;
+  readonly cache: EvidenceCache;
+  /** The download tab's CURRENT session (resolved by the SW's tabId→nav map). */
+  readonly parts: SessionKeyParts;
+  readonly downloadContext: DownloadContextEvidence;
+  readonly ruleSet: RuleSet;
+  readonly storeReader: AuthStoreReader;
+  readonly now: number;
+  /** Day stamp for the assembled evidence (the SW passes `today()`). */
+  readonly collectedOn: string;
+  readonly maxAgeMs?: number;
+}
+
+export type DownloadRepassResult =
+  | { readonly status: 'ran'; readonly outcome: AnalysisPassOutcome; readonly targetUrl: string }
+  | { readonly status: 'skipped'; readonly reason: 'no_session' | 'no_cached_evidence' | 'evidence_stale' };
+
+/**
+ * The download-triggered combined re-pass (DEC-45 / Option A). Reuses the
+ * session's cached content-script evidence + the fresh download evidence and runs
+ * ONE pass through `runPassInSession` — so the SAME per-session `#withKeyLock`
+ * serializes it against a concurrent content-script pass (binding requirement 1),
+ * and the committed prior state (a primary finding from the page's own pass) is
+ * what lets DL-01's `priorFindingActive` conjunct hold. Honest about staleness
+ * (binding requirement 3): evidence older than `maxAgeMs` is skipped, never
+ * silently combined. Collects nothing new; no evidence is fabricated.
+ */
+export async function runDownloadRepass(args: DownloadRepassArgs): Promise<DownloadRepassResult> {
+  const record = await args.store.getSession(args.parts);
+  if (record === null) return { status: 'skipped', reason: 'no_session' };
+
+  const cached = args.cache.get(args.parts);
+  if (cached === null) return { status: 'skipped', reason: 'no_cached_evidence' };
+
+  const maxAge = args.maxAgeMs ?? EVIDENCE_CACHE_MAX_AGE_MS;
+  if (args.now - cached.collectedAt > maxAge) return { status: 'skipped', reason: 'evidence_stale' };
+
+  const merged: CollectedParts = { ...cached.parts, downloadContext: args.downloadContext };
+  const evidence = assembleEvidence(merged, record.targetUrl, args.collectedOn);
+  const outcome = await runPassInSession({
+    store: args.store, parts: args.parts, evidence, ruleSet: args.ruleSet,
+    storeReader: args.storeReader, interventionWasPresented: false,
+  });
+  return { status: 'ran', outcome, targetUrl: record.targetUrl };
 }
