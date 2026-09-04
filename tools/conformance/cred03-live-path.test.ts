@@ -13,12 +13,17 @@
  *     ICU `domainToUnicode`, decoding an `xn--` host back to Unicode, so a
  *     Cyrillic/Greek homograph is measured correctly → homograph EVALUABLE →
  *     CRED-03 FIRES on a homograph domain carrying a credential form.
- *   - EXTENSION live path: `new URL().hostname` yields the PUNYCODE form, and a
- *     content script CANNOT decode punycode → Unicode (ProducerCapabilityManifest:
- *     unicodeDomain 0/6 NOT OBSERVABLE). So `collectDomainRepresentation` marks
- *     the script-dependent fields `notCollected` for an IDN host → homograph
- *     UNEVALUABLE → CRED-03 cannot fire live on exactly the pages it targets.
- *     An honest capability gap, never a fabricated clean bill of health.
+ *   - EXTENSION live path: `new URL().hostname` yields the PUNYCODE form, and
+ *     `collectDomainRepresentation` does NOT decode it → the script-dependent
+ *     fields are `notCollected` for an IDN host → homograph UNEVALUABLE →
+ *     CRED-03 does not fire live. NOTE (refined 2026-09-04): the decode is
+ *     actually feasible and safe (pure-JS RFC-3492, proven byte-identical to
+ *     node:url domainToUnicode), so this is NOT a hard platform gap. It is
+ *     deliberately left un-wired because the FROZEN CRED-03 predicate would then
+ *     over-fire on legit non-Latin IDNs (e.g. пример.рф fires at Medium) — a
+ *     frozen-ruleset breadth issue for the Architecture Owner. See
+ *     docs/CRED-03-live-evaluability-REVIEW.md. This test pins the CURRENT
+ *     (un-wired) behaviour.
  *
  * So CRED-03 is live-functional on the OFFLINE producer and live-UNREACHABLE on
  * the EXTENSION producer for IDN homographs — S-10 DIVERGENT, like CRED-04. This
@@ -104,5 +109,6 @@ const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.
 }
 
 console.log('CRED-03 live-path PROVEN and DIVERGENCE recorded (S-10, like CRED-04): FIRES on the harness/offline '
-  + 'producer (node:url decodes the IDN); LIVE-UNREACHABLE on the extension producer for IDN homographs '
-  + '(a content script cannot decode punycode -> Unicode, so homograph is unevaluable); correctly silent on plain ASCII.');
+  + 'producer (node:url decodes the IDN); live-silent on the extension producer because the punycode decode '
+  + 'is deliberately NOT wired (feasible/safe, but the frozen predicate would over-fire on legit non-Latin '
+  + 'IDNs — see docs/CRED-03-live-evaluability-REVIEW.md); correctly silent on plain ASCII.');
