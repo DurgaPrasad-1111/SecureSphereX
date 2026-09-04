@@ -42,7 +42,7 @@ cached `parts` are a *snapshot* — a page mutated since collection is re-analyz
 on stale evidence. Minimization (§20.3): retaining full collected evidence past
 one pass is broader collection than today.
 
-`[ ] APPROVE OPTION A`
+`[X] APPROVE OPTION A` — selected; see ruling below.
 
 ### Option B — SW-triggered re-pass via a fresh content-script round-trip
 
@@ -90,6 +90,17 @@ answer for this defect.
 ---
 
 **Architecture Owner ruling:**
-`[ ] APPROVE OPTION A   [ ] APPROVE OPTION B   [ ] APPROVE OPTION C   [ ] APPROVE OPTION D   [ ] OTHER: __________`
+`[X] APPROVE OPTION A   [ ] APPROVE OPTION B   [ ] APPROVE OPTION C   [ ] APPROVE OPTION D   [ ] OTHER: __________`
 
-**Signed by:** ______________________  **Date:** ______________
+**Selected: Option A**, with the three binding requirements recorded in DEC-45
+(route through the existing `#withKeyLock`; verify minimization by test; bound
+cache staleness) — those requirements are part of the ruling, not optional.
+
+⚠ **Provenance (stated plainly, same distinction as the v1.0.0 tag decision):**
+the Architecture Owner directed that DEFECT-41 be resolved and specified the
+three binding requirements; the **option choice (Option A) was DELEGATED to the
+advising / implementing session**, which selected it. This is the implementing
+session's selection under delegation — **NOT the Architecture Owner's personal
+ruling** — so no self-applied "Signed by: Jayanth" line is used.
+
+**Signed by:** implementing session, under Architecture-Owner delegation  **Date:** 2026-09-04

@@ -4921,3 +4921,59 @@ visible in `git status` per the block-frozen hook's own durable-control note.
 prior hand-typed Annex A amendment this session), DEFECT-18 (the two-half gap this
 tracks), `packages/engine/modules/javascript.ts` (the engine-consumption fix that
 made the old comment stale).
+
+---
+
+## DEC-45 — DEFECT-41 download re-analysis trigger: ADOPT Option A (SW-triggered re-pass reusing cached evidence), with three binding requirements
+
+**[R]** [[DEFECT-41]]: analysis has exactly one trigger (a one-shot `ssx-evidence`
+content-script message); `chrome.downloads.onCreated` only stores a record and
+never re-triggers analysis. So DL-01 (needs `priorFindingActive` + a consumed
+download record in ONE pass) is structurally live-unreachable, and DL-02 is
+reachable only incidentally. The engine threading ([[DEC-43]]/[[DEC-44]]) is
+proven correct; only the live trigger is missing. Options and their costs are laid
+out in `docs/DEFECT-41-download-retrigger-REVIEW.md`.
+
+**Decision:** ☑ ADOPT **Option A**. On `chrome.downloads.onCreated`, run a
+combined re-pass that reuses the most recent content-script evidence cached for
+the download tab's CURRENT session, merged with the fresh download evidence, via
+`runPassInSession`. This introduces the FIRST SW-initiated analysis trigger — the
+single-entry-point property is deliberately relaxed here, and only here.
+
+**Binding requirements — part of the ruling, NOT optional:**
+
+1. **Route through the existing session lock.** The re-pass MUST serialize through
+   `SessionStore.#withKeyLock` (as `runPassInSession`'s commit-back already does),
+   not a new/separate concurrency mechanism — a download landing near-
+   simultaneously with a content-script pass on the same session is exactly the
+   race that lock exists to prevent.
+2. **Cached evidence inherits §20.2/20.3 minimization — verified, not assumed.**
+   The collector never captures credential VALUES (only field composition + page
+   title). Caching `parts` for reuse MUST NOT introduce any new surface for
+   credential-adjacent data to persist; confirmed by a dedicated test asserting no
+   field value / credential-adjacent string enters the cache, not by proximity to
+   already-safe code.
+3. **Bound cache staleness explicitly.** Cached evidence older than
+   `EVIDENCE_CACHE_MAX_AGE_MS` is too stale to combine with a download; the re-pass
+   is SKIPPED (the restrictive, honest direction) and the skip logged, rather than
+   treating minutes-old evidence as current. Value **120_000 ms (2 min),
+   PROVISIONAL pending calibration** — justified: session-keying already guarantees
+   no navigation since collection (a navigation is a new session), so the bound
+   only guards intra-page DOM drift on a long-lived page; the in-memory cache is
+   additionally lost on worker dormancy, a shorter practical cap. No existing timing
+   constant fit this semantic (`LOGIN_SUCCESS_WINDOW_MS` is the §20.5 nav window, 10s).
+
+- **Status:** SIGNED 2026-09-04. IMPLEMENTED: `EvidenceCache` + `runDownloadRepass`
+  + `EVIDENCE_CACHE_MAX_AGE_MS` in `apps/extension/session-pass.ts`;
+  `chrome.downloads.onCreated` re-pass wiring + `tabId → current-session`
+  resolution (`tabToNav`, rebuilt on wake) in `apps/extension/service-worker.ts`.
+  Tests: `apps/extension/download-repass.test.ts` (DL-01 end-to-end via the
+  re-pass path; staleness excludes old evidence; lock prevents a lost update;
+  no credential-adjacent data in the cache). `verify:all` green.
+- **Decision provenance (stated plainly, same distinction as the v1.0.0 tag
+  decision):** the Architecture Owner directed that DEFECT-41 be resolved and
+  specified the three binding requirements above; the **option choice (Option A)
+  was DELEGATED to the implementing session**, which selected it and authored this
+  entry. This is the implementing session's selection under delegation — **NOT a
+  personal Architecture-Owner ruling** — so no self-applied "Signed by: Jayanth"
+  line is used here.
