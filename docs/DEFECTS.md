@@ -2994,3 +2994,38 @@ re-runs analysis for the current document without a fresh navigation).
   fires end-to-end through the cache+re-pass path (`test:downloadrepass`). The
   live-Chrome download E2E remains a manual check (headed Playwright download
   crashes the context), but the trigger gap this defect recorded is closed.
+
+## DEFECT-42 — the ten `packages/engine/*.fixture.test.ts` files were excluded from `verify:all`, so ruleset/engine changes could silently break real coverage (found 2026-09-04; RESOLVED 2026-09-04 by wiring them in)
+
+Finding: `verify:all` ran the hand-fixture round-trip (`test:fixtures`,
+`tools/ci/test-fixtures.ts`), the property tests (`test:properties`,
+`b1-5.properties.test.ts`), the conformance/live-path suites, and the
+`apps/*` unit tests — but **none** of the ten engine fixture tests under
+`packages/engine/*.fixture.test.ts`
+(`consistency`, `e2e.sso-flow`, `module-versions`, `orchestrator`, `pass`,
+`stage2`, `stage3`, `stage4`, `stage5-6`, `stage7-8`). They existed, passed,
+and were runnable by hand (`node --experimental-strip-types packages/engine/<name>.fixture.test.ts`),
+but nothing in the gate chain invoked them. A ruleset or engine change could
+therefore break real per-stage / end-to-end coverage while `verify:all` stayed
+green.
+
+Evidence — this was not hypothetical: during the CRED-03 work ([[DEC-47]],
+Option B), narrowing CRED-03's predicate to `is(homograph.isMixedScript)` broke
+`packages/engine/e2e.sso-flow.fixture.test.ts` section 8 (which had asserted
+CRED-03 fires on a distinct confusable-skeleton alone). `verify:all` **did not
+catch it** — the regression surfaced only because it was run manually. That
+manual run is what exposed this gap.
+
+- **Owning step.** CI configuration (`package.json` `verify:all` chain).
+- **Impact.** Coverage silently narrower than believed: the full-pipeline
+  (`pass`, `orchestrator`, `e2e.sso-flow`) and per-stage (`stage2`..`stage7-8`)
+  fixture assertions, plus the module-version drift guard, were not gating any
+  merge. A rule-set edit that broke stage semantics or a firing expectation
+  could ship green.
+- **Status:** RESOLVED 2026-09-04. Added `tools/ci/run-engine-fixtures.mjs`, a
+  runner that **auto-discovers** `packages/engine/*.fixture.test.ts` by glob (so
+  an eleventh fixture test is gated automatically — the gap cannot silently
+  reopen) and runs each under `--experimental-strip-types`, failing on the first
+  non-zero exit. Wired as `test:enginefixtures` into `verify:all` immediately
+  after `test:fixtures`. Fresh end-to-end `verify:all` runs all ten (including
+  `e2e.sso-flow`, the CRED-03 regression-catcher) and exits 0.
