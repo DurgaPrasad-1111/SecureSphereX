@@ -37,10 +37,31 @@ export interface DownloadRecord {
   readonly mime: string;
   readonly referrer: string;
   readonly observedAt: number;
+  /**
+   * DEFECT-43 traceability marker: is `filename` the browser-CONFIRMED name
+   * (present at onCreated for an auto-download, or supplied later by
+   * downloads.onChanged for a "Save link as"), or is `filename` still empty and
+   * the record only provisional? Optional for back-compat; when absent, a
+   * non-empty `filename` is treated as confirmed. The filename-derived
+   * fields (declaredExtension/hasCompoundExtension) are only authoritative when
+   * this is true — see `provisionalExtensionFromUrl` for why a URL path is not.
+   */
+  readonly filenameConfirmed?: boolean;
 }
 
 export function downloadKey(tabId: number): string {
   return `ssx:download:${tabId}`;
+}
+
+/**
+ * DEFECT-43: maps a browser download id -> the tab it was attributed to at
+ * onCreated. downloads.onChanged carries the download id but NO tabId, so this
+ * is how a late filename-confirmation is routed back to the right tab's record.
+ * Persisted in session storage (not in-memory) so it survives SW dormancy
+ * between onCreated and the user's Save-As dialog choice.
+ */
+export function downloadTabKey(downloadId: number): string {
+  return `ssx:dl-tab:${downloadId}`;
 }
 
 /** Registrable domain as an Observation, mirroring url.ts: no URL -> absent
@@ -98,4 +119,60 @@ export function computeDownloadContextEvidence(rec: DownloadRecord): DownloadCon
     declaredMimeType: rec.mime === '' ? absent<string>() : present(rec.mime),
     hasCompoundExtension: present(hasCompoundExtension(rec.filename)),
   };
+}
+
+/* ══ DEFECT-43 — late-filename handling for "Save link as" downloads ═════════ */
+
+/** The last non-empty path segment of a URL, decoded — a filename-like string.
+ *  Empty for an unparseable URL or a URL with no path segment. */
+function filenamePathSegment(url: string): string {
+  let pathname: string;
+  try { pathname = new URL(url).pathname; } catch { return ''; }
+  const seg = pathname.split('/').filter((s) => s !== '').pop() ?? '';
+  try { return decodeURIComponent(seg); } catch { return seg; }
+}
+
+/**
+ * A provisional extension read from the download URL's path, for the window
+ * before the browser assigns a real filename (a "Save link as" download fires
+ * onCreated with filename===''). It is DELIBERATELY NON-AUTHORITATIVE and is
+ * never emitted into DownloadContextEvidence: a URL path is spoofable and
+ * routinely diverges from the name that lands on disk (Content-Disposition, a
+ * server redirect, the user renaming in the Save-As dialog). It exists for
+ * defense-in-depth traceability — logged/recorded so the provisional state is
+ * visible — while the CONFIRMED filename (via downloads.onChanged) is the only
+ * thing that fires DL-01/DL-02. Treating the URL as equally authoritative would
+ * make a rule fire just because a URL "looked" suspicious.
+ */
+export interface ProvisionalUrlExtension {
+  readonly filenameFromUrl: string;
+  readonly declaredExtension: string | null;
+  readonly hasCompoundExtension: boolean;
+}
+export function provisionalExtensionFromUrl(url: string): ProvisionalUrlExtension {
+  const filenameFromUrl = filenamePathSegment(url);
+  const ext = declaredExtensionOf(filenameFromUrl);
+  return {
+    filenameFromUrl,
+    declaredExtension: ext.state === 'present' ? ext.value : null,
+    hasCompoundExtension: hasCompoundExtension(filenameFromUrl),
+  };
+}
+
+/**
+ * Fold a browser-CONFIRMED filename (from downloads.onChanged's
+ * `delta.filename.current`) into a stored record. Idempotent: returns
+ * `changed:false` when there is nothing new to confirm — an empty name, or a
+ * record that already carries this exact confirmed filename — so a caller
+ * re-runs the download re-pass ONLY on a meaningful filename-confirmation event,
+ * never on every progress/state delta onChanged emits.
+ */
+export function applyFilenameConfirmation(
+  rec: DownloadRecord, confirmedFilename: string,
+): { readonly rec: DownloadRecord; readonly changed: boolean } {
+  if (confirmedFilename === '') return { rec, changed: false };
+  if (rec.filenameConfirmed === true && rec.filename === confirmedFilename) {
+    return { rec, changed: false };
+  }
+  return { rec: { ...rec, filename: confirmedFilename, filenameConfirmed: true }, changed: true };
 }

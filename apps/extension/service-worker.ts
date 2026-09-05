@@ -19,7 +19,10 @@ import {
 } from './session-store.ts';
 import { DocumentIndex, runPassInSession, EvidenceCache, runDownloadRepass } from './session-pass.ts';
 import { assembleEvidence, type CollectedParts } from './assemble-evidence.ts';
-import { computeDownloadContextEvidence, downloadKey, type DownloadRecord } from './download-context.ts';
+import {
+  computeDownloadContextEvidence, downloadKey, downloadTabKey,
+  provisionalExtensionFromUrl, applyFilenameConfirmation, type DownloadRecord,
+} from './download-context.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
 import { RedirectTracker, computeRedirectEvidence, redirectKey } from './redirect-observer.ts';
 import {
@@ -379,6 +382,36 @@ async function clearTabOverrides(tabId: number): Promise<void> {
  * misattributed guess. Referrer/URL string correlation was rejected (empty
  * referrers, ambiguous domains — the self-declared-heuristic class this project
  * requires be labelled, not silently trusted). ── */
+/**
+ * DEC-45 (DEFECT-41 Option A): a download does not, on its own, produce an
+ * analysis pass. Run a combined re-pass for the tab's CURRENT session, reusing
+ * that session's cached content-script evidence + this download, through
+ * runPassInSession — so the SAME per-session #withKeyLock serializes it against a
+ * concurrent content-script pass (binding req 1). Skipped honestly (logged) when
+ * there is no current navigation, no session, no cached evidence, or the evidence
+ * is too stale (req 3). Shared by downloads.onCreated and downloads.onChanged.
+ */
+async function triggerDownloadRepass(tabId: number, rec: DownloadRecord): Promise<void> {
+  const navId = tabToNav.get(tabId);
+  if (navId === undefined) {
+    console.info(`SSX download re-pass skipped (no current navigation for tab ${tabId})`);
+    return;
+  }
+  const ruleSet = await loadRuleSet();
+  const result = await runDownloadRepass({
+    store, cache: evidenceCache, parts: { tabId, navigationId: navId },
+    downloadContext: computeDownloadContextEvidence(rec),
+    ruleSet, storeReader: authStore, now: Date.now(), collectedOn: today(),
+  });
+  if (result.status === 'ran') {
+    await applyOutcome(tabId, result.targetUrl, result.outcome);
+    // A download re-pass can raise the tier (DL-01/DL-02) — gate on it too.
+    await maybeIntervene(tabId, { tabId, navigationId: navId }, result.targetUrl, result.outcome.aggregation.effectiveTier);
+  } else {
+    console.info(`SSX download re-pass skipped (${result.reason}) for tab ${tabId}`);
+  }
+}
+
 chrome.downloads.onCreated.addListener((item) => {
   void (async () => {
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -386,35 +419,65 @@ chrome.downloads.onCreated.addListener((item) => {
     // Not confidently attributable to a focused tab -> record NOTHING. The
     // pass will see no download for any tab and downloadContext stays
     // notCollected (module unevaluable). Never the old global key.
-    if (tabId === undefined) return;
+    if (tabId === undefined) {
+      console.info('SSX download ignored — no confidently attributable active tab (nothing stored, no re-pass)');
+      return;
+    }
+    // DEFECT-43: a "Save link as" download fires onCreated with filename==''
+    // (the browser has not assigned the name yet); an auto-download arrives named.
     const rec: DownloadRecord = {
       url: item.url, filename: item.filename, mime: item.mime,
       referrer: item.referrer, observedAt: Date.now(),
+      filenameConfirmed: item.filename !== '',
     };
     await chrome.storage.session.set({ [downloadKey(tabId)]: rec });
+    // DEFECT-43: remember which tab this download belongs to, so a later
+    // downloads.onChanged filename-confirmation (which carries no tabId) routes
+    // back to this record. Persisted so it survives SW dormancy between onCreated
+    // and the user's Save-As dialog choice.
+    await chrome.storage.session.set({ [downloadTabKey(item.id)]: tabId });
 
-    // DEC-45 (DEFECT-41 Option A): a download does not, on its own, produce an
-    // analysis pass. Run a combined re-pass for this tab's CURRENT session,
-    // reusing that session's cached content-script evidence + this download,
-    // through runPassInSession — so the SAME per-session #withKeyLock serializes
-    // it against a concurrent content-script pass (binding req 1). The FIRST
-    // SW-initiated analysis trigger. Skipped honestly (logged) when there is no
-    // current session, no cached evidence, or the evidence is too stale (req 3).
-    const navId = tabToNav.get(tabId);
-    if (navId === undefined) return;
-    const ruleSet = await loadRuleSet();
-    const result = await runDownloadRepass({
-      store, cache: evidenceCache, parts: { tabId, navigationId: navId },
-      downloadContext: computeDownloadContextEvidence(rec),
-      ruleSet, storeReader: authStore, now: Date.now(), collectedOn: today(),
-    });
-    if (result.status === 'ran') {
-      await applyOutcome(tabId, result.targetUrl, result.outcome);
-      // A download re-pass can raise the tier (DL-01/DL-02) — gate on it too.
-      await maybeIntervene(tabId, { tabId, navigationId: navId }, result.targetUrl, result.outcome.aggregation.effectiveTier);
-    } else {
-      console.info(`SSX download re-pass skipped (${result.reason}) for tab ${tabId}`);
+    if (!rec.filenameConfirmed) {
+      // DEFECT-43 defense-in-depth: log the provisional, URL-derived signal for
+      // traceability only. It is NON-authoritative and fires no rule on its own —
+      // the confirmed filename (onChanged) does. A URL path is spoofable.
+      const prov = provisionalExtensionFromUrl(item.url);
+      console.info(`SSX download provisional (filename not yet confirmed) tab=${tabId} `
+        + `url-derived name="${prov.filenameFromUrl}" compoundExt=${prov.hasCompoundExtension} `
+        + '— non-authoritative, awaiting downloads.onChanged');
     }
+    await triggerDownloadRepass(tabId, rec);
+  })();
+});
+
+/**
+ * DEFECT-43: the browser assigns a "Save link as" download's real filename AFTER
+ * onCreated, via downloads.onChanged (delta.filename.current). The onCreated
+ * snapshot alone permanently missed it, so DL-01/DL-02 — which key on the
+ * filename-derived extension, not the URL — could never fire on a save-as
+ * compound-extension disguise (e.g. fake-invoice.pdf.zip). On a genuine filename
+ * confirmation, update the stored record and re-run the combined re-pass through
+ * the SAME #withKeyLock path, replacing the provisional URL-derived state with
+ * confirmed filename-derived evidence. Guarded to act ONCE per meaningful
+ * confirmation (via applyFilenameConfirmation + one-shot map removal), never on
+ * the progress/state deltas onChanged also emits.
+ */
+chrome.downloads.onChanged.addListener((delta) => {
+  const confirmed = delta.filename?.current;
+  if (confirmed === undefined || confirmed === '') return; // only filename-confirmation deltas
+  void (async () => {
+    const mapKey = downloadTabKey(delta.id);
+    const tabId = (await chrome.storage.session.get(mapKey))[mapKey] as number | undefined;
+    if (tabId === undefined) return;                        // not one of our attributed downloads
+    const stored = (await chrome.storage.session.get(downloadKey(tabId)))[downloadKey(tabId)] as DownloadRecord | undefined;
+    if (stored === undefined) return;                       // record already gone (tab closed / superseded)
+    const { rec, changed } = applyFilenameConfirmation(stored, confirmed);
+    if (!changed) return;                                   // idempotent: already confirmed this exact filename
+    await chrome.storage.session.set({ [downloadKey(tabId)]: rec });
+    await chrome.storage.session.remove(mapKey);            // one-shot: the filename is now confirmed
+    console.info(`SSX download filename confirmed tab=${tabId} filename="${rec.filename}" `
+      + '— re-running combined re-pass with authoritative (filename-derived) evidence');
+    await triggerDownloadRepass(tabId, rec);
   })();
 });
 

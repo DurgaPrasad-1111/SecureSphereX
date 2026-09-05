@@ -3029,3 +3029,53 @@ manual run is what exposed this gap.
   non-zero exit. Wired as `test:enginefixtures` into `verify:all` immediately
   after `test:fixtures`. Fresh end-to-end `verify:all` runs all ten (including
   `e2e.sso-flow`, the CRED-03 regression-catcher) and exits 0.
+
+## DEFECT-43 — a "Save link as" download's real filename arrives after onCreated (via downloads.onChanged) but the SW read it only at onCreated, so DL-01/DL-02 could never fire on a save-as compound-extension disguise (found 2026-09-05 in live manual testing; RESOLVED 2026-09-05 via DEC-48)
+
+Finding: `chrome.downloads.onCreated` fires for a "Save link as" download with
+`item.filename === ''` — the browser has not assigned the name yet and delivers
+it later through `chrome.downloads.onChanged` (`delta.filename.current`). The
+service worker snapshotted `item.filename` exactly once, at onCreated
+(`service-worker.ts`), and had **no `onChanged` / `onDeterminingFilename`
+listener**, so a late filename was permanently missed.
+
+Evidence (real, not speculative): a manual "Save link as" of
+`http://localhost:8000/fake-invoice.pdf.zip` fired onCreated with an empty
+filename (confirmed via the temporary entry-point diagnostic added during the
+investigation). Both DL predicates derive the extension from the **filename, not
+the URL** — DL-01's `inSet(downloadContext.declaredExtension, executableTypes)`
+and DL-02's `is(downloadContext.hasCompoundExtension)`, both computed from
+`rec.filename` in `download-context.ts`. With an empty filename,
+`hasCompoundExtension('')` is `present(false)` and `declaredExtension` is
+`absent`, so the compound-extension disguise sitting in `item.url`
+(`fake-invoice.pdf.zip`) was a true **false negative**: DL-02 could never fire on
+a save-as download, even though the URL string contained the disguise.
+
+- **Owning step.** Extension SW download trigger wiring
+  (`service-worker.ts` `downloads.onCreated`; the missing `downloads.onChanged`).
+- **Impact.** Save-as downloads (the explicit save-dialog path) were invisible to
+  the DL family — the disguise class DL-02 exists to catch. Auto-downloads (named
+  at onCreated) were unaffected. S-9 (in-browser-only), so invisible to the
+  offline corpus suite; surfaced only by the live-browser round.
+- **Status:** RESOLVED 2026-09-05 via [[DEC-48]] (Option A + defense-in-depth URL
+  fallback). Added a `downloads.onChanged` listener that, on a genuine filename
+  confirmation, resolves the tab via a new persisted `downloadId → tabId` map
+  (onChanged carries no tabId), updates the stored record, and re-runs
+  `runDownloadRepass` through the existing `#withKeyLock` path — replacing
+  provisional evidence with confirmed filename-derived evidence. Idempotent
+  (`applyFilenameConfirmation` + one-shot map removal) so it fires once per
+  confirmation, never on progress/state deltas; a late confirmation past
+  `EVIDENCE_CACHE_MAX_AGE_MS` skips `evidence_stale` (existing bound). A
+  non-authoritative URL-derived provisional signal (`provisionalExtensionFromUrl`
+  + `DownloadRecord.filenameConfirmed`) is recorded/logged for traceability but
+  never emitted into evidence — a spoofable URL must not fire a rule on its own.
+  Proven by `test:downloadonchanged` (wired into verify:all) against the exact
+  failing case: DL-02 fires once the real filename confirms, silent provisionally,
+  no false positive on `report.pdf`. DL-02 is a `baseWeight`-20 aggravator, so on
+  its own it scores 0 and stays Low (finding visible in the popup `fired` list,
+  no interstitial) — its existing `type:"aggravator"` semantics, unchanged. The
+  live-Chrome download E2E stays a manual check (S-9; the harness cannot emit the
+  browser download events — same limitation as [[DEC-45]]). The temporary
+  onCreated diagnostic logging added during the investigation was removed;
+  purposeful permanent logging (provisional-state + confirmation + honest skips)
+  replaced it.

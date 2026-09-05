@@ -5086,3 +5086,82 @@ NOT retired, it is now functional), [[DEC-20]] (confusableSkeleton convention),
 - **Status:** SIGNED 2026-09-04. Predicate narrowed; digest recomputed (V-14 OK);
   decoder wired; CRED-03 live-functional; verify:all exit 0.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-04
+
+## DEC-48 — DEFECT-43 late "Save link as" filename: ADOPT Option A (downloads.onChanged re-pass) + defense-in-depth URL fallback
+
+**[R]** Live manual testing established (see [[DEFECT-43]]): a "Save link as"
+download of `http://localhost:8000/fake-invoice.pdf.zip` fires
+`chrome.downloads.onCreated` with `filename === ''` — Chrome assigns the real
+name later, via `downloads.onChanged` (`delta.filename.current`). The SW read
+`item.filename` only at onCreated and never again, so the name was permanently
+missed. Both DL predicates derive the extension from the FILENAME, not the URL
+(`declaredExtension` for DL-01, `hasCompoundExtension` for DL-02 —
+`download-context.ts`), so a save-as compound-extension disguise was a true
+false negative: DL-02 could never fire on it.
+
+**Decision:** ☑ ADOPT **Option A + defense-in-depth URL fallback**, implemented
+in full this session (delegated implementation; the AO ratified the fix shape
+directly — no decision packet, the shape was already well-scoped in the
+DEFECT-43 diagnosis):
+
+1. **`downloads.onChanged` listener wired.** On any delta where
+   `filename.current` is set, resolve the tab via a new persisted
+   `downloadId → tabId` map (`downloadTabKey`, `ssx:dl-tab:<id>` — onChanged
+   carries no tabId; persisted so it survives SW dormancy between onCreated and
+   the Save-As dialog choice), update the stored `ssx:download:<tabId>` record
+   with the confirmed filename, and re-run `runDownloadRepass` through the SAME
+   `#withKeyLock` path — replacing provisional evidence with confirmed
+   filename-derived evidence. Idempotent via `applyFilenameConfirmation` (a
+   repeated identical filename is a no-op) + one-shot map removal, so the re-pass
+   fires ONCE per meaningful confirmation, never on progress/state deltas.
+2. **Staleness unchanged.** A late onChanged past `EVIDENCE_CACHE_MAX_AGE_MS`
+   skips honestly (`evidence_stale`) — the existing bound, no special-casing.
+3. **Defense-in-depth URL fallback — NON-AUTHORITATIVE by design.**
+   `provisionalExtensionFromUrl` computes a provisional
+   `declaredExtension`/`hasCompoundExtension` from the URL path when the filename
+   is empty, and `DownloadRecord.filenameConfirmed` marks the record's state.
+   This is recorded/logged for traceability but is **never emitted into
+   `DownloadContextEvidence`** — a URL path is spoofable and routinely diverges
+   from the name that lands on disk (Content-Disposition, redirect, user rename),
+   so it must not fire a rule on its own. The confirmed filename is the only
+   thing that fires DL-01/DL-02 — "a rule must not become overconfident just
+   because a URL looked suspicious." The frozen `DownloadContextEvidence`
+   contract and its `NotCollectedReason` enum are untouched (no hand-edit
+   needed); the traceability marker lives on the extension-owned `DownloadRecord`.
+
+**Result (proven, `test:downloadonchanged`, against the exact failing case):**
+provisional `fake-invoice.pdf.zip` (filename `''`) → URL-derived `compoundExt=true`
+yet **DL-02 does NOT fire** (URL signal not authoritative); once onChanged confirms
+`fake-invoice.pdf.zip` → popup verdict `fired=[DL-02]` (**the exact regression, now
+fixed**); a repeated identical delta is a no-op; a genuine `report.pdf` stays SILENT
+provisionally and after confirmation; a late confirmation past the staleness bound
+skips `evidence_stale`.
+
+**Recorded honestly:** DL-02 is a `baseWeight`-20 **aggravator** of DL-01, so on
+its own (no active DL-01 parent) it scores 0 and the effective tier stays **Low** —
+the finding fires and is visible in the popup's `fired` list, but a compound
+extension alone does not raise an interstitial. That is the rule's existing
+`type: "aggravator"` semantics (it CORROBORATES suspicious delivery), unchanged by
+this fix. The live-Chrome download E2E remains a manual check (S-9; the offline
+harness cannot emit the browser download events — same limitation as [[DEC-45]]);
+this session's proof drives the exact listener logic with the onChanged
+confirmation modeled by `applyFilenameConfirmation`.
+
+**Numbering note:** the AO's message referred to this as "DEFECT-42", but
+DEFECT-42 was already used earlier this session for the verify:all fixture-test
+wiring gap (commit `33122f9`). Logged here as **DEFECT-43** (next free) to avoid a
+duplicate.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-05** — an explicit go-ahead to implement Option A + the URL fallback,
+stated plainly, not self-attested. Implementation delegated to this session.
+
+**Related:** [[DEC-45]] (DEFECT-41 — the download re-pass path this extends; same
+S-9 manual-E2E limitation), [[DEFECT-43]] (the diagnosis this concludes),
+[[DEFECT-38]] (download tab-attribution heuristic).
+
+- **Status:** SIGNED 2026-09-05. onChanged listener + downloadId→tabId map +
+  URL-fallback traceability wired; DL-02 fires on a confirmed save-as compound
+  extension, silent provisionally; `test:downloadonchanged` wired into verify:all;
+  verify:all exit 0.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-05
