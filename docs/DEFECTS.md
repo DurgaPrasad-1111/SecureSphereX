@@ -3079,3 +3079,54 @@ a save-as download, even though the URL string contained the disguise.
   onCreated diagnostic logging added during the investigation was removed;
   purposeful permanent logging (provisional-state + confirmation + honest skips)
   replaced it.
+
+## DEFECT-44 — DL-02 could still fail to surface on a same-tab Save-As: the onChanged immediate re-pass depends on the in-memory evidence cache (lost on SW dormancy / bounded by the 120s staleness cap), and the reliable navigation-merge path was never exercised by a test (found 2026-09-05; RESOLVED 2026-09-05)
+
+Finding: with [[DEC-48]] wired, a same-tab "Save link as" still could leave DL-02
+out of the popup verdict. Tracing the whole path end to end surfaced that both
+the onCreated and onChanged re-passes go through `runDownloadRepass`, which
+REQUIRES the session's cached content-script evidence (`EvidenceCache`). That
+cache is **in-memory and deliberately not rebuilt on SW wake** (DEC-45), and is
+bounded by `EVIDENCE_CACHE_MAX_AGE_MS` (120s). A Save-As dialog left open long
+enough for the MV3 worker to go dormant — or simply past 120s — means the
+onChanged re-pass returns `no_cached_evidence` / `evidence_stale` and DL-02 never
+lands in the verdict. The genuinely reliable trigger is the **navigation merge**
+in `analyzeAndReflect` (it reads the persisted `ssx:download:<tab>` record — with
+the onChanged-confirmed filename — into the next same-tab content-script pass,
+using fresh page evidence, no cache), but nothing exercised it: the entire
+download path was inline in `service-worker.ts`, which has no unit test.
+
+Silent-failure points identified and addressed in one pass:
+- **Tab resolution** — onCreated attributes via `chrome.tabs.query({active,currentWindow})`;
+  onChanged carries no tabId and resolves via the persisted `downloadId -> tabId`
+  map. Both now exercised by the test through the real handlers.
+- **Storage-key consistency** — `downloadKey(tabId)` (record) and
+  `downloadTabKey(downloadId)` (map) are written at onCreated and read at
+  onChanged / at the navigation merge; `item.id === delta.id` ties them. Verified
+  by the test round-tripping through one shared in-memory `chrome.storage.session`.
+- **Timing races** — navigate-before-onChanged resolves via the fresh nav's cache;
+  onChanged-before-navigate resolves via the persisted record + merge. Either
+  order surfaces DL-02.
+- **Evidence-cache staleness/dormancy** — the immediate re-pass is now explicitly
+  best-effort (logs an honest skip); the **navigation merge is the guaranteed
+  path** and does not touch the cache.
+
+- **Owning step.** Extension SW download path (`service-worker.ts` → new
+  `download-handler.ts`).
+- **Impact.** A same-tab Save-As of a compound-extension disguise could fail to
+  show DL-02 whenever the SW slept during the dialog — invisible, because the only
+  trigger that always works (the navigation merge) was untested and undocumented.
+- **Status:** RESOLVED 2026-09-05. Extracted the download path into a browser-free,
+  dependency-injected `download-handler.ts` (`handleDownloadCreated`,
+  `handleDownloadChanged`, `triggerDownloadRepass`, `mergeStoredDownloadContext`,
+  `buildVerdict`); `service-worker.ts` now holds only the thin chrome bindings
+  and a `DownloadEnv`. `download-sametab-e2e.test.ts` (wired into verify:all as
+  `test:downloadsametab`) drives the exact scenario — one tab, one download,
+  filename late via onChanged, evidence cache LOST (modeled dormancy), then a
+  same-tab navigation — through the real handlers and the real
+  `mergeStoredDownloadContext` tab-scoping, asserting `ssx:verdict:<tab>.fired`
+  (what the popup reads) shows DL-02. It also asserts DL-02 is absent while the
+  cache is gone and before navigation, so the reliable path is what is proven. The
+  temporary onChanged diagnostics were removed by the refactor. The live-Chrome
+  download E2E stays a manual check (S-9). Related: [[DEC-48]], [[DEC-45]],
+  [[DEFECT-43]], [[DEFECT-38]].
