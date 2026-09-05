@@ -2,7 +2,7 @@
   "formatVersion": "1.1.0",
   "ruleSetVersion": "rules-v0.2.0",
   "released": false,
-  "integrityDigest": "sha256:088ba46e4e2391736c06f9e7254b343a015c98bb632f6a7e73d78146d5fd74ec",
+  "integrityDigest": "sha256:cf1a42ed0755bcccf4edca6ae71a8bde694d373b537d5c609779dbe78e8a1f6a",
   "pslVersion": "tldextract==5.3.0 include_psl_private_domains=true (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
   "parameters": [
     {
@@ -262,31 +262,8 @@
         "op": "and",
         "operands": [
           {
-            "op": "or",
-            "operands": [
-              {
-                "op": "neq",
-                "path": "homograph.confusableSkeleton",
-                "value": null
-              },
-              {
-                "op": "is",
-                "path": "homograph.isMixedScript"
-              },
-              {
-                "op": "or",
-                "operands": [
-                  {
-                    "op": "is",
-                    "path": "homograph.isIdn"
-                  },
-                  {
-                    "op": "is",
-                    "path": "homograph.containsNonAscii"
-                  }
-                ]
-              }
-            ]
+            "op": "is",
+            "path": "homograph.isMixedScript"
           },
           {
             "op": "is",
@@ -303,7 +280,7 @@
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.1.0",
+      "lastModifiedIn": "0.2.0",
       "lifecycleState": "Active",
       "rationale": "Visual domain deception is only weakly meaningful alone; this rule is the only one that requires it to co-occur with active credential collection, distinguishing deceptive-but-benign IDN sites from deceptive sites actively harvesting credentials.",
       "empiricalConfidence": "Unvalidated",

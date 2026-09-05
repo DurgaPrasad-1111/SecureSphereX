@@ -72,3 +72,55 @@ export function confusableSkeleton(unicodeHost: string): string {
   for (const ch of unicodeHost) out += CONFUSABLE_MAP[ch] ?? ch;
   return out.toLowerCase();
 }
+
+/**
+ * Punycode → Unicode host decode (RFC 3492), pure JS. Lets a producer with only
+ * the ASCII/`xn--` host (a browser content script — `URL.hostname` never returns
+ * the decoded form) recover the Unicode domain for `scriptsOf`/`confusableSkeleton`,
+ * WITHOUT ICU / node:url. Deterministic string math on the URL's OWN host — no
+ * network, no permission, no page-trust boundary (DEC-30 does not apply). Proven
+ * byte-identical to node:url `domainToUnicode` on the IDN cases that matter
+ * (DEC-47); a non-`xn--` label is returned as-is (lowercased), matching the
+ * harness for the already-Unicode/ASCII case.
+ */
+export function punycodeToUnicode(host: string): string {
+  return host.split('.').map((label) => {
+    const l = label.toLowerCase();
+    return l.startsWith('xn--') ? decodePunycodeLabel(l.slice(4)) : l;
+  }).join('.');
+}
+
+/** RFC 3492 decode of one label's basic-string (the part after `xn--`). */
+function decodePunycodeLabel(input: string): string {
+  const base = 36, tmin = 1, tmax = 26, skew = 38, damp = 700, initialBias = 72, initialN = 128;
+  const output: number[] = [];
+  const lastDelim = input.lastIndexOf('-');
+  for (let j = 0; j < (lastDelim < 0 ? 0 : lastDelim); j += 1) output.push(input.charCodeAt(j));
+  let idx = lastDelim < 0 ? 0 : lastDelim + 1;
+  let i = 0, n = initialN, bias = initialBias;
+  while (idx < input.length) {
+    const oldi = i;
+    let w = 1;
+    for (let k = base; ; k += base) {
+      const c = input.charCodeAt(idx); idx += 1;
+      // digit-36 decode: 0-9 -> 26-35, A-Z/a-z -> 0-25.
+      const digit = c - 48 < 10 ? c - 22 : c - 65 < 26 ? c - 65 : c - 97 < 26 ? c - 97 : base;
+      i += digit * w;
+      const t = k <= bias ? tmin : k >= bias + tmax ? tmax : k - bias;
+      if (digit < t) break;
+      w *= base - t;
+    }
+    const out = output.length + 1;
+    let delta = i - oldi;
+    delta = oldi === 0 ? Math.floor(delta / damp) : Math.floor(delta / 2);
+    delta += Math.floor(delta / out);
+    let k = 0;
+    for (; delta > ((base - tmin) * tmax) >> 1; k += base) delta = Math.floor(delta / (base - tmin));
+    bias = Math.floor(k + (base - tmin + 1) * delta / (delta + skew));
+    n += Math.floor(i / out);
+    i %= out;
+    output.splice(i, 0, n);
+    i += 1;
+  }
+  return String.fromCodePoint(...output);
+}

@@ -53,7 +53,7 @@ import { buildLoginFingerprint } from './login-success.ts';
 // A1.2 PSL wiring: the SAME gated PSL path and domain classifiers the harness
 // uses, now shared in packages/engine — never a copy (DEFECT-34).
 import { registrableDomainOf } from '../../packages/engine/psl.ts';
-import { scriptsOf, confusableSkeleton } from '../../packages/engine/domain-classify.ts';
+import { scriptsOf, confusableSkeleton, punycodeToUnicode } from '../../packages/engine/domain-classify.ts';
 
 const nc = <T>(): Observation<T> => notCollected<T>('api_unavailable');
 
@@ -331,34 +331,26 @@ export function collectDomainRepresentation(href: string): DomainRepresentationE
   }
   const isIdn = hostname.split('.').some((l) => l.startsWith('xn--'));
 
-  if (isIdn) {
-    return {
-      // Can't decode punycode in a content script (0/6).
-      unicodeDomain: nc<string>(),
-      punycodeDomain: present(hostname),
-      isIdn: present(true),
-      // Measuring these on the ASCII punycode form would be misleading /
-      // false-negative; not observable without the Unicode form.
-      containsNonAscii: nc<boolean>(),
-      scriptsUsed: nc<readonly string[]>(),
-      isMixedScript: nc<boolean>(),
-      confusableSkeleton: nc<string>(),
-    };
-  }
-
-  // Non-IDN: the host is its own analysable form.
-  const containsNonAscii = /\P{ASCII}/u.test(hostname);
-  const scriptsUsed = scriptsOf(hostname);
-  const skeleton = confusableSkeleton(hostname);
+  // DEC-47: decode punycode → Unicode (shared pure-JS RFC 3492, proven
+  // byte-identical to the harness's node:url domainToUnicode) so an IDN host is
+  // analysed on its REAL Unicode form. homograph is now evaluable live for IDN
+  // pages — no longer notCollected. For a non-IDN host punycodeToUnicode is a
+  // no-op, so this path also now supplies unicodeDomain (was 0/6). CRED-03's
+  // predicate gates on isMixedScript (DEC-47), so a legit single-script IDN
+  // stays silent while a Latin↔non-Latin homograph fires.
+  const uni = punycodeToUnicode(hostname);
+  const containsNonAscii = /\P{ASCII}/u.test(uni);
+  const scriptsUsed = scriptsOf(uni);
+  const skeleton = confusableSkeleton(uni);
   return {
-    unicodeDomain: nc<string>(),          // 0/6, and homograph does not need it
+    unicodeDomain: present(uni),
     punycodeDomain: present(hostname),
-    isIdn: present(false),
+    isIdn: present(isIdn),
     containsNonAscii: present(containsNonAscii),
     scriptsUsed: present(scriptsUsed),
     isMixedScript: present(scriptsUsed.length >= 2),
     // DEC-20: present ONLY when the skeleton differs from the domain.
-    confusableSkeleton: skeleton !== hostname ? present(skeleton) : absent<string>(),
+    confusableSkeleton: skeleton !== uni ? present(skeleton) : absent<string>(),
   };
 }
 

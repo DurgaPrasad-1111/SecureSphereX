@@ -199,12 +199,12 @@ const statusOf = (ruleId: string): string => {
 //  CRED-02 unmatched — authContext is unevaluable, so `eq
 //          authContext.originPresent false` resolves to the UNEVALUABLE
 //          sentinel and returns false (stage2.ts's eq/neq branch).
-//  CRED-03 unmatched — homograph.confusableSkeleton is absent() -> null, so
-//          `neq(..., null)` is false; isIdn/containsNonAscii/isMixedScript are
-//          all present(false). The whole first `or` fails. (Before the
-//          fixtures were corrected this fired on 3 of 4 fixtures, because
-//          they emitted present(<the domain itself>) rather than absent() —
-//          see DEC-20 and the deceptive-IDN control in section 8.)
+//  CRED-03 unmatched — DEC-47 narrowed the predicate to gate solely on
+//          `homograph.isMixedScript`, which is present(false) here (plain ASCII,
+//          single script), so the rule does not fire. (Pre-DEC-47 the predicate
+//          was a broad `or` over confusableSkeleton/isIdn/containsNonAscii that
+//          fired on legitimate single-script IDNs; see DEC-47 and the
+//          deceptive-IDN control in section 8.)
 //  CRED-04 unmatched — hopCount 1 < redirect_hop_min 2 (and DEFECT-19's two
 //          null domains independently make the notSameSite conjunct false).
 //  CRED-05 unmatched — javascript.listenerOnCredentialField is present(false).
@@ -474,10 +474,12 @@ assert.equal(statusIn(deceptiveStatuses, 'CRED-03'), 'matched',
 assert.equal(statusOf('CRED-03'), 'unmatched',
   'CRED-03 must not fire on a plain ASCII domain with no distinct skeleton (DEC-20)');
 
-// Isolate the skeleton conjunct specifically: with the mixed-script and IDN
-// signals forced false, a genuinely distinct skeleton must STILL carry the
-// rule on its own — proving the neq(..., null) arm is doing real work rather
-// than riding on isIdn/containsNonAscii.
+// DEC-47 narrowed CRED-03's predicate to gate on `isMixedScript` alone (removing
+// the old `neq(confusableSkeleton,null)` / `isIdn` / `containsNonAscii` `or`),
+// precisely because a distinct skeleton or bare IDN fires on legitimate
+// single-script non-Latin domains (e.g. пример.рф) — a false positive. So with
+// mixed-script forced false, a genuinely distinct skeleton must now NOT carry
+// the rule: single-script is not a homograph signal any more.
 const skeletonOnly = structuredClone(deceptiveIdn);
 (skeletonOnly as unknown as { evidence: { domainRepresentation: Record<string, { state: string; value: unknown }> } })
   .evidence.domainRepresentation.isIdn = { state: 'present', value: false };
@@ -485,8 +487,8 @@ const skeletonOnly = structuredClone(deceptiveIdn);
   .evidence.domainRepresentation.containsNonAscii = { state: 'present', value: false };
 (skeletonOnly as unknown as { evidence: { domainRepresentation: Record<string, { state: string; value: unknown }> } })
   .evidence.domainRepresentation.isMixedScript = { state: 'present', value: false };
-assert.equal(statusIn(await statusesFor(skeletonOnly), 'CRED-03'), 'matched',
-  'CRED-03 must fire on a distinct skeleton alone, with every other homograph signal false');
+assert.equal(statusIn(await statusesFor(skeletonOnly), 'CRED-03'), 'unmatched',
+  'DEC-47: a distinct skeleton alone (single-script, isMixedScript false) must NOT fire CRED-03 — that was the legitimate-IDN false positive DEC-47 removed by gating solely on isMixedScript');
 
 console.log('all sso-flow end-to-end pipeline assertions passed');
 console.log(

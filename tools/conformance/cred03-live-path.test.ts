@@ -1,33 +1,24 @@
 /**
- * LIVE-PATH proof for CRED-03 (Deceptive identity with credential collection),
- * and the record of its S-10-style DIVERGENCE — the same shape as CRED-04.
+ * LIVE-PATH proof for CRED-03 (Deceptive identity with credential collection) —
+ * now LIVE-FUNCTIONAL in the extension after DEC-47 (Option B).
  *
- * CRED-03's predicate is `and(<deceptive-identity signal>, loginForm.credentialFormPresent)`,
- * where the deceptive-identity `or` reads the homograph module
- * (confusableSkeleton != null, isMixedScript, isIdn, containsNonAscii). Both
- * required modules (homograph, loginForm) are present in the ruleset and the
- * rule is `Active`. The rule is NOT blocked the way CRED-05/PM-01 are — but it
- * DIVERGES by producer:
+ * DEC-47 did two things: (1) narrowed CRED-03's frozen predicate to gate on
+ * `homograph.isMixedScript` (a Latin↔non-Latin mix within the domain — the actual
+ * homograph signature) instead of the old bare `isIdn`/`containsNonAscii`/
+ * confusable-skeleton `or` that fired on ANY non-Latin IDN; and (2) wired a shared
+ * pure-JS RFC-3492 punycode decoder into the extension's `collectDomainRepresentation`
+ * (proven byte-identical to the harness's node:url `domainToUnicode`), so homograph
+ * is evaluable live for IDN hosts instead of `notCollected`.
  *
- *   - HARNESS path: `apps/harness/extract/domainRepresentation.ts` uses node:url's
- *     ICU `domainToUnicode`, decoding an `xn--` host back to Unicode, so a
- *     Cyrillic/Greek homograph is measured correctly → homograph EVALUABLE →
- *     CRED-03 FIRES on a homograph domain carrying a credential form.
- *   - EXTENSION live path: `new URL().hostname` yields the PUNYCODE form, and
- *     `collectDomainRepresentation` does NOT decode it → the script-dependent
- *     fields are `notCollected` for an IDN host → homograph UNEVALUABLE →
- *     CRED-03 does not fire live. NOTE (refined 2026-09-04): the decode is
- *     actually feasible and safe (pure-JS RFC-3492, proven byte-identical to
- *     node:url domainToUnicode), so this is NOT a hard platform gap. It is
- *     deliberately left un-wired because the FROZEN CRED-03 predicate would then
- *     over-fire on legit non-Latin IDNs (e.g. пример.рф fires at Medium) — a
- *     frozen-ruleset breadth issue for the Architecture Owner. See
- *     docs/CRED-03-live-evaluability-REVIEW.md. This test pins the CURRENT
- *     (un-wired) behaviour.
+ * Result — CRED-03 fires LIVE through the extension where it should, and correctly
+ * stays silent on legitimate domains:
+ *   - раypal.example (Latin+Cyrillic homograph of paypal) → mixed-script → FIRES.
+ *   - пример.рф (genuine Russian, pure Cyrillic) → single-script → SILENT (the old
+ *     false positive is gone).
+ *   - plain ASCII → SILENT.
  *
- * So CRED-03 is live-functional on the OFFLINE producer and live-UNREACHABLE on
- * the EXTENSION producer for IDN homographs — S-10 DIVERGENT, like CRED-04. This
- * test pins both halves so the divergence is a recorded property, not a surprise.
+ * The harness path (which always decoded) still fires on the homograph — the two
+ * producers now agree, so this is no longer S-10 DIVERGENT.
  *
  * Run:
  *   node --experimental-strip-types tools/conformance/cred03-live-path.test.ts
@@ -58,10 +49,11 @@ const emptyStore: AuthStoreReader = {
 const LOGIN_HTML = '<!doctype html><html><head><title>Sign in</title></head><body>'
   + '<form method="POST" action="/login"><input type="text" name="u"><input type="password" name="p"></form></body></html>';
 
-// A mixed-script homograph of "paypal": Cyrillic 'р' (U+0440) + 'а' (U+0430).
-const HOMOGRAPH_URL = 'https://раypal.example/login';
+const HOMOGRAPH_URL = 'https://xn--ypal-43d9g.example/login'; // раypal (Latin+Cyrillic homograph)
+const LEGIT_IDN_URL = 'https://xn--e1afmkfd.xn--p1ai/login';  // пример.рф (genuine Russian, pure Cyrillic)
 const ASCII_URL = 'https://accounts.example.com/login';
 
+/** The FULL extension collection path (with the DEC-47 punycode decode). */
 function extParts(url: string): CollectedParts {
   const dom = new JSDOM(LOGIN_HTML, { url });
   const doc = dom.window.document;
@@ -75,40 +67,45 @@ function extParts(url: string): CollectedParts {
 }
 const fired = (o: { findings: readonly { ruleId: string }[] }, id: string) => o.findings.some((f) => f.ruleId === id);
 
-/* ── 1. HARNESS path — CRED-03 FIRES on a homograph + credential form ─────── */
+/* ── 1. EXTENSION path — CRED-03 FIRES on a mixed-script homograph ─────────── */
 {
-  const punyHost = new URL(HOMOGRAPH_URL).hostname; // 'xn--...'
-  const harnessDR = extractDomainRepresentation(punyHost);
-  assert.equal(harnessDR.isMixedScript.state === 'present' && harnessDR.isMixedScript.value, true, 'harness decodes the IDN and sees mixed script');
+  const dr = collectDomainRepresentation(HOMOGRAPH_URL);
+  assert.equal(dr.unicodeDomain.state === 'present' ? dr.unicodeDomain.value : null, 'раypal.example', 'the decoder recovers the Unicode form live');
+  assert.equal(dr.isMixedScript.state === 'present' && dr.isMixedScript.value, true, 'raypal is mixed-script');
+  const out = await runAnalysisPass(assembleEvidence(extParts(HOMOGRAPH_URL), HOMOGRAPH_URL, '2026-09-04'), ruleSet, emptyStore, null);
+  assert.equal(out.evaluations.homograph.result.status, 'evaluated', 'homograph is now EVALUABLE live for an IDN host');
+  assert.ok(fired(out, 'CRED-03'), `CRED-03 must FIRE live on a mixed-script homograph; fired [${out.findings.map((f) => f.ruleId).join(', ')}]`);
+  console.log('  [1] EXTENSION раypal.example (Latin+Cyrillic homograph): decoded live, mixed-script -> CRED-03 FIRES ✓');
+}
+
+/* ── 2. EXTENSION path — CRED-03 SILENT on a legitimate single-script IDN ──── */
+{
+  const dr = collectDomainRepresentation(LEGIT_IDN_URL);
+  assert.equal(dr.unicodeDomain.state === 'present' ? dr.unicodeDomain.value : null, 'пример.рф', 'the decoder recovers the legit IDN too');
+  assert.equal(dr.isMixedScript.state === 'present' && dr.isMixedScript.value, false, 'пример.рф is single-script (Cyrillic only)');
+  const out = await runAnalysisPass(assembleEvidence(extParts(LEGIT_IDN_URL), LEGIT_IDN_URL, '2026-09-04'), ruleSet, emptyStore, null);
+  assert.equal(out.evaluations.homograph.result.status, 'evaluated', 'homograph evaluable (decoded) — not an honest-gap silence');
+  assert.ok(!fired(out, 'CRED-03'), `CRED-03 must NOT fire on a legitimate single-script IDN (DEC-47 predicate); fired [${out.findings.map((f) => f.ruleId).join(', ')}]`);
+  console.log('  [2] EXTENSION пример.рф (genuine Russian, pure Cyrillic): decoded live, single-script -> CRED-03 SILENT ✓ (old FP gone)');
+}
+
+/* ── 3. EXTENSION path, plain ASCII — CRED-03 silent ──────────────────────── */
+{
+  const out = await runAnalysisPass(assembleEvidence(extParts(ASCII_URL), ASCII_URL, '2026-09-04'), ruleSet, emptyStore, null);
+  assert.ok(!fired(out, 'CRED-03'), 'CRED-03 must NOT fire on a plain ASCII domain');
+  console.log('  [3] EXTENSION accounts.example.com (ASCII): single-script -> CRED-03 SILENT ✓');
+}
+
+/* ── 4. HARNESS path still fires on the homograph — producers now AGREE ────── */
+{
+  const harnessDR = extractDomainRepresentation(new URL(HOMOGRAPH_URL).hostname);
   const parts = { ...extParts(HOMOGRAPH_URL), domainRepresentation: harnessDR };
   const out = await runAnalysisPass(assembleEvidence(parts, HOMOGRAPH_URL, '2026-09-04'), ruleSet, emptyStore, null);
-  assert.equal(out.evaluations.homograph.result.status, 'evaluated', 'homograph is evaluable on the harness path');
-  assert.ok(fired(out, 'CRED-03'), `CRED-03 must FIRE on the harness path; fired [${out.findings.map((f) => f.ruleId).join(', ')}]`);
-  console.log(`  [1] HARNESS: homograph decoded (mixed-script, skeleton ${harnessDR.confusableSkeleton.state === 'present' ? harnessDR.confusableSkeleton.value : '?'}) -> CRED-03 FIRES ✓`);
+  assert.ok(fired(out, 'CRED-03'), 'CRED-03 still fires on the harness path (both producers agree — no longer S-10 divergent)');
+  console.log('  [4] HARNESS раypal.example: still FIRES — extension and harness now AGREE ✓');
 }
 
-/* ── 2. EXTENSION path — homograph UNEVALUABLE for the IDN -> CRED-03 silent ─ */
-{
-  const extDR = collectDomainRepresentation(HOMOGRAPH_URL);
-  assert.equal(extDR.isIdn.state === 'present' && extDR.isIdn.value, true, 'extension sees the host as an IDN');
-  assert.equal(extDR.isMixedScript.state, 'notCollected', 'extension cannot measure mixed-script on the punycode form (capability gap)');
-  const out = await runAnalysisPass(assembleEvidence(extParts(HOMOGRAPH_URL), HOMOGRAPH_URL, '2026-09-04'), ruleSet, emptyStore, null);
-  assert.equal(out.evaluations.homograph.result.status, 'unevaluable', 'homograph is UNEVALUABLE on the extension path for an IDN host');
-  assert.ok(!fired(out, 'CRED-03'), `CRED-03 must NOT fire on the extension live path (homograph unevaluable); fired [${out.findings.map((f) => f.ruleId).join(', ')}]`);
-  console.log('  [2] EXTENSION (IDN homograph): homograph UNEVALUABLE (punycode undecodable in a content script) -> CRED-03 correctly does NOT fire ✓');
-}
-
-/* ── 3. EXTENSION path, ASCII non-homograph -> CRED-03 correctly silent ────── */
-{
-  const extDR = collectDomainRepresentation(ASCII_URL);
-  assert.equal(extDR.isMixedScript.state, 'present', 'a plain ASCII host is evaluable (no IDN gap)');
-  const out = await runAnalysisPass(assembleEvidence(extParts(ASCII_URL), ASCII_URL, '2026-09-04'), ruleSet, emptyStore, null);
-  assert.equal(out.evaluations.homograph.result.status, 'evaluated', 'homograph evaluable on an ASCII host');
-  assert.ok(!fired(out, 'CRED-03'), 'CRED-03 must NOT fire on a plain ASCII domain (no deceptive-identity signal) — correct, not a gap');
-  console.log('  [3] EXTENSION (plain ASCII): homograph evaluable, no deception signal -> CRED-03 correctly silent ✓');
-}
-
-console.log('CRED-03 live-path PROVEN and DIVERGENCE recorded (S-10, like CRED-04): FIRES on the harness/offline '
-  + 'producer (node:url decodes the IDN); live-silent on the extension producer because the punycode decode '
-  + 'is deliberately NOT wired (feasible/safe, but the frozen predicate would over-fire on legit non-Latin '
-  + 'IDNs — see docs/CRED-03-live-evaluability-REVIEW.md); correctly silent on plain ASCII.');
+console.log('CRED-03 live-path PROVEN: LIVE-FUNCTIONAL in the extension after DEC-47 — the shared punycode '
+  + 'decode makes homograph evaluable, and the isMixedScript predicate fires on a Latin↔Cyrillic homograph '
+  + '(раypal.example) while staying silent on a legitimate single-script IDN (пример.рф) and on ASCII. '
+  + 'Extension and harness agree; no longer S-10 divergent.');

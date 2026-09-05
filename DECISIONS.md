@@ -5033,3 +5033,56 @@ shape), [[DEC-40]] (PM-01, the identical treatment this mirrors), [[DEFECT-31]]
 - **Status:** SIGNED 2026-09-04. CRED-A1 accepted non-functional for Phase I;
   DEC-30 intact; no ruleset edit; digest stands.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-04
+
+---
+
+## DEC-47 — CRED-03 made LIVE-FUNCTIONAL: predicate narrowed to `isMixedScript` (Option B) + shared punycode decode wired
+
+**[R]** `docs/CRED-03-live-evaluability-REVIEW.md` established: CRED-03 was
+live-silent in the extension, the punycode decode is feasible/safe (pure-JS
+RFC 3492, proven byte-identical to node:url `domainToUnicode` — no permission,
+no page-trust boundary, DEC-30 N/A), but wiring it alone would make the FROZEN
+predicate over-fire on ALL legitimate non-Latin IDNs (measured: `пример.рф` fires
+Medium). The discriminator between a Latin↔non-Latin homograph and a legit
+single-script IDN is `isMixedScript`.
+
+**Decision:** ☑ ADOPT **Option B**, applied in full this session:
+
+1. **Ruleset amendment (frozen artifact, hand-applied per governance convention —
+   same as DEC-41):** CRED-03's `predicate` narrowed from the broad
+   `or(neq(confusableSkeleton,null), isMixedScript, or(isIdn, containsNonAscii))`
+   to a single `is(homograph.isMixedScript)` gate (still `and`-ed with
+   `is(loginForm.credentialFormPresent)`). CRED-03 `lastModifiedIn` bumped
+   0.1.0 → 0.2.0; `integrityDigest` recomputed (`digest:ruleset`) and updated →
+   V-14 CONFORMANT. In-place amendment to `rules-v0.1.0.json` — no new version
+   file (Architecture-Owner call). §12.2 semantics honoured via the version bump.
+2. **Decoder wired:** shared `punycodeToUnicode` (RFC 3492) added to
+   `packages/engine/domain-classify.ts`; the extension's
+   `collectDomainRepresentation` now decodes IDN hosts and analyses the real
+   Unicode form → homograph EVALUABLE live (`unicodeDomain` is now supplied too,
+   updating its former 0/6 NOT OBSERVABLE record).
+
+**Result (proven, `test:cred03livepath`):** CRED-03 FIRES live through the
+extension on `раypal.example` and the apple look-alike (mixed-script homographs)
+and stays SILENT on `пример.рф` (genuine Russian) and ASCII. Extension and harness
+now agree — no longer S-10 DIVERGENT.
+
+**Tradeoff, recorded:** a fully-single-script homograph (every glyph replaced) is
+not `isMixedScript` and is not caught by CRED-03 — but it is indistinguishable
+from a legitimate single-script IDN without a brand-target list, which is CRED-02's
+job (auth-store cross-origin fingerprint match). Accepted for Phase I.
+`e2e.sso-flow.fixture.test.ts` section 8 updated accordingly (a distinct skeleton
+alone, single-script, now correctly UNMATCHED).
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-04** — an explicit go-ahead to apply Option B, stated plainly, not
+self-attested.
+
+**Related:** [[DEC-46]] (CRED-A1, the sibling non-functional ruling — CRED-03 is
+NOT retired, it is now functional), [[DEC-20]] (confusableSkeleton convention),
+[[DEC-41]] (the ruleset-amendment-by-convention precedent), [[DEFECT-31]],
+`docs/CRED-03-live-evaluability-REVIEW.md` (the investigation this concludes).
+
+- **Status:** SIGNED 2026-09-04. Predicate narrowed; digest recomputed (V-14 OK);
+  decoder wired; CRED-03 live-functional; verify:all exit 0.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-04
