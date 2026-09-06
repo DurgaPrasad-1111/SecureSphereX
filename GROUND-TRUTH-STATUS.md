@@ -120,6 +120,8 @@
 
 **Open by ruling, not bug:** CRED-05 (DEC-14, needs Tier-4 sentinel `--live`); CRED-A1 (DEC-46); PM-01 (DEC-40); CRED-03/CRED-04 live-extension gaps (producer-capability, S-10 DIVERGENT); G-6 reachability (DEFECT-14); the `webRequest` permission decision (redirect chain + transmission data).
 
+**Calibration:** thresholds 30/60 and all 11 rule weights are **sensitivity-characterized with domain-level bootstrap CIs, NOT validated** (`docs/Calibration-Sensitivity-Report.md`, `tools/analysis/threshold-sensitivity.ts`, run 2026-09-06 over 34,631 snapshots / 7,601 distinct registrable-domain splitKeys). At shipped 30/60: precision 0.974 (95% CI [0.944, 0.991]), whole-corpus recall 0.022 (95% CI [0.012, 0.034], denominator-bounded — only ~3,914 snapshots present a fireable credential interface); measured firing set is CRED-01/04/06/07 only (4 of 11). This is characterization + honest uncertainty; it is **not** §18.2 validation and moves no rule off **Unvalidated** — not "calibration resolved."
+
 **Not built:** backend (0%).
 
 *Re-derived from executed builds/tests and source inspection on 2026-09-04.*
