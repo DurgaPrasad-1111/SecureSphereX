@@ -129,7 +129,7 @@ export function renderSavedSites(entries: readonly AuthStoreEntrySummary[]): str
 export function renderTechniqueCards(): string {
   return `<div class="cards">${TECHNIQUE_CARDS.map((c) => `
     <div class="card">
-      <div class="card-head"><span class="tname">${esc(c.name)}</span><span class="rid">${esc(c.id)}</span></div>
+      <div class="card-head"><span class="tname">${esc(c.name)}</span></div>
       <p>${esc(c.catches)}</p>
     </div>`).join('')}</div>`;
 }

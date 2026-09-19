@@ -90,10 +90,17 @@ const verdict = (over: Partial<StoredVerdict>): StoredVerdict => ({
 {
   assert.equal(TECHNIQUE_CARDS.length, 11, 'one card per rule (11)');
   const html = renderTechniqueCards();
-  for (const id of ['CRED-01', 'CRED-02', 'CRED-03', 'CRED-04', 'CRED-05', 'CRED-06', 'CRED-07', 'CRED-A1', 'DL-01', 'DL-02', 'PM-01']) {
-    assert.ok(html.includes(id) && html.includes(ruleName(id)), `card present for ${id}`);
+  const ALL_IDS = ['CRED-01', 'CRED-02', 'CRED-03', 'CRED-04', 'CRED-05', 'CRED-06', 'CRED-07', 'CRED-A1', 'DL-01', 'DL-02', 'PM-01'];
+  for (const id of ALL_IDS) {
+    assert.ok(html.includes(ruleName(id)), `card present for ${ruleName(id)}`);
   }
-  console.log('  [3] Technique cards: all 11 rules present with names ✓');
+  // Rule IDs are internal implementation detail — same standard as the no-score
+  // rule: they must NOT appear on the technique cards. Guards against regression.
+  for (const id of ALL_IDS) {
+    assert.ok(!html.includes(id), `rule-ID "${id}" must NOT appear on the technique cards`);
+  }
+  assert.ok(!/\b(?:CRED|DL|PM)-[0-9A]/.test(html), 'no rule-ID-shaped string on any technique card');
+  console.log('  [3] Technique cards: all 11 rules present by NAME only, no rule-ID badges ✓');
 }
 
 // ── 4. NO score anywhere in any rendered surface ─────────────────────────────
