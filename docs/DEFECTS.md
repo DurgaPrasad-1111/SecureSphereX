@@ -3130,3 +3130,46 @@ Silent-failure points identified and addressed in one pass:
   temporary onChanged diagnostics were removed by the refactor. The live-Chrome
   download E2E stays a manual check (S-9). Related: [[DEC-48]], [[DEC-45]],
   [[DEFECT-43]], [[DEFECT-38]].
+
+## DEFECT-45 — `snapshot.presentsCredentialInterface` is never computed by capture.py; the "cheap corpus filter" field is uniformly null across the whole corpus (found 2026-09-19; impact: none — engine-extracted `credentialFormPresent` is used instead)
+
+Finding: `Snapshot.presentsCredentialInterface` (`snapshot.format.v1.ts:299`,
+`boolean | null`, documented as *"True where the page presents a credential
+interface. Cheap corpus filter: CRED-family rules are only meaningful on such
+pages."*) is **hard-coded to `None`** by the capture pipeline
+(`tools/capture/capture.py:712` — `"presentsCredentialInterface": None`, a
+placeholder alongside `"extraction": None`). capture.py never computes it, so
+**every snapshot in the corpus carries `null`**. Verified empirically during the
+calibration analysis: a scan of all 34,631 payloads found the field falsy
+(`None`) on 100% of them (9,271 benign + 25,360 phishing).
+
+- **What is broken.** The field exists in the frozen snapshot contract as a
+  capture-time convenience filter, but the producer (`capture.py`) leaves it a
+  placeholder. It was never wired to any credential-detection step at capture
+  time. This is the DEFECT-15/DEFECT-18 *shape* (a declared field with no
+  populated source), but at the capture layer rather than the module layer.
+- **What superseded it.** Credential-interface presence is determined
+  independently and correctly at analysis time by the engine:
+  `extractEvidence` → `loginInterface.credentialFormPresent` (a genuinely
+  derived, three-state observation). Every consumer that needs the signal —
+  `apps/harness/metrics/confusion.ts` (the `hasCredentialInterface` /
+  credential-bearing-subset denominator) and `tools/analysis/threshold-sensitivity.ts`
+  (the 3,914 credential-bearing figure) — reads that extracted value, **not** the
+  capture field. The `presentsCredentialInterface` "cheap filter" simply does not
+  exist in practice; analysis pays the full extraction cost to derive it instead.
+- **Current impact: NONE.** No code path relies on `presentsCredentialInterface`
+  for logic; nothing changes because it is null. The only cost is the absence of
+  the capture-time shortcut the field was meant to provide (a corpus consumer
+  cannot pre-filter to credential pages without running extraction).
+- **Owning step.** Capture pipeline (`tools/capture/capture.py`). Note the field
+  itself is in FROZEN `packages/contracts/snapshot.format.v1.ts` — populating it
+  is a capture.py change, not a contract change; the `boolean | null` type already
+  permits a real value. `spec/capture.py` (the read-only spec copy) carries the
+  same placeholder at line 310.
+- **Status:** OPEN, logged 2026-09-19 during the calibration-report reconciliation
+  (item 4). Not fixed here — logged for visibility. Do NOT confuse this field's
+  uniform `null` with a `false` classification: it is *unpopulated*, not a
+  computed negative. Related: [[DEFECT-15]], [[DEFECT-18]] (same "declared field,
+  no populated source" shape), [[DEC-27]] (the credential-bearing denominator),
+  `docs/Calibration-Sensitivity-Report.md` §7 (where the uniform-null was first
+  surfaced).
