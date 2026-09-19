@@ -114,9 +114,11 @@
 
 ## What is genuinely done vs. needs a human vs. still open
 
-**Done & verified (green tests):** engine + 10 modules + Stage 1–8; CRED-01/02/06/07 fire live; CRED-03/CRED-04 mechanisms proven on the harness (both S-10 DIVERGENT live); DL-01/DL-02 fire through the SW download re-pass (DEC-45); Tier-2 intervention UI; all CI gates.
+**Done & verified (green tests):** engine + 10 modules + Stage 1–8; CRED-01/02/06/07 fire live; CRED-03/CRED-04 mechanisms proven on the harness (both S-10 DIVERGENT live); DL-01/DL-02 fire through the SW download re-pass (DEC-45); Tier-2 intervention UI; **v3 dashboard (full-tab, opened by the toolbar icon via `chrome.action.onClicked`; Right Now strip, 30-day Incident History on `chrome.storage.local`, read-only Saved Sites over AuthStore, 11 technique cards, no score anywhere)** — `test:incidenthistory` + `test:dashboard` green; all CI gates.
 
-**Needs Jayanth's manual real-Chrome check** (logic proven, live visuals/timing unverified in this environment): SW dormancy→wake (CDP keeps the worker warm under automation); live **download** firing of DL-01/DL-02 in real Chrome; Tier-2 interstitial/block visuals; badge colors across real visits.
+**Design/content provenance (v3 dashboard):** the dashboard layout, the technique-card copy, and the decisions it encodes (no-score, full-history-including-Safe, `chrome.storage.local` for 30-day retention) were **authored/authorized in this session (2026-09-19)** as new design-of-record — they were **not** a pre-existing repo design, mockup, or reference doc (none existed; confirmed by search). Card copy is grounded in each rule's own `rationale` in the ruleset.
+
+**Needs Jayanth's manual real-Chrome check** (logic proven, live visuals/timing unverified in this environment): SW dormancy→wake (CDP keeps the worker warm under automation); live **download** firing of DL-01/DL-02 in real Chrome; Tier-2 interstitial/block visuals; badge colors across real visits; **the v3 dashboard's live visuals — toolbar-click opens the tab, Right Now updating on real tab switches, and the rendered layout (offline model + store are tested; the DOM/chrome glue in `dashboard.ts` is not unit-tested)**.
 
 **Open by ruling, not bug:** CRED-05 (DEC-14, needs Tier-4 sentinel `--live`); CRED-A1 (DEC-46); PM-01 (DEC-40); CRED-03/CRED-04 live-extension gaps (producer-capability, S-10 DIVERGENT); G-6 reachability (DEFECT-14); the `webRequest` permission decision (redirect chain + transmission data).
 

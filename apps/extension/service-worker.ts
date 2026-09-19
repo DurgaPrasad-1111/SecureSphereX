@@ -24,6 +24,7 @@ import {
   buildVerdict, type DownloadEnv,
 } from './download-handler.ts';
 import { AuthStore, chromeAuthBackend, inPrivateContext } from './auth-store.ts';
+import { IncidentHistory, type IncidentStorageBackend, type IncidentTier } from './incident-history.ts';
 import { RedirectTracker, computeRedirectEvidence, redirectKey } from './redirect-observer.ts';
 import {
   LoginSuccessTracker, buildLoginFingerprint, buildAuthRecordRequest,
@@ -43,6 +44,14 @@ const chromeSessionBackend: SessionStorageBackend = {
   set: (items) => chrome.storage.session.set(items),
   remove: (keys) => chrome.storage.session.remove(keys),
 };
+// Dashboard Incident History (NEW, v3): persistent, so chrome.storage.LOCAL
+// (session clears on restart and would break 30-day retention).
+const chromeLocalBackend: IncidentStorageBackend = {
+  get: (keys) => chrome.storage.local.get(keys),
+  set: (items) => chrome.storage.local.set(items),
+  remove: (keys) => chrome.storage.local.remove(keys),
+};
+const incidentHistory = new IncidentHistory({ backend: chromeLocalBackend });
 const store = new SessionStore(chromeSessionBackend);
 const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext: inPrivateContext() });
 // documentId -> (tabId, navigationId). Built from onCommitted (a real browser
@@ -285,6 +294,14 @@ async function applyOutcome(tabId: number, targetUrl: string, outcome: AnalysisP
   const verdict = buildVerdict(outcome, targetUrl);
   await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
   reflectBadge(tabId, verdict.effectiveTier);
+  // Dashboard Incident History (v3): record EVERY verdict, including Safe (Low) —
+  // the full-history decision. Tier LABEL + fired rules only, never the score.
+  let host: string;
+  try { host = new URL(targetUrl).host; } catch { host = ''; }
+  await incidentHistory.record({
+    url: targetUrl, domain: host,
+    tier: verdict.effectiveTier as IncidentTier, fired: verdict.fired,
+  });
 }
 
 /* ── Tier-2 intervention (§9.4, §11.3/§11.4) ──────────────────────────────────
@@ -439,6 +456,13 @@ async function reconstructOnWake(): Promise<void> {
 chrome.runtime.onStartup.addListener(() => { void reconstructOnWake(); });
 chrome.runtime.onInstalled.addListener(() => { void reconstructOnWake(); });
 void reconstructOnWake();
+
+/* ── toolbar icon: open the full dashboard tab (v3) ───────────────────────
+ * No default_popup in the manifest, so onClicked fires for EVERY tier and opens
+ * the dashboard as a full tab rather than a small popup. */
+chrome.action.onClicked.addListener(() => {
+  void chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+});
 
 /* ── tab close: drop that tab's session records + index entries ──────────── */
 chrome.tabs.onRemoved.addListener((tabId) => {
