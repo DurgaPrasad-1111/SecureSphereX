@@ -3243,6 +3243,34 @@ classification error, still unmeasured in the under-classification arm).
 
 ---
 
+### Superseding note — 2026-09-19
+
+DEC-28's finding ("CRED-01/CRED-07 unfirable; the declarative off-site
+form-action signature is extinct on real phishing") was measured on a
+617-snapshot sample and is now superseded on the current 34,631-snapshot corpus,
+where CRED-01 fires 233× (4 benign) and CRED-07 fires 142× (9 benign) on
+**genuine** cross-domain form actions (e.g. a form action of `magazineluiza.com.br`
+on a `…netlify.app` page). The CRED-01/07 predicates are **unchanged** since the
+DEFECT-15 fix (2026-08-25), which predates DEC-28's signing (2026-08-29) — this is
+corpus composition, not a rule change. DEC-28's data-scoped statement remains true
+of its 617-snapshot sample; its generalization to "real 2026 phishing" does not
+survive the larger corpus. See `docs/Calibration-Sensitivity-Report.md` §2. The 4
+benign CRED-01 and 9 benign CRED-07 firings are now the live false-positive surface
+and warrant their own review. DEC-28's Option-A design track (CRED-05 capture
+observability) is unaffected.
+
+**Ratified by the Architecture Owner (Jayanth) directly in this session,
+2026-09-19** — an explicit instruction to apply this superseding note as drafted,
+stated plainly, not self-attested. It supersedes DEC-28's generalization only; it
+reverses none of DEC-28's rulings (Option C fact, Option A design, Option B
+rejection all stand).
+
+- **Status:** SIGNED 2026-09-19. Evidence in `docs/Calibration-Sensitivity-Report.md`
+  and DEFECTS reconciliation (2026-09-19); no rule, threshold, or weight changed.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-19
+
+---
+
 ## DEC-29 — Capture-observability DESIGN for `scriptRuntime`: what `capture.py` must observe to make CRED-05 and CRED-A1 real
 
 **This is [[DEC-28]]'s Option A design task. DESIGN ONLY — no `capture.py`
