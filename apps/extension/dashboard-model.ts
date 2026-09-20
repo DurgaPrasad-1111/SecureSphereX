@@ -55,8 +55,10 @@ export function hostOf(url: string): string {
 
 function firedList(fired: readonly string[]): string {
   if (fired.length === 0) return '<p class="none">No phishing techniques detected on this page.</p>';
+  // Technique NAMES only — rule IDs are internal implementation detail (same
+  // standard as the no-score rule), not shown on any user-facing surface.
   return `<ul class="techniques">${fired.map((id) =>
-    `<li><span class="tname">${esc(ruleName(id))}</span> <span class="rid">${esc(id)}</span></li>`).join('')}</ul>`;
+    `<li><span class="tname">${esc(ruleName(id))}</span></li>`).join('')}</ul>`;
 }
 
 /* ── Right Now strip: the currently focused tab's verdict, NO score ────────── */
@@ -70,6 +72,33 @@ export function rightNowForTab(
 ): StoredVerdict | null {
   if (focusedTabId === null) return null;
   return verdictByTab[focusedTabId] ?? null;
+}
+
+/**
+ * The focused-tab id after a tab activation, EXCLUDING the dashboard's own tab.
+ * Activating the dashboard tab keeps the current (last real) tab, so Right Now
+ * does not blank out when the user looks at the dashboard. Any other tab becomes
+ * the new focus.
+ */
+export function nextFocusedTab(current: number | null, activatedTabId: number, ownTabId: number | null): number | null {
+  return activatedTabId === ownTabId ? current : activatedTabId;
+}
+
+/**
+ * Initial seed: the most-recently-accessed tab that is NOT the dashboard and HAS
+ * a verdict (an analysed http/https page). Returns null when none exists —
+ * honest empty, never a fabricated fallback.
+ */
+export function pickInitialRealTab(
+  tabs: readonly { readonly id?: number; readonly lastAccessed?: number }[],
+  ownTabId: number | null,
+  hasVerdict: (tabId: number) => boolean,
+): number | null {
+  const candidates = tabs
+    .filter((t): t is { id: number; lastAccessed?: number } => typeof t.id === 'number' && t.id !== ownTabId)
+    .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+  for (const t of candidates) if (hasVerdict(t.id)) return t.id;
+  return null;
 }
 
 export function renderRightNow(v: StoredVerdict | null): string {
@@ -103,7 +132,7 @@ export function renderIncidents(incidents: readonly Incident[]): string {
       <td class="when">${esc(fmtTime(i.at))}</td>
       <td class="site" title="${esc(i.url)}">${esc(i.domain || i.url)}</td>
       <td><span class="badge tier-${esc(i.tier)}">${esc(tierLabel(i.tier))}</span></td>
-      <td>${i.fired.length === 0 ? '<span class="none">—</span>' : i.fired.map((r) => `<span class="rid" title="${esc(ruleName(r))}">${esc(r)}</span>`).join(' ')}</td>
+      <td>${i.fired.length === 0 ? '<span class="none">—</span>' : esc(i.fired.map((r) => ruleName(r)).join(', '))}</td>
     </tr>`).join('')
   }</tbody></table>`;
 }

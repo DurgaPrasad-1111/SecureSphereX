@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import {
   renderRightNow, rightNowForTab, renderIncidents, renderSavedSites,
-  renderTechniqueCards, TECHNIQUE_CARDS, ruleName,
+  renderTechniqueCards, TECHNIQUE_CARDS, ruleName, nextFocusedTab, pickInitialRealTab,
 } from './dashboard-model.ts';
 import type { StoredVerdict } from './verdict-view.ts';
 import type { Incident } from './incident-history.ts';
@@ -42,6 +42,7 @@ function req(origin: Origin): AuthRecordRequest {
 const verdict = (over: Partial<StoredVerdict>): StoredVerdict => ({
   effectiveTier: 'Low', rawTier: 'Low', score: 0, fired: [], unevaluable: [], targetUrl: 'https://x.example/', ...over,
 });
+const ALL_IDS = ['CRED-01', 'CRED-02', 'CRED-03', 'CRED-04', 'CRED-05', 'CRED-06', 'CRED-07', 'CRED-A1', 'DL-01', 'DL-02', 'PM-01'];
 
 // ── 1. Right Now updates on tab switch (and navigation) ──────────────────────
 {
@@ -90,7 +91,6 @@ const verdict = (over: Partial<StoredVerdict>): StoredVerdict => ({
 {
   assert.equal(TECHNIQUE_CARDS.length, 11, 'one card per rule (11)');
   const html = renderTechniqueCards();
-  const ALL_IDS = ['CRED-01', 'CRED-02', 'CRED-03', 'CRED-04', 'CRED-05', 'CRED-06', 'CRED-07', 'CRED-A1', 'DL-01', 'DL-02', 'PM-01'];
   for (const id of ALL_IDS) {
     assert.ok(html.includes(ruleName(id)), `card present for ${ruleName(id)}`);
   }
@@ -103,22 +103,66 @@ const verdict = (over: Partial<StoredVerdict>): StoredVerdict => ({
   console.log('  [3] Technique cards: all 11 rules present by NAME only, no rule-ID badges ✓');
 }
 
-// ── 4. NO score anywhere in any rendered surface ─────────────────────────────
+// ── 4. NO score AND NO rule-ID on ANY user-facing surface ────────────────────
 {
   const incidents: Incident[] = [
     { id: '1', at: Date.parse('2026-09-01T10:00:00Z'), url: 'https://bad.example/login', domain: 'bad.example', tier: 'High', fired: ['CRED-01', 'CRED-06'] },
     { id: '2', at: Date.parse('2026-09-01T09:00:00Z'), url: 'https://safe.example/', domain: 'safe.example', tier: 'Low', fired: [] },
   ];
-  const surfaces = [
-    renderRightNow(rightNowForTab({ 1: verdict({ effectiveTier: 'High', fired: ['CRED-01'], score: 87 }) }, 1)),
-    renderIncidents(incidents),
-    renderTechniqueCards(),
-  ].join('\n');
+  const rn = renderRightNow(rightNowForTab({ 1: verdict({ effectiveTier: 'High', fired: ['CRED-01'], score: 87 }) }, 1));
+  const inc = renderIncidents(incidents);
+  const cards = renderTechniqueCards();
+  const surfaces = [rn, inc, cards].join('\n');
+
+  // no score, anywhere
   assert.ok(!/score/i.test(surfaces), 'the word "score" appears nowhere in the rendered dashboard');
   assert.ok(!surfaces.includes('87'), 'the numeric score value is never rendered even when present in the verdict data');
-  // structural: incidents carry no score key at all
   assert.ok(incidents.every((i) => !('score' in i)), 'incident records structurally have no score field');
-  console.log('  [4] no score anywhere: not the label, not the value, not in the record ✓');
+
+  // no rule ID, anywhere user-facing — cards AND Right Now AND History
+  for (const id of ALL_IDS) {
+    assert.ok(!rn.includes(id), `Right Now must not show rule-ID ${id}`);
+    assert.ok(!inc.includes(id), `History must not show rule-ID ${id}`);
+    assert.ok(!cards.includes(id), `Technique cards must not show rule-ID ${id}`);
+  }
+  assert.ok(!/\b(?:CRED|DL|PM)-[0-9A]/.test(surfaces), 'no rule-ID-shaped string on any user-facing surface');
+
+  // technique NAMES DO appear (Right Now shows the fired technique; History lists names)
+  assert.ok(rn.includes(ruleName('CRED-01')), 'Right Now shows the technique NAME');
+  assert.ok(inc.includes(ruleName('CRED-01')) && inc.includes(ruleName('CRED-06')), 'History shows technique NAMES, not IDs');
+  console.log('  [4] no score AND no rule-ID anywhere (cards + Right Now + History); technique names shown ✓');
 }
 
-console.log('Dashboard model PROVEN: Right Now tracks the focused tab across switches/navigation, Saved Sites renders real AuthStore entries and reacts to deleteEntry, all 11 technique cards render, and no score is exposed on any surface.');
+// ── 5. Right Now tracks the last-focused NON-dashboard tab ───────────────────
+{
+  const OWN = 100; // the dashboard's own tab id
+  const vBad = verdict({ effectiveTier: 'High', fired: ['CRED-01'], targetUrl: 'https://bad.example/login' });
+  const vGood = verdict({ effectiveTier: 'Low', fired: [], targetUrl: 'https://good.example/' });
+  const byTab: Record<number, StoredVerdict | undefined> = { 5: vBad, 6: vGood };
+  const hasVerdict = (id: number) => id in byTab;
+
+  // Dashboard opens: it is the active (most-recently-accessed) tab, but a real
+  // analysed tab (5) exists -> seed to tab 5, show it immediately, NOT empty.
+  const tabs = [{ id: OWN, lastAccessed: 300 }, { id: 5, lastAccessed: 200 }, { id: 6, lastAccessed: 100 }];
+  let focused = pickInitialRealTab(tabs, OWN, hasVerdict);
+  assert.equal(focused, 5, 'seeds from the most-recently-accessed real tab with a verdict, excluding the dashboard tab');
+  assert.ok(renderRightNow(rightNowForTab(byTab, focused)).includes('bad.example'), 'shows the real tab immediately, not empty');
+
+  // User switches to the dashboard tab -> keep showing tab 5, do NOT blank out.
+  focused = nextFocusedTab(focused, OWN, OWN);
+  assert.equal(focused, 5, 'activating the dashboard tab does not change the focused real tab');
+  assert.ok(renderRightNow(rightNowForTab(byTab, focused)).includes('bad.example'), 'still showing the last real tab; not blank');
+
+  // User switches to a different real tab (6) -> updates to it.
+  focused = nextFocusedTab(focused, 6, OWN);
+  assert.equal(focused, 6, 'switching to another real tab updates the focus');
+  assert.ok(renderRightNow(rightNowForTab(byTab, focused)).includes('good.example'), 'updates to the newly focused real tab');
+
+  // No real tab with a verdict this session -> honest empty, no fabricated fallback.
+  const none = pickInitialRealTab([{ id: OWN, lastAccessed: 300 }], OWN, hasVerdict);
+  assert.equal(none, null, 'no real analysed tab -> null (honest empty)');
+  assert.ok(/No analysed page in focus/.test(renderRightNow(rightNowForTab(byTab, none))), 'renders the empty state, no fallback');
+  console.log('  [5] Right Now seeds from + tracks the last-focused non-dashboard tab; survives dashboard focus; honest empty when none ✓');
+}
+
+console.log('Dashboard model PROVEN: Right Now seeds from and tracks the last-focused non-dashboard tab (surviving dashboard focus, honest-empty when none), Saved Sites reflects real AuthStore + deleteEntry, all 11 technique cards render, and neither score nor rule IDs appear on any user-facing surface.');

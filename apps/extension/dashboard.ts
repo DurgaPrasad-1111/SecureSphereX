@@ -15,7 +15,8 @@
 import { AuthStore, chromeAuthBackend } from './auth-store.ts';
 import { IncidentHistory, type IncidentStorageBackend } from './incident-history.ts';
 import {
-  renderRightNow, renderIncidents, renderSavedSites, renderTechniqueCards, rightNowForTab,
+  renderRightNow, renderIncidents, renderSavedSites, renderTechniqueCards,
+  rightNowForTab, nextFocusedTab, pickInitialRealTab,
 } from './dashboard-model.ts';
 import type { StoredVerdict } from './verdict-view.ts';
 import { toOrigin } from '../../packages/contracts/evidence.contract.v1.ts';
@@ -29,9 +30,13 @@ const authStore = new AuthStore({ backend: chromeAuthBackend(), isPrivateContext
 const incidents = new IncidentHistory({ backend: localBackend });
 
 const INCIDENTS_CHANGED_KEY = 'ssx:incidents';
+const VERDICT_PREFIX = 'ssx:verdict:';
+/** The last-focused REAL (non-dashboard) tab whose status Right Now shows. */
 let focusedTabId: number | null = null;
+/** This dashboard's own tab id — excluded from Right Now entirely. */
+let ownTabId: number | null = null;
 
-function verdictKey(tabId: number): string { return `ssx:verdict:${tabId}`; }
+function verdictKey(tabId: number): string { return `${VERDICT_PREFIX}${tabId}`; }
 function el(id: string): HTMLElement { return document.getElementById(id)!; }
 
 async function readVerdict(tabId: number): Promise<StoredVerdict | undefined> {
@@ -55,15 +60,34 @@ async function refreshSaved(): Promise<void> {
 el('techniques').innerHTML = renderTechniqueCards();
 void refreshIncidents();
 void refreshSaved();
-chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-  focusedTabId = tabs[0]?.id ?? null;
+
+/* Seed Right Now from the most-recently-focused REAL tab (not the dashboard tab
+ * that is literally active now), so it shows a real page's status immediately.
+ * A tab "has a verdict" iff the SW analysed it — that is our proxy for a real
+ * http/https page, since tab URLs are not readable without host permissions. */
+async function seedRightNow(): Promise<void> {
+  ownTabId = (await chrome.tabs.getCurrent())?.id ?? null;
+  const [tabs, sess] = await Promise.all([chrome.tabs.query({}), chrome.storage.session.get(null)]);
+  const verdictTabIds = new Set(
+    Object.keys(sess)
+      .filter((k) => k.startsWith(VERDICT_PREFIX))
+      .map((k) => Number(k.slice(VERDICT_PREFIX.length)))
+      .filter((n) => !Number.isNaN(n)),
+  );
+  focusedTabId = pickInitialRealTab(tabs, ownTabId, (id) => verdictTabIds.has(id));
+  await refreshRightNow();
+}
+void seedRightNow();
+
+/* live focused-tab tracking — the dashboard's own tab is ignored, so switching
+ * to it keeps the last real tab's status on screen (tabId is enough; the verdict
+ * carries its own URL). */
+chrome.tabs.onActivated.addListener((info) => {
+  focusedTabId = nextFocusedTab(focusedTabId, info.tabId, ownTabId);
   void refreshRightNow();
 });
-
-/* live focused-tab tracking (tabId is enough — the verdict carries its own URL) */
-chrome.tabs.onActivated.addListener((info) => { focusedTabId = info.tabId; void refreshRightNow(); });
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (tabId === focusedTabId && (changeInfo.status === 'complete' || changeInfo.url !== undefined)) void refreshRightNow();
+  if (tabId !== ownTabId && tabId === focusedTabId && (changeInfo.status === 'complete' || changeInfo.url !== undefined)) void refreshRightNow();
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'session' && focusedTabId !== null && changes[verdictKey(focusedTabId)]) void refreshRightNow();
