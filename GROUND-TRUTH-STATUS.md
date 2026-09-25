@@ -124,6 +124,8 @@
 
 **Calibration:** thresholds 30/60 and all 11 rule weights are **sensitivity-characterized with domain-level bootstrap CIs, NOT validated** (`docs/Calibration-Sensitivity-Report.md`, `tools/analysis/threshold-sensitivity.ts`, run 2026-09-06 over 34,631 snapshots / 7,601 distinct registrable-domain splitKeys). At shipped 30/60: precision 0.974 (95% CI [0.944, 0.991]), whole-corpus recall 0.022 (95% CI [0.012, 0.034], denominator-bounded — only ~3,914 snapshots present a fireable credential interface); measured firing set is CRED-01/04/06/07 only (4 of 11). This is characterization + honest uncertainty; it is **not** §18.2 validation and moves no rule off **Unvalidated** — not "calibration resolved."
 
+**Rule-weight relative-importance check:** per-rule precision + a domain-level ridge logistic regression (`docs/Rule-Weight-Validation-Report.md`, `tools/analysis/rule-weight-validation.ts`, run 2026-09-25; corpus unchanged). Established: CRED-01 precision 0.983 (CI [0.929, 1.0]) and CRED-06 1.0 (separation artifact) are the only rules with stable numbers; CRED-04/CRED-07 CIs are wide-to-uninformative ([0.22, 0.95] / [0.57, 0.99]) once counted per-domain (13–14 domains); only CRED-01 & CRED-06 had ≥20 domains to fit, both real positive predictors (coef 1.81 / 2.55 log-odds), low collinearity (r=0.15), fitted ranking mildly disagrees with shipped weights on separation-confounded evidence. Did **not** establish §18.2 validation, covers only 2 of 11 rules, changed no weight — every rule remains **Unvalidated**.
+
 **Not built:** backend (0%).
 
 *Re-derived from executed builds/tests and source inspection on 2026-09-04.*
