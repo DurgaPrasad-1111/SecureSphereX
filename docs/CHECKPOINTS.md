@@ -213,3 +213,131 @@ pure functions rest on example-based tests only.
 
 **Decision:** ☑ CP-1 declared met — engine and ten modules integrated
 **Signed by:** Jayanth (Architecture Owner, Integrator)  **Date:** 2026-08-29
+
+---
+
+## CP-2 — First metrics
+
+**Drafted:** 2026-10-05 (DRAFT — awaiting Architecture Owner signature)
+**Drafted against:** `main` (HEAD `9d19961`); corpus 34,631 payloads / 35,087 INDEX entries / 7,601 distinct registrable-domain splitKeys
+**Gate:** Test split untouched by tuning
+**Evidence:** `docs/Calibration-Sensitivity-Report.md` (run 2026-09-06), `docs/Rule-Weight-Validation-Report.md` (run 2026-09-25) — identical corpus both runs
+
+**[R]** `Implementation-Ownership-Plan.md` C1.5 states CP-2 as: corpus evaluation
+produces a confusion matrix; confidence intervals on domain count; outcome
+distribution by label — gated on "test split untouched by tuning."
+
+**[I] Criterion 1 — confusion matrix produced. MET.** The full corpus (34,631
+evaluated, 0 errors) was scored through the real pipeline (`readSnapshot →
+extractEvidence → runAnalysisPass`). At the shipped 30/60 thresholds, whole-corpus
+precision 0.974 / recall 0.022 (denominator-bounded); the firing set is
+CRED-01/04/06/07 (4 of 11), with per-rule phishing/benign counts recorded
+(CRED-01 233/4, CRED-04 48/11, CRED-06 333/0, CRED-07 142/9).
+
+**[I] Criterion 2 — confidence intervals on domain count. MET.** Both reports compute
+**domain-level** bootstrap CIs (resample `splitKey`, 2,000 iterations), not
+snapshot-level — the design-note's unit, so kit duplication cannot falsely narrow the
+interval. Per-rule precision CIs (e.g. CRED-01 [0.929, 1.0], CRED-04 [0.22, 0.95]),
+the 30/60 precision CI [0.944, 0.991] and recall CI [0.012, 0.034], and the logistic
+coefficient CIs are all over the 7,601 distinct domains as effective-n.
+
+**[I] Criterion 3 — outcome distribution by label. MET.** Firing counts and the
+tier/outcome distribution are reported by label (phishing vs. benign) in both the
+confusion-matrix breakdown and the per-rule tables; the credential-interface cascade
+(whole corpus → content-bearing → eligible → detected) is characterized in the
+calibration report.
+
+**[I] GATE — "test split untouched by tuning." Addressed straight; this is the one
+that matters.** Both analysis scripts scored the **full corpus, including the test
+split** — neither partitioned off a held-out set. Two honest readings:
+
+- **Satisfied (the reading drafted here).** The gate's operative word is *tuning*. No
+  tuning occurred: both reports changed **zero** weights, thresholds, or §13.2
+  parameters, and both explicitly state they are **not** §18.2 validation. Nothing
+  was ever tuned based on what was seen in the test split, so the failure the gate
+  exists to prevent — test-set-informed overfitting of the shipped weights — did not
+  happen. By the gate's literal wording, it holds.
+- **Unmet (the stricter reading, stated so it is not buried).** Scoring the full
+  corpus **observed** the test split. Even with no tuning, its blindness is now
+  **spent**: it can no longer serve as a never-seen held-out set for a future §18.2
+  validation. If the gate is read as "preserve a blind test split," it is not met.
+
+**[I] Drafted verdict: MET** — the deliverable (confusion matrix + domain-level CIs +
+label distribution) is produced, and the gate holds under its literal "untouched by
+tuning" wording because nothing was tuned. **The Architecture Owner may record NOT MET
+instead** if the gate is intended to guarantee a blind test split; the deliverable
+stands either way.
+
+### Scope boundaries — what CP-2 does NOT establish
+
+1. **Not §18.2 validation.** Whole-corpus measurement, no train/validation/test
+   partition, no pre-registered false-positive budget. Every rule's
+   `empiricalConfidence` remains **Unvalidated**. CP-2 MET is not "calibration done."
+2. **Test-split blindness is spent** (per the gate discussion above) — a later
+   held-out validation cannot use this split as never-observed.
+3. **Covers only the 4 rules that fire** on the corpus; 7 of 11 never fire here, and
+   CRED-02 is S-8-blocked in the harness. The relative-importance logistic fit covered
+   only 2 rules (CRED-01, CRED-06).
+
+**Decision:** ☐ CP-2 — DRAFT, awaiting Architecture Owner signature (and the AO's
+MET / NOT MET ruling on the gate)
+**Signed by:** _______________  **Date:** __________
+
+---
+
+## CP-3 — Extension ↔ Engine
+
+**Drafted:** 2026-10-05 (DRAFT — awaiting Architecture Owner signature)
+**Drafted against:** `main` (HEAD `9d19961`)
+**Gate:** Conformance suite green
+
+**[R]** CP-3 requires that the extension's producers and the offline harness's
+producers agree (so the engine's verdict is the same whichever side collected the
+evidence), plus manual confirmation of the live browser surfaces.
+
+**[I] Criterion 1 — extension ↔ harness conformance. MET (automated, this session).**
+`npm run test:conformance` (`tools/conformance/login-interface.conformance.test.ts`)
+proves 8/8 HTML cases produce **byte-identical shared fields** across the harness
+(parse5) and extension (live DOM) paths, including `actionUrl` and
+`actionRegistrableDomain` (both shared-PSL). The live-path tests corroborate per rule:
+`test:cred-livepath`, `test:cred02livepath`, `test:cred03livepath` (extension and
+harness now AGREE on CRED-03 post-DEC-47), `test:cred04livepath`, `test:dllivepath`,
+plus `test:downloadrepass` / `test:downloadonchanged` / `test:downloadsametab`. All
+green under `verify:all` (EXIT 0, re-run 2026-10-05).
+
+**[I] Criterion 2 — service-worker dormancy / wake. MET (automated).** Proven by
+`apps/extension/session-survival.test.ts` (A1.1): a session — including the engine
+`PriorPassState` and the §11.4 intervention lock — survives worker termination
+mid-session and is reconstructed unchanged, with negative controls (corrupt session
+skipped, malformed state → null). This is an automated test, not a manual check.
+
+**[I] Criterion 3 — live-browser visual/behavioural surfaces. ARCHITECTURE-OWNER-
+ATTESTED, relayed through this session; NOT verified by this session.** The
+Architecture Owner states, relayed through this session on 2026-10-05, that the
+following were **manually confirmed in real Chrome in an earlier session** (not in
+this one):
+
+- DL-02 firing on a real **same-tab "Save link as"** of a compound-extension file;
+- the **Medium interstitial** and **High block** visuals on real flagged pages;
+- the **v3 dashboard** (Right Now / History / Saved Sites / Technique cards) confirmed
+  live against real browsing data.
+
+**Provenance, explicit:** this session did **not** perform or witness these checks.
+They are recorded as the Architecture Owner's own attestation, relayed through the
+implementing session, and remain **unsigned** until the Architecture Owner signs this
+record. The offline model + store for the dashboard, and the download/intervention
+handler logic, are separately proven by `test:dashboard`, `test:incidenthistory`,
+`test:intervention`, and `test:downloadsametab`; what is AO-attested here is the live
+rendering/timing in real Chrome, which the automated suite cannot exercise.
+
+### Scope boundaries — what CP-3 does NOT establish
+
+1. The live-browser visuals (Criterion 3) rest on Architecture-Owner attestation
+   relayed through this session, not on a test or a check this session ran.
+2. CRED-04's extension path remains webNavigation-limited (S-10 divergent) — the
+   conformance agreement is on the shared producer fields, not on CRED-04 firing live
+   in the extension.
+
+**Decision:** ☐ CP-3 — DRAFT, awaiting Architecture Owner signature (signature also
+ratifies the Criterion-3 manual attestation as the AO's own)
+**Signed by:** _______________  **Date:** __________
