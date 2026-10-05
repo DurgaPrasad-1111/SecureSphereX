@@ -5193,3 +5193,37 @@ S-9 manual-E2E limitation), [[DEFECT-43]] (the diagnosis this concludes),
   extension, silent provisionally; `test:downloadonchanged` wired into verify:all;
   verify:all exit 0.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-09-05
+
+## DEC-49 (CANDIDATE — unsigned, open) — Pre-registered eligibility definition for the credential-interface-scoped recall measurement (Part 6b)
+
+**Pre-registered 2026-10-05, BEFORE any result was computed.** This entry fixes
+the eligibility population for the scoped recall/false-positive measurement
+(`docs/Credential-Interface-Scoped-Measurement.md`, `tools/analysis/credential-scoped-measurement.ts`)
+so the denominator cannot be chosen after seeing the numbers.
+
+**[R] ELIGIBLE definition (frozen here, used verbatim by the script):**
+
+> A snapshot is ELIGIBLE iff **`fetch.outcome ∈ {success, http_error}`** (it
+> carries a real captured DOM — the two content-bearing outcomes; dns/timeout/
+> navigation/tls/redirect/empty_document are excluded as capture artifacts)
+> **AND `loginInterface.credentialFormPresent === true`** as produced by
+> `extractEvidence` (the engine-derived field — explicitly **NOT** the
+> snapshot's `presentsCredentialInterface` field, which is uniformly `null`,
+> [[DEFECT-45]]).
+
+**[R] Rationale.** The four firing rules all gate on `credentialFormPresent`; a
+whole-corpus recall denominator (25,360 phishing) is dominated by snapshots that
+present no credential interface and so are structurally unable to fire any rule.
+The honest "reachable" denominator is the eligible population. `http_error` is
+included alongside `success` because those snapshots carry a real DOM (confirmed
+Part-1 breakdown: all 6,201 http_error snapshots have non-empty DOM); only
+genuinely empty/error-artifact outcomes are excluded.
+
+**[R] Numerator integrity check.** The measurement MUST reproduce the existing
+whole-corpus true-positive count (564 phishing flagged at the 30 threshold,
+Calibration-Sensitivity-Report) exactly as a cross-check; if it does not, the run
+stops and the discrepancy is investigated rather than reported.
+
+**Status:** CANDIDATE — unsigned, open. Pre-registration only; records the frozen
+eligibility definition ahead of computation. No weight/threshold/rule changed.
+Cross-ref [[DEFECT-45]], `docs/Calibration-Sensitivity-Report.md`.
