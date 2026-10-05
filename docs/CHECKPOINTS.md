@@ -218,8 +218,9 @@ pure functions rest on example-based tests only.
 
 ## CP-2 — First metrics
 
-**Drafted:** 2026-10-05 (DRAFT — awaiting Architecture Owner signature)
-**Drafted against:** `main` (HEAD `9d19961`); corpus 34,631 payloads / 35,087 INDEX entries / 7,601 distinct registrable-domain splitKeys
+**Status: NOT MET** (Architecture-Owner ruling, 2026-10-05 — criteria 1–3 met, the gate is not)
+**Recorded:** 2026-10-05
+**Against:** `main` (HEAD `9d19961`); corpus 34,631 payloads / 35,087 INDEX entries / 7,601 distinct registrable-domain splitKeys
 **Gate:** Test split untouched by tuning
 **Evidence:** `docs/Calibration-Sensitivity-Report.md` (run 2026-09-06), `docs/Rule-Weight-Validation-Report.md` (run 2026-09-25) — identical corpus both runs
 
@@ -262,33 +263,38 @@ split** — neither partitioned off a held-out set. Two honest readings:
   **spent**: it can no longer serve as a never-seen held-out set for a future §18.2
   validation. If the gate is read as "preserve a blind test split," it is not met.
 
-**[I] Drafted verdict: MET** — the deliverable (confusion matrix + domain-level CIs +
-label distribution) is produced, and the gate holds under its literal "untouched by
-tuning" wording because nothing was tuned. **The Architecture Owner may record NOT MET
-instead** if the gate is intended to guarantee a blind test split; the deliverable
-stands either way.
+**[I] Verdict: NOT MET** (Architecture-Owner ruling, 2026-10-05). Criteria 1–3 are MET
+and stay credited — the confusion matrix, domain-level CIs, and label distribution are
+real and delivered. But the **gate is NOT MET**: scoring the full corpus spent the test
+split's blindness for any future held-out validation, regardless of whether anything was
+tuned. By the same conjunction logic CP-0 records for itself — one failed gate sinks the
+checkpoint even when the deliverable is good — **CP-2 is NOT MET.** The "no tuning
+occurred" reading above is kept for completeness but does not rescue the gate: the AO's
+ruling is that *observation*, not only tuning, is what the gate protects.
 
 ### Scope boundaries — what CP-2 does NOT establish
 
 1. **Not §18.2 validation.** Whole-corpus measurement, no train/validation/test
    partition, no pre-registered false-positive budget. Every rule's
-   `empiricalConfidence` remains **Unvalidated**. CP-2 MET is not "calibration done."
+   `empiricalConfidence` remains **Unvalidated**. Criteria 1–3 being met is not "calibration done."
 2. **Test-split blindness is spent** (per the gate discussion above) — a later
    held-out validation cannot use this split as never-observed.
 3. **Covers only the 4 rules that fire** on the corpus; 7 of 11 never fire here, and
    CRED-02 is S-8-blocked in the harness. The relative-importance logistic fit covered
    only 2 rules (CRED-01, CRED-06).
 
-**Decision:** ☐ CP-2 — DRAFT, awaiting Architecture Owner signature (and the AO's
-MET / NOT MET ruling on the gate)
-**Signed by:** _______________  **Date:** __________
+**Decision:** ☑ CP-2 recorded as NOT MET, 2026-10-05 (Architecture-Owner ruling, relayed
+and applied this session). Following CP-0's precedent, an unmet checkpoint is a
+verification record of a state that obtains — the test split was observably scored by
+both analysis runs — and carries no `Signed by` warrant; the ruling that a spent-blindness
+gate sinks the checkpoint is the AO's, recorded here. Criteria 1–3 remain credited as MET.
 
 ---
 
 ## CP-3 — Extension ↔ Engine
 
-**Drafted:** 2026-10-05 (DRAFT — awaiting Architecture Owner signature)
-**Drafted against:** `main` (HEAD `9d19961`)
+**Status: MET** (declared by the Architecture Owner, 2026-10-05)
+**Verified against:** `main` (HEAD `9d19961`)
 **Gate:** Conformance suite green
 
 **[R]** CP-3 requires that the extension's producers and the offline harness's
@@ -338,6 +344,9 @@ rendering/timing in real Chrome, which the automated suite cannot exercise.
    conformance agreement is on the shared producer fields, not on CRED-04 firing live
    in the extension.
 
-**Decision:** ☐ CP-3 — DRAFT, awaiting Architecture Owner signature (signature also
-ratifies the Criterion-3 manual attestation as the AO's own)
-**Signed by:** _______________  **Date:** __________
+**Decision:** ☑ CP-3 declared MET — extension ↔ engine conformance proven by the cited
+tests; SW dormancy/wake proven by `session-survival.test.ts`; the live-browser visual
+surfaces (DL-02 same-tab Save-As, Medium/High intervention visuals, v3 dashboard) are
+ratified as the Architecture Owner's own manual attestation from an earlier session,
+confirmed and signed here. This session did not itself witness those live checks.
+**Signed by:** Jayanth (Architecture Owner, Integrator)  **Date:** 2026-10-05
