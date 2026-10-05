@@ -1,429 +1,360 @@
 # Architecture Owner Review Queue
 
-Consolidated for Jayanth (Architecture Owner). Pulls the current, verbatim
-text of every decision in `DECISIONS.md` that names an open architect
-ruling, plus DEC-1 and DEC-3 for completeness — checked against the file
-directly, not assumed. No new analysis beyond what `DECISIONS.md` already
-records; this document routes, it does not decide.
+Consolidated for Jayanth (Architecture Owner). Pulls the current, verbatim text
+of every **CANDIDATE — unsigned, open** decision in `DECISIONS.md`. This document
+**routes, it does not decide**: it offers no resolution beyond what each decision's
+own text already records. Each item is tagged **HIGH / MEDIUM / LOW** by what it
+blocks *functionally today* (not by age), HIGH first.
 
-Generated 2026-08-26. Regenerate by re-consolidating from `DECISIONS.md`
-rather than hand-editing this file when items change status.
+**Generated 2026-10-05** (regenerated from `DECISIONS.md` as it stands today — the
+prior generation was 2026-08-26 and predated DEC-20/24/25/33/34). Regenerate by
+re-consolidating from `DECISIONS.md`, not by hand-editing this file.
 
----
+**The full CANDIDATE set, confirmed directly against `DECISIONS.md` today** (every
+`## DEC-N (CANDIDATE — unsigned, open)` heading): **DEC-12, 13, 15, 16, 17, 18, 19,
+20, 24, 25, 33, 34** — 12 decisions. All other DEC-1…DEC-48 entries carry a
+`Signed by: Jayanth (Architecture Owner)` line or an explicit delegation and are not
+listed here.
 
-## ⚠️ Correction to this task's premise
-
-This packet was requested on the premise that "DEC-1 and DEC-3 are already
-open, awaiting Jayanth's (Architecture Owner) sign-off." Checked directly
-against the current `DECISIONS.md`: **both are already signed.**
-
-- **DEC-1** — `Decision: ☑ External store... Signed by: Jayanth
-  (Architecture Owner)  Date: 2026-08-21` (`DECISIONS.md` line 70-71).
-- **DEC-3** — `Decision: ☑ Approved... Signed by: Jayanth (Architecture
-  Owner)  Date: 2026-08-21` (`DECISIONS.md` line 137-139).
-
-Likely source of the mismatch: `DECISIONS.md`'s own top-of-file banner
-still reads **"Status: Revision 1 — awaiting Architecture Owner
-signature"** (line 3), which is stale relative to the individual entries
-below it — every decision from DEC-1 through DEC-14 that has actually
-been signed shows its own `☑ ... Signed by: Jayanth ... Date:` line, but
-the document-level banner was never updated to reflect that. This exact
-discrepancy was flagged once already, in an earlier audit of this repo.
-
-Both are included below, verbatim, for completeness per instruction —
-**not** as open items requiring action.
+Tag key:
+- **HIGH** — blocks something currently shipping or measured.
+- **MEDIUM** — a real gap, but nothing currently depends on it.
+- **LOW** — a spec-vs-implementation gap with no functional consequence today.
 
 ---
 
-## OPEN — requires a ruling
+## HIGH
 
-### DEC-15 — Stage 1 orchestration envelope (4 of 5 fields remain open)
+### DEC-13 — Cross-environment corpus payload access mechanism  · **HIGH**
 
-**How long open:** since 2026-08-26 (opened and amended the same day).
+**Open since:** 2026-08-22 ("surfaced concretely on 2026-08-22 during DEFECT-6's
+verification").
 
-**What's being decided:** `SecurityEvaluation<M>`'s `moduleVersion`,
-`indicators`, `consistency`, and `summary` fields have no documented
-generation scheme anywhere in the 46-file `spec/` corpus or the Logical
-Database Design Specification. (`evaluationId`, originally part of the
-same open question, was resolved 2026-08-26 — see below — and is no
-longer open.)
+**What's being decided:** DEC-1 named "on disk (and/or an external store)" as the
+corpus payload's home but never specified a mechanism — no endpoint, bucket, mount
+path, or credential scheme is recorded anywhere. Is cross-environment access to real
+payload ever needed, and if so by what mechanism — or is "payload lives only on the
+capture machine, `INDEX.jsonl` is the portable record" the permanent intended shape?
 
-**Current recommendation, per field** (full reasoning in `DECISIONS.md`
-DEC-15's 2026-08-26 amendment):
+**Current recommendation:** None recorded — `DECISIONS.md` states the question
+without a lean.
 
-| Field | Recommendation | Confidence |
-|---|---|---|
-| `moduleVersion` | Two live options: (a) shared engine package version (simplest, already exists) or (b) a genuine per-module version constant with a stated bump convention. Lean (a) if forced to choose. | Low — real design question, not a mechanical default |
-| `indicators` | Ship `[]` as an explicitly-marked placeholder (the storage schema's own documented default for "nothing derived yet") until a per-module indicator registry is designed. Who owns authoring that registry is the open question. | N/A — placeholder sanctioned, derivation logic is what's open |
-| `consistency` | No safe default exists. `indeterminate`-always is a candidate but is a substantive interpretive claim, not a neutral placeholder — needs explicit sign-off, not inference. | N/A — no default proposed |
-| `summary` | No recommendation. No template or safe default found anywhere. Open question: who reads this (operator-facing debug aid vs. eventual end-user-facing text)? | N/A — no default proposed |
+**Why HIGH today:** this is the literal problem that recurs whenever the corpus must
+move between machines — the master-prompt's own Part 0 had to detect
+`CORPUS_AVAILABLE` precisely because payloads live on one machine and not others.
+On *this* machine payloads are present, but the *mechanism* for a teammate, CI, or
+disaster-recovery to reach real payload is still unspecified — so any corpus-
+dependent CI step or second developer is blocked until it is ruled.
 
-**What resolving it unblocks:** A complete, real `SecurityEvaluation<M>`
-envelope — `packages/engine/orchestrator.ts`'s `assembleSecurityEvaluation`
-currently throws `Stage1EnvelopeBlockedError` for every module rather than
-fabricate these four fields. Per the same amendment, resolving it does
-**not** unblock Stage 2 predicate matching by itself (see this session's
-separate Stage 2 dependency-check finding, recorded alongside DEC-15 in
-`DECISIONS.md`) — Stage 2 predicate evaluation is a distinct blocker with
-its own dependency check.
-
-**Verbatim source:** `DECISIONS.md`, `## DEC-15` through its 2026-08-26
-amendment (now followed by DEC-16 and DEC-17, below — formalized out of
-that amendment's Stage 4 addendum, not part of DEC-15 itself).
+**Verbatim source:** `DECISIONS.md`, `## DEC-13`.
 
 ---
 
-### DEC-16 — A-01 / User-Trusted Origin evidence gap
+## MEDIUM
 
-**How long open:** since `rules-v0.1.0`'s authoring (Step 11) — the gap
-was recorded in the rule set's own `changeLog` at that time, not
-discovered when this entry was written (2026-08-26). No more precise
-calendar date for Step 11 is recorded anywhere in the corpus.
+### DEC-12 — Sanctioned constructors for the five brands  · **MEDIUM**
 
-**What's being decided:** A-01 (§6.4, User-Trusted Origin) has **zero**
-guards in `rulesets/rules-v0.1.0.json` — it does not exist in the
-`suppressions` array at all (only S-01 and S-02 are present). The rule
-set's own `changeLog` explains why, verbatim: no evidence category
-anywhere represents "a per-origin explicit user trust action"; the
-frozen `trust_validity_days` `ParameterId` (§13.2) has nowhere for its
-underlying guard data to live; shipping A-01 with `guards: []` would
-silently violate §6.1's "no unguarded suppression" invariant, so it was
-correctly omitted rather than shipped broken.
+**Open since:** contextually Step 8 (fixture authoring), ~2026-08-21.
 
-**Current recommendation:** None — genuinely two open paths, not one
-obvious answer, exactly as the rule set's own text frames it: (a) an
-evidence-contract amendment adding the missing evidence category, or (b)
-confirmation that user-trust suppression is handled entirely outside the
-rule-set predicate mechanism (a different architectural layer, never a
-Stage 4 `SuppressionDefinition`).
+**What's being decided:** `AnalysisSessionId`, `TargetResourceId`, `PassResultId`,
+`FindingId`, and `DayStamp` were branded as TYPES ONLY (DEC-3 Annex A-3/A-4) — no
+sanctioned constructor exists for any of the five (unlike `Origin`/`toOrigin()`).
+They enter the type system via unvalidated `as` cast at every boundary. Do the five
+get parse-validated constructors modelled on `toOrigin()` (all five, or only those
+with an enforceable format), or is `as`-cast deliberately accepted with validation
+deferred to producer-side testing?
 
-**What resolving it unblocks:** A-01 becoming addable to a future
-rule-set version. Its five target rules (CRED-01, CRED-04, CRED-07,
-PM-01, DL-01) currently get no user-trust-based reduction at all — a
-complete absence, not a partial one (contrast DEC-17/S-01, which is
-present but narrowed).
+**Current recommendation:** None recorded.
+
+**Why MEDIUM:** nothing depends on it today ("the current `as`-cast pattern compiles
+and Step 8 is closed against it"); it is a real type-safety gap that becomes relevant
+when the capture pipeline ingests external data or the engine reads corpus payloads.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-12`.
+
+---
+
+### DEC-15 — Stage 1 orchestration envelope (4 of 5 fields open)  · **MEDIUM**
+
+**Open since:** 2026-08-26 (opened and amended the same day).
+
+**What's being decided:** `SecurityEvaluation<M>`'s `moduleVersion`, `indicators`,
+`consistency`, and `summary` have no documented generation scheme anywhere in the
+spec corpus. (`evaluationId`, originally part of this question, was resolved
+2026-08-26.) DECISIONS.md's own per-field framing: `moduleVersion` — (a) shared
+engine package version or (b) per-module version constant, lean (a) if forced;
+`indicators` — ship `[]` as the schema's documented placeholder, the derivation
+registry is what's open; `consistency` — no safe default, `indeterminate`-always is a
+substantive claim needing sign-off; `summary` — no recommendation, no safe default.
+
+**What resolving it unblocks:** a complete `SecurityEvaluation<M>` envelope —
+`orchestrator.ts`'s `assembleSecurityEvaluation` throws `Stage1EnvelopeBlockedError`
+rather than fabricate these four. Per the same amendment, it does **not** by itself
+unblock Stage 2.
+
+**Why MEDIUM:** the live detection/measurement path (`runAnalysisPass`) does not
+depend on the full Stage-1 envelope — detection ships and the corpus is measured
+without it — so this blocks envelope completeness, not anything currently shipping.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-15` + its 2026-08-26 amendment.
+
+---
+
+### DEC-16 — A-01 / User-Trusted Origin evidence gap  · **MEDIUM**
+
+**Open since:** `rules-v0.1.0` authoring (Step 11), recorded in the rule set's own
+`changeLog`.
+
+**What's being decided:** A-01 (§6.4) has **zero** guards in the rule set — it is
+absent from `suppressions` entirely (only S-01, S-02 present). The changeLog explains
+why: no evidence category represents "a per-origin explicit user trust action"; the
+frozen `trust_validity_days` ParameterId has nowhere for its guard data to live;
+shipping A-01 with `guards: []` would violate §6.1. Two paths: (a) an
+evidence-contract amendment adding the missing category, or (b) confirmation that
+user-trust suppression lives entirely outside the rule-set predicate mechanism.
+
+**Current recommendation:** None — two genuinely open paths.
+
+**Why MEDIUM:** A-01 is simply absent; its five target rules (CRED-01/04/07, PM-01,
+DL-01) get no user-trust reduction, a complete absence. Nothing currently measured
+depends on A-01 existing; it is addable to a future rule-set version.
 
 **Verbatim source:** `DECISIONS.md`, `## DEC-16`.
 
 ---
 
-### DEC-17 — S-01 guard narrowing (missing drift-tolerance condition)
+### DEC-24 — B1.6: extend property-test coverage to B1.4 + consistency relations  · **MEDIUM**
 
-**How long open:** since `rules-v0.1.0`'s authoring (Step 11, commit
-`fd61b76`) — S-01's own `rationale` field was written at that time,
-flagging this for review then, not discovered today. Bounded between
-DEC-3/DEC-8's 2026-08-21 signing and DEFECT-15's 2026-08-24
-investigation (which already cites this as an established past fact); no
-more precise date is recorded.
+**Open since:** 2026-08-29 (B1.4 `stage7-8.ts` and `consistency.ts` post-date the
+B1.5 plan, which froze with dependency line `B1.2, B1.3`).
 
-**What's being decided:** S-01 (§6.2, Prior Authentication) **is live
-and shipping today**, but self-narrowed. §6.2 specifies three guard
-conditions (`origin_present=true`, `lifecycleState=ESTABLISHED`, **and**
-fingerprint drift within tolerance); the live rule set's S-01 encodes
-only the first two. Its own `rationale` field states why, verbatim: "No
-ParameterId exists for a drift-tolerance threshold... This guard checks
-only origin_present and lifecycleState=ESTABLISHED, treating
-drift-within-tolerance as already folded into the module's own
-ESTABLISHED determination... This is a real narrowing of §6.2's literal
-three-condition wording, not a full implementation of it."
+**What's being decided:** B1.5's property-test exit criteria remain unmet and still
+accurate; `stage4`/`stage5-6` fixture tests are example-based (no generators). The
+open question is extending property coverage to the functions that post-date the
+plan: `stage7-8.ts` (5 exported functions, B1.4) and `consistency.ts` (11, DEC-21) —
+"3 functions originally in scope, 16 outside it," ~15 properties instead of ~7, plus
+generators for the ten `*Findings` shapes.
 
-**Current recommendation:** None — should a drift-tolerance
-`ParameterId` be added (closing the gap to match §6.2 literally), or is
-the current narrowing an accepted, permanent interpretation? Both are
-defensible; the rule set's own rationale deliberately flagged this for
-review rather than picking one.
+**Current recommendation:** None — DECISIONS.md quantifies the cost without picking a
+schedule.
 
-**What resolving it unblocks:** Nothing functionally today — S-01
-validates cleanly and Stage 4 could scaffold against it as-is. This is a
-spec-vs-implementation gap, not a functional blocker: **anyone relying
-on S-01 today (CRED-02 nullification, CRED-01/CRED-04 halving) is
-relying on the narrowed two-condition version**, which is worth Jayanth
-knowing even though nothing is currently broken by it.
+**Why MEDIUM:** real test-coverage debt on pure engine functions; nothing currently
+broken depends on it, but it is the gate B1.5/B1.6 names and is cited by DEC-25 as
+where order-dependence could still hide.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-24`.
+
+---
+
+### DEC-25 — Output canonicalisation as a class (engine-wide requirement, or case by case?)  · **MEDIUM**
+
+**Open since:** 2026-08-29 (found by the first property test run).
+
+**What's being decided:** determinism is contracted (§4.3, P-13, G-10). Two defects
+of this class (DEFECT-26 record-order instability; DEFECT-27 IEEE-754 non-associative
+`primarySum`) were found in one function and **both fixed**. The open question is
+whether order-independence is an *engine-wide* requirement to be designed for and
+checked, versus established case by case — "wherever the engine projects a collection
+or accumulates a number, the OUTPUT inherits the INPUT's order unless something is
+done about it," and nothing currently requires an author to think about it.
+DEFECT-28 (a §9.3 cardinality ambiguity) is deliberately NOT folded in — different
+root cause.
+
+**Current recommendation:** None — DECISIONS.md frames the systemic question without
+deciding it; notes `stage7-8.ts`/`consistency.ts` have no property coverage (→ DEC-24).
+
+**Why MEDIUM:** the two known instances are fixed; the systemic exposure is a real gap
+in uncovered pure functions, but nothing is currently observed broken.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-25`.
+
+---
+
+### DEC-33 — Tier-3 CDP selector does not match `classifyField`'s full coverage  · **MEDIUM**
+
+**Open since:** 2026-08-29+ (scopes DEC-30 Part 4, signed 2026-08-29; does not reopen
+DEC-30).
+
+**What's being decided:** DEC-30's CDP query is
+`input[type=password], input[type=email], input[autocomplete]` — reaches
+`classifyField`'s Tier 1 + Tier 2 only. Tier 3 (name/id pattern matching over
+`<select>`/`<textarea>`/plain inputs) is invisible to the CDP query, so Tier-3
+listener detection can never fire on a field classified credential purely by
+`name`/`id`. DECISIONS.md lays out two options: **(a)** broaden the CDP query to all
+inputs and port `classifyField`'s Tier-3 regex into `capture.py` (cost: a dual-
+language heuristic with no shared source/oracle — the exact DEFECT-34 drift shape,
+plus more CDP round-trips); **(b)** keep the narrow declared-attribute selector and
+document the gap as an explicit Phase-I scope limit. The entry's own title recommends
+**scoping to declared signals only (Phase I)** = option (b).
+
+**Why MEDIUM:** Tier-3 listener detection (CRED-05 / `listenerOnCredentialField`) is
+not producing live signal today (sentinel never run, CRED-05 non-functional Phase I),
+so nothing currently measured depends on this; it is a real design-scoping gap for a
+not-yet-live capability.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-33`.
+
+---
+
+### DEC-34 — Tier-3 CDP scaffolding: iframe reach + loopback isolation findings  · **MEDIUM**
+
+**Open since:** 2026-08-29+ (records validation of the already-scaffolded Tier-3
+mechanism; own entry, not an addendum to signed DEC-30).
+
+**What's being decided (recorded for acceptance):** synthetic validation found the
+CDP scaffolding blind to iframe-embedded fields. Fix has two mechanisms — (1)
+same-process frames reached by walking the pierced `contentDocument` tree; (2)
+out-of-process frames reached via Playwright's `new_cdp_session(frame)`, combined via
+the "no separate session" exception rather than manual classification. Load-bearing
+finding: under Chromium's default (flagless) launch — what `capture.py` runs —
+neither a port-only nor a hostname-only loopback difference produces a genuine OOPIF;
+`--site-per-process` is required to get one at all. **Practical consequence:**
+production `capture.py` will only ever see genuine OOP isolation against real external
+cross-site content, not against loopback test rigs.
+
+**Current recommendation:** None — DECISIONS.md records the validation and its
+Phase-I consequence; the open item is Architecture-Owner acceptance of that scope.
+
+**Why MEDIUM:** same as DEC-33 — concerns the not-yet-live Tier-3 capture path;
+nothing currently measured depends on it.
+
+**Verbatim source:** `DECISIONS.md`, `## DEC-34`.
+
+---
+
+## LOW
+
+### DEC-17 — S-01 guard narrowing (missing drift-tolerance condition)  · **LOW**
+
+**Open since:** `rules-v0.1.0` authoring (Step 11, `fd61b76`).
+
+**What's being decided:** S-01 (§6.2) is **live and shipping**, but self-narrowed —
+§6.2 specifies three guard conditions (`origin_present`, `lifecycleState=ESTABLISHED`,
+and fingerprint drift within tolerance); the live rule encodes only the first two. Its
+own rationale: "No ParameterId exists for a drift-tolerance threshold… treating
+drift-within-tolerance as already folded into the module's ESTABLISHED determination…
+a real narrowing of §6.2's literal three-condition wording." Add a drift-tolerance
+ParameterId, or accept the narrowing as permanent?
+
+**Why LOW:** DECISIONS.md's own verdict — "Nothing functionally today — S-01 validates
+cleanly." A spec-vs-implementation gap. Worth knowing that anyone relying on S-01
+today (CRED-02 nullification, CRED-01/04 halving) relies on the narrowed two-condition
+version, even though nothing is currently broken.
 
 **Verbatim source:** `DECISIONS.md`, `## DEC-17`.
 
 ---
 
-### DEC-18 — `blockedBy` has no domain-scoping mechanism
+### DEC-18 — `blockedBy` has no domain-scoping mechanism  · **LOW**
 
-**How long open:** found while implementing Stage 4
-(`packages/engine/stage4.ts`, 2026-08-26) — not a dedicated dependency-
-check finding this time, but a real implementation-time discovery,
-formalized here the same day it was found.
+**Open since:** 2026-08-26 (found implementing Stage 4).
 
-**What's being decided:** §6.3 (S-02) requires "CRED-03 has not fired
-**against the action domain**" — a domain-scoped negative guard. The
-actual type, `SuppressionDefinition.blockedBy: readonly RuleId[]`, is
-bare rule IDs with no domain-scoping mechanism, and `CorrelationFinding`
-carries no domain field at all. Implemented as the coarser, type-
-supported check — did the named rule fire at all this pass — matching
-`ruleset.format.v1.ts`'s own simpler doc-comment framing, not a stricter
-interpretation the types don't support.
+**What's being decided:** §6.3 (S-02) requires "CRED-03 has not fired **against the
+action domain**" — a domain-scoped negative guard. `SuppressionDefinition.blockedBy`
+is bare `RuleId[]` with no domain scoping, and `CorrelationFinding` has no domain
+field; implemented as the coarser "did the named rule fire at all this pass" check.
+Add a domain field / richer `blockedBy` shape, or accept the coarse check as
+permanent?
 
-**Current recommendation:** None — genuinely open, the same way DEC-16
-is for A-01. Two shapes present themselves (a domain field on
-`CorrelationFinding`, or a richer `blockedBy` entry shape pairing a rule
-ID with a domain-bearing `FindingPath`), but which is right, or whether
-the coarser check is an accepted permanent narrowing instead, is not
-decided here.
-
-**What resolving it unblocks:** Nothing observably today — confirmed
-against the real fixture pipeline, the one live case (S-02's
-`blockedBy: ['CRED-03']`, exercised by `off-origin-post`) happens to give
-the same answer under either the coarse or domain-scoped check, since
-only one domain is in play in that fixture. **This affects S-02
-specifically and is shipped/live today**, same framing as DEC-17 —
-worth knowing even though nothing is currently observed to be wrong.
-Becomes relevant the moment a real pass has CRED-03 firing on a
-different domain than the one S-02 is evaluating.
+**Why LOW:** "Nothing observably today" — the one live case (S-02 `blockedBy:
+['CRED-03']` on `off-origin-post`) gives the same answer under either check since only
+one domain is in play. Spec-vs-implementation gap; S-02 is live. Becomes relevant only
+when a pass has CRED-03 firing on a different domain than S-02 evaluates.
 
 **Verbatim source:** `DECISIONS.md`, `## DEC-18`.
 
 ---
 
-### DEC-19 — CRED-A1's single-parent interpretive choice
+### DEC-19 — CRED-A1's single-parent interpretive choice  · **LOW**
 
-**How long open:** found while implementing Stage 5/6
-(`packages/engine/stage5-6.ts`, 2026-08-26) — already self-documented in
-the live rule set's own `rationale` field at rule-set authoring time
-(not discovered today), formalized here the same day it was surfaced
-during implementation.
+**Open since:** 2026-08-26 (surfaced implementing Stage 5/6).
 
-**What's being decided:** §7.2 states CRED-A1's parent requirement as
-"CRED-01 **or** CRED-02" (two possible parents). `RuleDefinition.parent`
-is typed singular (`RuleId | null`), and §9.2/§9.3's aggregation model is
-built around a single parent throughout. The live rule set's own
-`rationale` field states, verbatim: "CRED-01 was chosen as the sole
-parent — not derived from spec text, an explicit judgment call pending
-architect ruling. Consequence: this aggravator will NOT contribute when
-only CRED-02 (not CRED-01) is present."
+**What's being decided:** §7.2 states CRED-A1's parent as "CRED-01 **or** CRED-02";
+`RuleDefinition.parent` is singular and the aggregation model is single-parent
+throughout. The rule set chose CRED-01 as sole parent — "an explicit judgment call
+pending architect ruling. Consequence: this aggravator will NOT contribute when only
+CRED-02 (not CRED-01) is present." Widen `parent` to multiple (a frozen-contract +
+§9.2 change), or accept single-parent as permanent?
 
-**Current recommendation:** None — the rule set's own rationale frames
-this as an open judgment call, not a lean. Two shapes present themselves
-(widen `RuleDefinition.parent` to support multiple alternative parents,
-or accept the single-parent model as permanent), neither decided here.
-Widening would be a contract change to `ruleset.format.v1.ts` (frozen)
-and to the aggregation formula (§9.2, also frozen) — not a rule-set-data-
-only fix.
-
-**What resolving it unblocks:** Nothing today — confirmed directly
-against `packages/engine/stage5-6.ts`'s implementation: CRED-A1 has
-never been observed to match against any of the 4 real fixtures at all,
-because DEFECT-18 (`javascript.injectingScriptOriginDomain` permanently
-`null`) already makes CRED-A1's own predicate permanently unsatisfiable
-for an unrelated reason. The narrowing is real and shipped but currently
-inert. Becomes relevant only if DEFECT-18 is resolved first and CRED-A1
-becomes reachable.
+**Why LOW:** "Nothing today — CRED-A1 has never matched any fixture because DEFECT-18
+already makes its predicate permanently unsatisfiable," and DEC-46 (signed) accepted
+CRED-A1 non-functional for Phase I. The narrowing is real but inert. Becomes relevant
+only if DEFECT-18 is resolved and CRED-A1 becomes reachable.
 
 **Verbatim source:** `DECISIONS.md`, `## DEC-19`.
 
 ---
 
-### DEC-12 — Sanctioned constructors for the five brands
+### DEC-20 — `confusableSkeleton`'s absent-vs-present convention enforced only by a comment  · **LOW**
 
-**How long open:** no explicit open-date recorded in `DECISIONS.md`.
-Contextually tied to Step 8 (fixture authoring) — the same working
-session as DEC-3's 2026-08-21 signing, per its own text ("fixtures do
-this today (Step 8, commit 6060d63)").
+**Open since:** 2026-08-26+ (`homograph.ts` module-comment convention; the false
+positives it describes were real and are fixed).
 
-**What's being decided:** `AnalysisSessionId`, `TargetResourceId`,
-`PassResultId`, `FindingId`, and `DayStamp` were branded as TYPES ONLY by
-DEC-3's Annex A-3/A-4 — no sanctioned constructor exists for any of the
-five (unlike `Origin`, which has `toOrigin()`). They currently enter the
-type system via unvalidated `as` cast at every boundary.
+**What's being decided:** `homograph.ts`'s comment states `present` means "has a
+confusable skeleton distinct from itself" and `absent` means "does not"; the frozen
+contracts (`confusableSkeleton: Observation<string>` / `string | null`) carry no
+comment, name, or type expressing that. A contract-naive producer naturally emits the
+skeleton unconditionally (UTS-39 `skeleton()` is total). That happened: all four
+fixtures emitted `confusableSkeleton: present('<the domain itself>')`, and CRED-03
+(baseWeight 45) fired on three of four — including the deliberately-benign
+`clean-login` baseline — with the false positive hardcoded as expected in two tests.
+Both tests were corrected as part of that fix.
 
-**Current recommendation:** None recorded — `DECISIONS.md` poses the
-question without a stated lean: do the five brands get parse-validated
-constructors modelled on `toOrigin()` (all five, or only the ones with an
-enforceable format, e.g. `DayStamp` vs. opaque IDs), or is `as`-cast at
-boundaries deliberately accepted with validation deferred to producer-side
-testing?
+**Status note (cross-reference, not a new ruling):** CRED-03's dependence on this
+convention was **removed by DEC-47 (signed 2026-09-19)**, which narrowed CRED-03's
+predicate to `is(homograph.isMixedScript)` and dropped the
+`neq(confusableSkeleton, null)` conjunct. No live rule now reads the convention, so
+DEC-20's functional concern is **inert today**; what remains open is whether the
+convention should be made contract-enforced (name/type/comment) for future producers.
 
-**What resolving it unblocks:** Nothing today (`DECISIONS.md`: "Blocks
-nothing today — the current `as`-cast pattern compiles and Step 8 is
-closed against it"). Becomes relevant when the capture pipeline ingests
-external data, the engine reads corpus payloads, or any producer of these
-values runs outside a fixture.
+**Why LOW:** no functional consequence today (post-DEC-47); a producer-contract
+hygiene question.
 
-**Verbatim source:** `DECISIONS.md`, `## DEC-12` (lines 379-417).
-
----
-
-### DEC-13 — Cross-environment corpus payload access mechanism
-
-**How long open:** since at least 2026-08-22 (its own text: "surfaced
-concretely on 2026-08-22 during DEFECT-6's verification").
-
-**What's being decided:** DEC-1 named "on disk (and/or an external
-store)" as corpus payload's home but never specified a mechanism —
-no endpoint, bucket, mount path, or credential scheme is recorded
-anywhere. Is cross-environment access to real payload ever needed, and if
-so by what mechanism — or is "payload lives only on the capture machine,
-`INDEX.jsonl` is the portable record" the permanent intended shape?
-
-**Current recommendation:** None recorded — `DECISIONS.md` states the
-question without a stated lean.
-
-**What resolving it unblocks:** Nothing today (current practice is fully
-sufficient and matches DEC-1 as written). Becomes relevant if CI or any
-automated process needs to validate against real payload, someone other
-than Durga needs read access, or Durga's machine becomes unavailable.
-
-**Verbatim source:** `DECISIONS.md`, `## DEC-13` (lines 421-434).
+**Verbatim source:** `DECISIONS.md`, `## DEC-20`; cross-ref `## DEC-47`.
 
 ---
 
-### DEFECT-11 — 456 orphaned `corpus/INDEX.jsonl` entries
+## Separately flagged — not a DEC or DEFECT entry
 
-**How long open:** since 2026-08-22 (its own header: "found 2026-08-22").
+### Ruleset filename/version mismatch  · reserved by standing AO instruction
 
-**What's being decided:** 456 `INDEX.jsonl` entries dated before
-2026-08-22 have no corresponding payload file on disk — a genuine
-payload-write gap in whatever produced index entries before that date's
-dependency fix, not a fetch-failure artifact (confirmed: the
-`fetchOutcome` breakdown is proportionally identical between the missing
-and present sets). Purge the 456 orphaned entries, or retain them as an
-explicit "known lost/never-written" record?
-
-**Current recommendation:** None recorded — `docs/DEFECTS.md` states
-"Decision needed" without a stated lean. Owner recorded as "TBD — capture
-pipeline / corpus reconciliation," not yet assigned to a person.
-
-**What resolving it unblocks:** Nothing today (does not affect DEFECT-6's
-resolution, which reads `corpus/` files directly, never `INDEX.jsonl`).
-Affects anything that trusts `INDEX.jsonl` as ground truth without
-cross-checking real files — Step 13's `--report` flag, future metrics
-harness work.
-
-**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-11` (lines 308-333).
-
----
-
-### DEFECT-19 — `RedirectFindings` ungroundable domain fields (CRED-04 dead, PM-01 degraded)
-
-**How long open:** since 2026-08-26 (found and logged this session).
-
-**What's being decided:** `RedirectEvidence` has no registrable-domain
-fields, only raw URL strings — `RedirectFindings.initialRegistrableDomain`
-and `.finalRegistrableDomain` are reported unconditionally `null`.
-Confirmed directly against `rulesets/rules-v0.1.0.json`: **CRED-04 is
-structurally unable to fire** (its `notSameSite` conjunct can never
-match), and **PM-01 is degraded** to its page-age arm only. Two live
-fix paths: an evidence-contract amendment adding registrable-domain (or
-same-site-boolean) fields to `RedirectEvidence`, or Stage 1 producer-side
-extraction computing them before evidence reaches the module.
-
-**Current recommendation:** None recorded — `docs/DEFECTS.md` presents
-both paths without a stated lean, explicitly deferring to "the same
-Architecture Owner ruling" DEC-14 used for the analogous CRED-05/CRED-A1
-gap.
-
-**What resolving it unblocks:** CRED-04 (currently non-functional) and
-full PM-01 functionality (currently degraded to one arm).
-
-**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-19` (lines 721-805).
-
----
-
-### DEFECT-20 — `PermissionContextFindings.requestingRegistrableDomain` ungroundable (not currently load-bearing)
-
-**How long open:** since 2026-08-26 (found and logged this session).
-
-**What's being decided:** Same shape of gap as DEFECT-19 —
-`PermissionContextEvidence.requestingOrigin` is a raw origin string, no
-registrable-domain field exists to ground
-`PermissionContextFindings.requestingRegistrableDomain`. **Unlike
-DEFECT-19, confirmed by grep that no live rule reads this field** — lower
-priority.
-
-**Current recommendation:** None recorded.
-
-**What resolving it unblocks:** Nothing today — recorded for completeness
-and in case a future rule version starts reading it.
-
-**Verbatim source:** `docs/DEFECTS.md`, `## DEFECT-20` (lines 809-828).
-
----
-
-### Ruleset filename/version mismatch (not a DEC or DEFECT entry — flagged separately)
-
-**How long open:** mismatch created 2026-08-25 (`docs/DEFECTS.md`
-DEFECT-15's resolution commit `5dc4c4885bb338613054a71500b112317cddf143`
-bumped the internal `ruleSetVersion` from `rules-v0.1.0` to
-`rules-v0.2.0`, authorized by Jayanth as Architecture Owner, without
-renaming the file); first flagged as a naming inconsistency 2026-08-26.
-
-**What's being decided:** `rulesets/rules-v0.1.0.json`'s filename still
-reads `v0.1.0`; its own `ruleSetVersion` field reads `"rules-v0.2.0"`.
-Two scripts (`tools/ci/compute-ruleset-digest.mjs`,
-`tools/ci/validate-ruleset.py`) default-path to the `v0.1.0` filename.
-Everything currently works because nothing enforces filename↔content
-agreement, not because the mismatch is resolved.
-
-**Current recommendation:** None offered — this has been explicitly
-reserved by standing instruction across multiple prior sessions ("Do not
-rename `rulesets/rules-v0.1.0.json` or touch its version field... leave
-the fix to me"), not attempted here either, in compliance with that
-standing instruction.
-
-**What resolving it unblocks:** Nothing functionally today (both
-scripts' defaults still resolve correctly since the file hasn't moved) —
-this is a hygiene/consistency question, not a functional blocker.
-
-**Verbatim source:** `rulesets/rules-v0.1.0.json` line 3
-(`"ruleSetVersion": "rules-v0.2.0"`) vs. the file's own name; not
-recorded as a numbered DEC or DEFECT entry anywhere in `DECISIONS.md` or
-`docs/DEFECTS.md`.
-
----
-
-## ALREADY RESOLVED — included for completeness only
-
-### DEC-1 — Corpus storage: external object store vs. Git-LFS
-
-**Status:** ☑ Signed by Jayanth (Architecture Owner), 2026-08-21.
-
-**Verbatim conclusion:** "External object store. The captured corpus
-never enters git — not the repository, not Git-LFS. Payload lives on disk
-(and/or an external store) outside version control. A committed
-`INDEX.jsonl` records provenance for every snapshot... Snapshots are
-gzip-compressed at capture. `.gitignore` names `corpus/**` with an
-exception for `corpus/INDEX.jsonl`."
-
-**Verbatim source:** `DECISIONS.md`, `## DEC-1` (lines 45-74).
-
-### DEC-3 — Five contract amendments (Annex A-1 … A-5)
-
-**Status:** ☑ Signed by Jayanth (Architecture Owner), 2026-08-21.
-
-**Verbatim conclusion:** "Approve all five. Direction is sound and
-low-risk; the only real failure mode is *incomplete application*,
-addressed by the staged Step 6 procedure (A-3 fully before A-4, since A-3
-shifts A-4's line positions; verify by field name, not line number). This
-decision gates Step 6 and therefore Steps 7, 8, and 11."
-
-**Verbatim source:** `DECISIONS.md`, `## DEC-3` (lines 100-142).
+`rulesets/rules-v0.1.0.json`'s filename reads `v0.1.0`; its own `ruleSetVersion` field
+reads `"rules-v0.2.0"` (DEFECT-15's fix bumped the internal version per §14.1 on
+2026-08-25 without renaming the file, authorized by Jayanth). **Nothing depends on the
+filename matching the internal version** (confirmed Part 2, 2026-10-05): the digest
+tool, the ruleset validator, CI, `build-extension.mjs`, `service-worker.ts`, and ~20
+tests all reference the file by its *stable path* and operate on content — a rename
+would break those paths, not fix anything. Reserved by a standing instruction across
+sessions ("Do not rename… leave the fix to me"); hygiene/consistency only.
 
 ---
 
 ## Queue summary
 
-| Item | Status | Open since | Blocks |
+| Item | Tag | Open since | Blocks functionally today |
 |---|---|---|---|
-| DEC-1 | ☑ Resolved | — | nothing (already resolved) |
-| DEC-3 | ☑ Resolved | — | nothing (already resolved) |
-| DEC-15 (`moduleVersion`, `indicators`, `consistency`, `summary`) | 🚧 Open | 2026-08-26 | A complete Stage 1 envelope; does not by itself block Stage 2 (see DEC-15 amendment) |
-| DEC-16 (A-01 evidence gap, zero guards) | 🚧 Open | ~Step 11 authoring | A-01 addable to a future rule-set version; 5 target rules get zero user-trust reduction today |
-| DEC-17 (S-01 guard narrowing, live+shipped) | 🚧 Open | ~Step 11 authoring | Nothing functionally — spec-vs-implementation gap in a rule already live and relied upon |
-| DEC-18 (`blockedBy` no domain-scoping, S-02 live) | 🚧 Open | 2026-08-26 (found during Stage 4 build) | Nothing observably today; a future domain-divergent CRED-03/S-02 case |
-| DEC-19 (CRED-A1 single-parent choice) | 🚧 Open, inert | 2026-08-26 (found during Stage 5/6 build) | Nothing today — DEFECT-18 already blocks CRED-A1 from firing at all |
-| DEC-12 (brand constructors) | 🚧 Open | ~2026-08-21 (Step 8) | Nothing today; relevant when the engine ingests corpus payloads or capture ingests external data |
-| DEC-13 (cross-environment payload access) | 🚧 Open | 2026-08-22 | Nothing today; relevant if CI/a teammate/disaster recovery ever needs real payload |
-| DEFECT-11 (456 orphaned index entries) | 🚧 Open | 2026-08-22 | `INDEX.jsonl`-trusting tooling (Step 13 `--report`, future metrics harness) |
-| DEFECT-19 (redirect domain fields) | 🚧 Open | 2026-08-26 | CRED-04 (dead), PM-01 (degraded to one arm) |
-| DEFECT-20 (permissionContext domain field) | 🚧 Open, low priority | 2026-08-26 | Nothing today — no live rule reads it |
-| Ruleset filename/version mismatch | 🚧 Open, reserved | 2026-08-25 | Nothing functionally today — hygiene/consistency only |
+| DEC-13 cross-environment payload access | **HIGH** | 2026-08-22 | corpus transfer / CI-or-teammate access to real payload; mechanism unspecified |
+| DEC-12 brand constructors (`as`-cast) | MEDIUM | ~2026-08-21 | nothing today; relevant when a producer runs outside a fixture |
+| DEC-15 Stage-1 envelope (4 fields) | MEDIUM | 2026-08-26 | complete `SecurityEvaluation<M>` envelope; not the live detect/measure path |
+| DEC-16 A-01 zero guards | MEDIUM | Step 11 | nothing measured; A-01 absent for 5 rules |
+| DEC-24 B1.6 property coverage | MEDIUM | 2026-08-29 | test-coverage debt on stage7-8 + consistency |
+| DEC-25 output canonicalisation (class) | MEDIUM | 2026-08-29 | known instances fixed; systemic exposure in uncovered functions |
+| DEC-33 Tier-3 CDP selector coverage | MEDIUM | 2026-08-29+ | not-yet-live Tier-3 capture; recommends Phase-I option (b) in its own text |
+| DEC-34 Tier-3 CDP iframe/loopback | MEDIUM | 2026-08-29+ | not-yet-live Tier-3 capture; AO acceptance of Phase-I scope |
+| DEC-17 S-01 guard narrowing (live) | LOW | Step 11 | nothing functional; spec-vs-impl in a live rule |
+| DEC-18 `blockedBy` no domain scoping (live) | LOW | 2026-08-26 | nothing observable; spec-vs-impl, S-02 live |
+| DEC-19 CRED-A1 single-parent | LOW | 2026-08-26 | nothing — CRED-A1 inert (DEFECT-18 + DEC-46) |
+| DEC-20 confusableSkeleton convention | LOW | 2026-08-26 | nothing — inert post-DEC-47; producer-contract hygiene |
+| Ruleset filename/version mismatch | reserved | 2026-08-25 | nothing; reserved by standing AO instruction |
 
-This table is regenerated whenever an item resolves or a new one folds
-in — see `DECISIONS.md` and `docs/DEFECTS.md` for the authoritative,
-timestamped record behind every row.
+**Resolved, listed for completeness:** DEC-1 (corpus storage — signed 2026-08-21),
+DEC-3 (five contract amendments — signed 2026-08-21). The old stale banner
+"Revision 1 — awaiting Architecture Owner signature" in `DECISIONS.md`'s top matter is
+document-level only; individual entries carry their own signature lines.
+
+**Open DEFECT-level items (tracked in `docs/DEFECTS.md`, not adjudicated here):**
+DEFECT-14 (G-6 co-occurrence heuristic), DEFECT-31 (`FABRICATION_FORCED_BY_SHAPE`,
+underlies CRED-A1), DEFECT-45 (`presentsCredentialInterface` unpopulated — impact
+none), DEFECT-46 (CRED-01/07 benign false positives — decision packet drafted
+separately). (The earlier queue's DEFECT-19 routing is retired: DEFECT-19 is RESOLVED
+— the harness path now fires CRED-04, S-10 divergent.)
