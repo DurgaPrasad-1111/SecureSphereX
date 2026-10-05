@@ -1,14 +1,14 @@
 # SecureSphere X — Ground-Truth Status
 
-**Audited:** 2026-09-04 · **Branch:** `main`, in sync with `origin/main` · **HEAD at audit:** `5c81898` (this rewrite is the following commit) · **Method:** full rewrite from current code; every claim cross-checked against source / git / executed tests, not carried over from the prior (2026-09-01) audit.
+**Audited:** 2026-09-04 · **Reconciled:** 2026-10-05 (Part 1 state-doc reconciliation; stale counts/claims corrected against DECISIONS.md, DEFECTS.md, CHECKPOINTS.md as they stand today) · **Branch:** `main`, in sync with `origin/main` · **HEAD:** `9985880` · **Method:** full rewrite from current code 2026-09-04; every claim re-cross-checked 2026-10-05 against source / git / executed tests.
 
-> **Headline:** CI is **GREEN** — `npm run verify:all` exits 0 across all 27 gates (typecheck, eslint, architectural G-2/G-3/G-6, depcruise, and 22 test scripts). The three gates that were RED in the 2026-09-01 audit (G-1 Lint, DEC-32 conformance-config, G-11 contract↔LDD) are all fixed. One correction this audit surfaced and now records: **CRED-03 is a live-DIVERGENT rule** (fires offline, unreachable in the extension for IDN homographs) — see §5. The system is a working local-first extension + offline harness; there is still **no backend** (§6), and several rules are non-functional by capability/policy ruling, not by bug.
+> **Headline:** CI is **GREEN** — `npm run verify:all` exits 0 across the full chain (**33 steps**: typecheck, eslint, architectural G-2/G-3/G-6, depcruise, ruleset + conformance validators, and **26 test scripts**). The three gates that were RED in the 2026-09-01 audit (G-1 Lint, DEC-32 conformance-config, G-11 contract↔LDD) are all fixed. **CRED-03 is LIVE-FUNCTIONAL** (DEC-47, 2026-09-19): a shared pure-JS RFC-3492 punycode decoder plus the narrowed `is(homograph.isMixedScript)` predicate make it fire live in the extension — it is **no longer S-10 divergent** (see §5). The system is a working local-first extension + offline harness; there is still **no backend** (§6), and several rules are non-functional by capability/policy ruling, not by bug.
 
 ---
 
 ## 1. Repository ground truth
 
-- **Branch/HEAD:** `main` @ `5c81898`, equal to `origin/main` at audit time.
+- **Branch/HEAD:** `main` @ `9985880`, equal to `origin/main`.
 - **Tags:** **`v1.0.0`** exists — an annotated tag on the pre-amendment Stage-0 baseline commit `d721413` (created per the retroactive-Stage-0-tag decision; it deliberately does NOT point at the amended HEAD). CP-0's "contracts tagged v1.0.0" criterion is thereby satisfied on the correct commit.
 - **Working tree:** clean of real changes. `git status` shows only (a) `spec/Logical-Database-Design-Specification-v1_1.md` as ` M` — a git stat-cache artifact, `git diff` is **empty** (no content change); and (b) `test-page/` — a local scratch CRED-01 test page, now in `.gitignore`.
 - **Layout vs CLAUDE.md §1:** matches. `packages/{contracts,engine}`, `apps/{extension,harness}`, `tools/{capture,ci,conformance}`, `rulesets/`, `corpus/`, `fixtures/`.
@@ -19,7 +19,7 @@
 |---|---|---|
 | packages/contracts | 6 ts | frozen contracts |
 | packages/engine | 23 ts (+22 tests) | 10 modules + 8 pipeline stages + shared psl/classify |
-| apps/extension | 14 ts (+mjs/json/html) | MV3 extension incl. Tier-2 intervention UI |
+| apps/extension | 18 ts (+12 tests, +mjs/json/html) | MV3 extension incl. Tier-2 intervention UI + v3 dashboard |
 | apps/harness | 10 ts | offline extractor + metrics |
 | tools/conformance | 8 ts | cross-producer + live-path tests |
 | tools/capture | 3 py | capture.py + sentinel_fill.py + migrate |
@@ -27,12 +27,12 @@
 
 ---
 
-## 2. Build & test — executed results (2026-09-04)
+## 2. Build & test — executed results (2026-09-04; `verify:all` + `npm ci` re-run 2026-10-05, still EXIT 0)
 
 - `npm run typecheck` (`tsc -b`) → **PASS**.
-- `npm run build:extension` → **PASS**; `dist/` has all **8** artifacts (`manifest.json`, `service-worker.js`, `content-script.js`, `popup.js`, `popup.html`, `intervention.js`, `intervention.html`, `rules-v0.1.0.json`).
+- `npm run build:extension` → **PASS**; `dist/` has all **10** artifacts (`manifest.json`, `service-worker.js`, `content-script.js`, `popup.js`, `popup.html`, `intervention.js`, `intervention.html`, `dashboard.js`, `dashboard.html`, `rules-v0.1.0.json`).
 - `npm run validate:ruleset` → **CONFORMANT** (V-1…V-15); `npm run test:v16` (V-16 null-fold) → **PASS**.
-- `npm run verify:all` → **EXIT 0**. Every test script green: fixtures 7/7 · **enginefixtures (all 10 `packages/engine/*.fixture.test.ts`, auto-discovered — DEFECT-42)** · properties · psl · extension (session-survival) · conformance 8/8 · cred-livepath · cred02livepath · **cred03livepath** · cred04livepath · dllivepath · pm01unit · redirect 8/8 · authstore · moduleeval · authcontext · loginsuccess · multipass · downloadrepass · **downloadonchanged (DEFECT-43)** · **downloadsametab (new — DEFECT-44, full same-tab E2E through the real handlers)** · intervention · tier1e2e.
+- `npm run verify:all` → **EXIT 0** (26 test scripts). Every test script green: fixtures 7/7 · **enginefixtures (all 10 `packages/engine/*.fixture.test.ts`, auto-discovered — DEFECT-42)** · properties · psl · extension (session-survival) · conformance 8/8 · cred-livepath · cred02livepath · **cred03livepath** · cred04livepath · dllivepath · pm01unit · redirect 8/8 · authstore · moduleeval · authcontext · loginsuccess · multipass · downloadrepass · **downloadonchanged (DEFECT-43)** · **downloadsametab (DEFECT-44, full same-tab E2E through the real handlers)** · **incidenthistory + dashboard (v3 dashboard)** · intervention · tier1e2e.
 
 ---
 
@@ -57,7 +57,7 @@
 ## 4. Governance registers — current
 
 - **DECISIONS.md:** **48 entries** (through DEC-48). Provenance sweep this session: DEC-36/37/38 carry real ratification superseding earlier self-applied signatures; DEC-39–43, DEC-46, **DEC-47 (CRED-03)** and **DEC-48 (DEFECT-43 download filename)** are Architecture-Owner rulings ratified "directly in this session, not self-attested"; DEC-45 is an explicit **delegation** (Option A choice delegated to the implementing session); **DEC-44 is relabelled** as an advising-session technical determination within the AO's authorization (see DEC-44). No entry now reads as silently self-attested.
-- **DEFECTS.md:** **44 entries**. Session-relevant: DEFECT-36 (CI red, fixed + pre-commit hook), DEFECT-37 (`resolveFindingPath` nested-path, fixed), DEFECT-38 (download per-tab key, fixed), DEFECT-39/40 (null-fold under negation, fixed via DEC-41 + V-16 gate), **DEFECT-41 (download re-analysis trigger) — RESOLVED via DEC-45** (SW download re-pass built + tested), **DEFECT-42 (engine fixture tests excluded from verify:all) — RESOLVED** (auto-discovering runner wired in), **DEFECT-43 (late "Save link as" filename missed) — RESOLVED via DEC-48** (downloads.onChanged re-pass + non-authoritative URL fallback), **DEFECT-44 (same-tab Save-As DL-02 fragile to SW dormancy; reliable navigation-merge path untested) — RESOLVED** (download path extracted to a browser-free `download-handler.ts`; full same-tab E2E test drives the real handlers). DEFECT-14 (G-6 heuristic) and DEFECT-31 (`FABRICATION_FORCED_BY_SHAPE`, underlies CRED-A1/DEC-46) remain open by design.
+- **DEFECTS.md:** **46 entries** (DEFECT-1 … DEFECT-46). Session-relevant: DEFECT-36 (CI red, fixed + pre-commit hook), DEFECT-37 (`resolveFindingPath` nested-path, fixed), DEFECT-38 (download per-tab key, fixed), DEFECT-39/40 (null-fold under negation, fixed via DEC-41 + V-16 gate), **DEFECT-41 (download re-analysis trigger) — RESOLVED via DEC-45** (SW download re-pass built + tested), **DEFECT-42 (engine fixture tests excluded from verify:all) — RESOLVED** (auto-discovering runner wired in), **DEFECT-43 (late "Save link as" filename missed) — RESOLVED via DEC-48** (downloads.onChanged re-pass + non-authoritative URL fallback), **DEFECT-44 (same-tab Save-As DL-02 fragile to SW dormancy; reliable navigation-merge path untested) — RESOLVED** (download path extracted to a browser-free `download-handler.ts`; full same-tab E2E test drives the real handlers), **DEFECT-45 (`presentsCredentialInterface` never populated by capture.py — uniformly null) — OPEN** (impact none; engine-extracted `credentialFormPresent` is used instead), **DEFECT-46 (CRED-01/07 benign false positives on legitimate third-party form-handlers) — OPEN** (awaiting Architecture-Owner ruling on fix approach — decision packet to be drafted). DEFECT-14 (G-6 heuristic) and DEFECT-31 (`FABRICATION_FORCED_BY_SHAPE`, underlies CRED-A1/DEC-46) remain open by design.
 - **v1.0.0 / CP-0:** the tag exists on the Stage-0 baseline; CHECKPOINTS.md's CP-0 reasoning is satisfied.
 
 ---
@@ -80,7 +80,7 @@
 | CRED-01 | **fires live** | `test:cred-livepath` + real-Chrome screenshot |
 | CRED-02 | **fires live** (this session) | `test:cred02livepath` — ESTABLISHED cross-origin impersonation; §20.5 ramp respected |
 | **CRED-03** | **LIVE-FUNCTIONAL (DEC-47)** — fires live in the extension | `test:cred03livepath`. DEC-47 (Option B, applied this session) narrowed the frozen predicate to gate on `is(homograph.isMixedScript)` and wired a shared pure-JS RFC-3492 punycode decoder into `collectDomainRepresentation`. Fires on Latin↔non-Latin homographs (`раypal.example`, the apple look-alike), stays SILENT on legit single-script IDNs (`пример.рф`, genuine Russian) and ASCII. Extension and harness now AGREE — no longer S-10 divergent. Tradeoff (recorded): a fully-single-script homograph is not `isMixedScript` and falls to CRED-02's cross-origin match. |
-| CRED-04 | **DIVERGENT (S-10)** — fires on harness; extension webNav-limited | `test:cred04livepath`; **0 corpus firings** (≥2-hop cross-domain redirects and credential-form pages are disjoint populations in the corpus) |
+| CRED-04 | **DIVERGENT (S-10)** — fires on harness; extension webNav-limited | `test:cred04livepath`. **Does fire on the corpus via the harness path** — 48 phishing / 11 benign across 13 distinct domains (2026-09-25 rule-weight run); precision CI is wide-to-uninformative on 13 domains ([0.22, 0.95]). (Corrects the earlier "0 corpus firings" claim — that held for the 617-snapshot DEC-28 sample, not the 34,631 corpus.) The extension path still cannot fire it (webNavigation can't see hop chains; needs `chrome.webRequest`). |
 | CRED-05 | **non-functional (DEC-14)** | `clientSideTransmissionObserved` needs Tier-4 sentinel (never run); DEFECT-18's `transmissionEndpointDomains` half is closed, the data half is not. 0 corpus. |
 | CRED-06 | **fires live** | `test:cred-livepath` (insecure scheme) |
 | CRED-07 | **fires live** | off-origin concealed credential collection |
@@ -91,7 +91,7 @@
 
 **Tier-2 intervention UI — BUILT this session** (`test:intervention`): Medium interstitial (Proceed / Go back / View findings) + High hard block, monotonic per §11.3, per-navigation override that never teaches auth-store trust (G-02). This is a chrome-extension:// tab-replace page, not a defeatable overlay. `recordIntervention` now fires live (correcting the prior "interventionWasPresented structurally false"). **Visual rendering in real Chrome is a manual check.**
 
-**Confusion matrix:** last full corpus run (34,631 evaluated, earlier this session): CRED-01/06/07 fire; CRED-05 = 0; credential-bearing subset P≈99.3% / R≈14.9%. **Not re-run today** (~20–40 min; corpus now 35,087 entries). CRED-02/03/DL corpus behavior not separately measured.
+**Confusion matrix / corpus firing (current):** full corpus (34,631 evaluated, 0 errors) re-scored for the 2026-09-06 calibration run and again 2026-09-25 for the rule-weight run — identical both times. The firing set is **CRED-01/04/06/07** (4 of 11); CRED-02 is store-blocked under S-8 in the harness; CRED-03/05/A1, DL-01/02, PM-01 do not fire on the corpus. Firing counts (phishing / benign / domains): CRED-01 233/4/23, CRED-04 48/11/13, CRED-06 333/0/29, CRED-07 142/9/14. At shipped 30/60 the whole-corpus numbers are **precision 0.974, recall 0.022** (denominator-bounded); per-rule precision and the domain-level logistic check are in the two reports cited under **Calibration** and **Rule-weight relative-importance** below. (This supersedes the earlier "CRED-01/06/07 fire; P≈99.3%/R≈14.9%" figures, which were the pre-calibration DEC-28-era numbers.)
 
 **Corpus:** `INDEX.jsonl` = **35,087** entries; ~640 Tier-1/Tier-3-enabled real snapshots.
 
@@ -128,4 +128,4 @@
 
 **Not built:** backend (0%).
 
-*Re-derived from executed builds/tests and source inspection on 2026-09-04.*
+*Re-derived from executed builds/tests and source inspection on 2026-09-04; reconciled against DECISIONS.md (DEC-48), DEFECTS.md (DEFECT-46), and CHECKPOINTS.md on 2026-10-05 with `verify:all` re-run EXIT 0.*
