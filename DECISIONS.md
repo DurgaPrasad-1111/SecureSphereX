@@ -5304,3 +5304,63 @@ implemented this session, not self-attested by Claude Code.
 - **Status:** SIGNED 2026-10-06. refinementSet + CRED-07 predicate conjunct + V-17 +
   digest/version bump + test wired; verify:all EXIT 0.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-10-06
+
+## DEC-51 (CANDIDATE — unsigned, open) — Multi-feed diversity capture: additive flags for capture.py (Part 6c design note)
+
+**Design note for Architecture-Owner ruling before implementation (Part 6c step a).**
+All proposed changes are ADDITIVE; with no new flags, `capture.py` behaves
+byte-identically to today (a test will prove this). No existing behavior, flag, or
+output shape changes. DEC-28's "capture.py is foundational, design before code"
+caution is why this note exists before any edit.
+
+**New flags (all additive):**
+1. **`--feed` becomes repeatable** (e.g. `--feed openphish --feed phishtank`). Today
+   it is a single `choices=[...]`; it gains `action="append"`. A single `--feed` is
+   unchanged. No `--feed` at all is unchanged (no feed work).
+2. **`--max-per-domain N`** — a per-registrable-domain admission cap.
+3. **Cross-feed URL dedup**, in two layers: (i) *within the run* across feeds —
+   if the same normalized URL appears in more than one feed, keep **PhishTank's
+   record** on overlap (richer: verification time, target brand); (ii) *against the
+   existing `INDEX.jsonl`* — a URL already captured is skipped.
+
+**Admission order (the cap is applied at admission, BEFORE `--limit`):**
+normalize+dedup (within-run, then vs INDEX) → apply `--max-per-domain` → apply
+`--limit` → capture. So `--limit` bounds the already-deduped, already-capped set.
+
+**How the cap interacts with already-captured domains — the one design choice, flagged
+for your confirmation (not a hard fork; I propose the first):**
+- **Proposed: corpus-wide.** The cap counts existing `INDEX.jsonl` snapshots for a
+  registrable domain TOWARD `N`. A domain already at/over `N` admits zero new URLs;
+  one at `k < N` admits up to `N − k`. This matches the word "corpus-wide" and
+  prevents a few prolific domains from dominating the corpus across runs.
+- Alternative (state it so the choice is explicit): **new-this-run-only** — the cap
+  bounds only URLs captured in this run, ignoring prior INDEX counts. Simpler, but a
+  domain can exceed `N` across repeated runs.
+
+**Split assignment — existing domains keep theirs.** A new URL whose registrable
+domain already appears in `INDEX.jsonl` INHERITS that domain's existing split
+assignment (train/validation/test); it is never re-rolled. Only genuinely new
+registrable domains get a fresh assignment via the existing `split-v2` function.
+This preserves §13.3 split integrity and the held-out discipline.
+
+**Benign tail:** widen the Tranco negatives toward ranks ~10k–60k, sourced from the
+locally-present `tranco-top1m.zip` (confirmed available). If it were absent the task
+would stop and ask for a download rather than silently fall back.
+
+**Backward-compat guarantee (will be tested):** with no new flags, `capture.py`'s
+output and INDEX writes are byte-identical to today. The new selection logic
+(dedup + cap + split-inheritance) lives in a **pure function** with unit tests and
+**no network**; `capture.py` calls it only when a new flag is present.
+
+**Held-out discipline (Part 6c step e):** newly-captured domains that land in the
+TEST split are the fresh blind set. Their domain list + a hash will be recorded in a
+short pre-registration note, and they will NOT be scored or evaluated in this task;
+a re-measurement is a separate, later, pre-registered step.
+
+**Commit scope:** code, tests, this DEC, and the pre-registration note only. Corpus
+payloads stay untracked (DEC-1).
+
+**Status:** CANDIDATE — unsigned, open. Design note only; no code written. Awaiting
+Architecture-Owner ruling (and confirmation of the corpus-wide cap semantics above)
+before Part 6c step b (implementation). Related: [[DEC-1]], [[DEC-28]], [[DEC-13]]
+(cross-environment payload — HIGH), [[DEC-27]] (PSL/split).
