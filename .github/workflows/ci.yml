@@ -12,7 +12,8 @@ name: CI
 #
 # G-8 (rule-set static validation) activates on the first rule set.
 # G-9 (property tests) activates in Stage 1b.
-# G-10 (deterministic replay) activates in Stage 6.
+# G-10 (deterministic replay) ACTIVE — `npm run test:g10` (tools/ci/g10-replay.ts),
+#   replays committed synthetic golden snapshots byte-for-byte against expected.json.
 
 on:
   push:
@@ -252,6 +253,15 @@ jobs:
       # (DEFECT-29). The SSX_E2E_SNAPSHOT override still validates real output.
       - name: 'Tier 1  capture->extract E2E'
         run: npm run test:tier1e2e
+
+      # ── G-10 deterministic replay — committed synthetic golden snapshots ──────
+      # readSnapshot -> extractEvidence -> runAnalysisPass, compared BYTE-FOR-BYTE
+      # against the committed tools/ci/golden/expected.json, plus pass-to-pass
+      # determinism. Goldens are synthetic fixtures (not corpus payload, DEC-1), so
+      # this runs in CI. Covers CRED-01/04/06/07 + a Low case. Regenerate with
+      # `--generate`; SSX_E2E_SNAPSHOT=<real .json.gz> checks determinism on real data.
+      - name: 'G-10  Deterministic replay'
+        run: npm run test:g10
 
   boundary-violation-check:
     # Verifies the gates actually fail when they should. A gate that has never

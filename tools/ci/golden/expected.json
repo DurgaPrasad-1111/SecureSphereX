@@ -1,0 +1,81 @@
+{
+  "cred01-off-origin-post": {
+    "fired": [
+      "CRED-01"
+    ],
+    "score": 45,
+    "rawTier": "Medium",
+    "effectiveTier": "Medium",
+    "unevaluable": [
+      "authContext",
+      "dns",
+      "downloadContext",
+      "javascript",
+      "permissionContext",
+      "ssl"
+    ]
+  },
+  "cred06-cleartext": {
+    "fired": [
+      "CRED-06"
+    ],
+    "score": 40,
+    "rawTier": "Medium",
+    "effectiveTier": "Medium",
+    "unevaluable": [
+      "authContext",
+      "dns",
+      "downloadContext",
+      "javascript",
+      "permissionContext",
+      "ssl"
+    ]
+  },
+  "cred07-concealed-off-origin": {
+    "fired": [
+      "CRED-01",
+      "CRED-07"
+    ],
+    "score": 65,
+    "rawTier": "High",
+    "effectiveTier": "High",
+    "unevaluable": [
+      "authContext",
+      "dns",
+      "downloadContext",
+      "javascript",
+      "permissionContext",
+      "ssl"
+    ]
+  },
+  "cred04-laundered-redirect": {
+    "fired": [
+      "CRED-04"
+    ],
+    "score": 30,
+    "rawTier": "Medium",
+    "effectiveTier": "Medium",
+    "unevaluable": [
+      "authContext",
+      "dns",
+      "downloadContext",
+      "javascript",
+      "permissionContext",
+      "ssl"
+    ]
+  },
+  "low-benign-no-finding": {
+    "fired": [],
+    "score": 0,
+    "rawTier": "Low",
+    "effectiveTier": "Low",
+    "unevaluable": [
+      "authContext",
+      "dns",
+      "downloadContext",
+      "javascript",
+      "permissionContext",
+      "ssl"
+    ]
+  }
+}
