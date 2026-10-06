@@ -5227,3 +5227,80 @@ stops and the discrepancy is investigated rather than reported.
 **Status:** CANDIDATE — unsigned, open. Pre-registration only; records the frozen
 eligibility definition ahead of computation. No weight/threshold/rule changed.
 Cross-ref [[DEFECT-45]], `docs/Calibration-Sensitivity-Report.md`.
+
+## Annex A amendment (2026-10-06) — `RefinementSetId` extended with `'knownFormProcessors'` (A-7)
+
+**Hand-edited by Jayanth (Architecture Owner) this session**, directly in the frozen
+`packages/contracts/ruleset.format.v1.ts` — NOT by Claude Code (the pre-tool-use hook
+forbids Claude Code from writing under `packages/contracts/`; the implementing session
+flagged the need and the Architecture Owner made the edit himself).
+
+**The amendment, additive only — no existing member touched:** the closed union
+`RefinementSetId` gained a fourth member:
+
+```
+export type RefinementSetId =
+  | 'executableTypes'        // R-02
+  | 'sensitivePermissions'   // R-03
+  | 'identityProviders'      // S-02 registry
+  | 'knownFormProcessors';   // DEFECT-46 / DEC-50 — CRED-07 off-site-form allowlist
+```
+
+This unblocks DEC-50 (a new `refinementSet` cannot otherwise be referenced — V-4 and
+G-1 both read the valid IDs out of this union). MINOR per §14.1 (a new allowed value,
+no predicate meaning changed by the type edit itself). The prior union text is
+retained as a comment immediately above the amended one.
+
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-10-06
+
+---
+
+## DEC-50 — DEFECT-46 ruling: CRED-07 benign false positives fixed by a known-form-processor allowlist (option (a)), scoped to CRED-07
+
+**[R]** DEFECT-46 (OPEN): CRED-07 produced 13 benign false positives across 7
+`page → off-site-action` pairs, dominated by legitimate third-party SaaS form/CRM
+processors (Mailchimp `list-manage.com`, HubSpot `hsforms.com`, Salesforce,
+GovDelivery). `docs/DEFECT-46-fix-REVIEW.md` drafted three options; this entry is the
+ruling on that packet.
+
+**Decision (Architecture Owner):** ☑ **Option (a) — a known-form-processor
+allowlist — scoped to CRED-07 only.** CRED-01 is deliberately left untouched; the
+allowlist is kept minimal (a short hardcoded list with a documented extension note),
+with no maintenance UI. Implemented this session under this ruling:
+
+1. **Enabled by Annex A-7** (above): the Architecture Owner's additive hand-edit of
+   the frozen `RefinementSetId` union adding `'knownFormProcessors'`.
+2. **New `refinementSet` `knownFormProcessors`** in `rules-v0.1.0.json` (exact-match):
+   `list-manage.com`, `hsforms.com`, `salesforce.com`, `govdelivery.com` — the four
+   measured legitimate processors, with a rationale documenting how to extend.
+3. **CRED-07 predicate** gains a conjunct
+   `not(inSet($.actionRegistrableDomain, knownFormProcessors))`, so a concealed
+   off-site credential form posting to an allowlisted processor no longer fires.
+   `ruleSetVersion` → `rules-v0.3.0`, CRED-07 `lastModifiedIn` → `0.3.0`,
+   `integrityDigest` recomputed (V-14 MATCH), changeLog 0.3.0 entry added. MINOR per
+   §14.1 (one predicate's meaning narrowed).
+4. **New static check V-17** (`validate-ruleset.py`): governs the allowlist — present,
+   non-empty, exact matchMode, lowercase bare-registrable-domain members, no
+   duplicates, and referenced by a rule (not orphaned). Because the allowlist is a
+   trust-list and therefore an evasion surface, V-17 keeps it auditable and prevents
+   silent rot.
+5. **Test `test:cred07allowlist`** (wired into verify:all): proves CRED-07 is
+   suppressed on an allowlisted off-site action (list-manage.com, salesforce.com),
+   still fires on a non-allowlisted off-site action, and that CRED-01 is unaffected.
+
+**Recorded honestly:** the allowlist is an evasion surface — a page posting concealed
+credentials to an allowlisted processor domain is exonerated. Scoped to CRED-07 (the
+9-of-13-FP, lowest-severity aggravator) per this ruling; CRED-01's off-origin signal
+is unchanged. The four rule weights remain **Unvalidated**; this changes a predicate,
+not a weight.
+
+**Ratified and signed by the Architecture Owner (Jayanth) directly in this session,
+2026-10-06** — the option choice and the scoping are his ruling, relayed and
+implemented this session, not self-attested by Claude Code.
+
+**Related:** [[DEFECT-46]], `docs/DEFECT-46-fix-REVIEW.md`, Annex A-7 (above),
+[[DEC-41]]/[[DEC-47]] (ruleset-amendment-by-convention precedent).
+
+- **Status:** SIGNED 2026-10-06. refinementSet + CRED-07 predicate conjunct + V-17 +
+  digest/version bump + test wired; verify:all EXIT 0.
+- **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-10-06

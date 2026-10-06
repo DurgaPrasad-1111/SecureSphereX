@@ -1,8 +1,8 @@
 {
   "formatVersion": "1.1.0",
-  "ruleSetVersion": "rules-v0.2.0",
+  "ruleSetVersion": "rules-v0.3.0",
   "released": false,
-  "integrityDigest": "sha256:cf1a42ed0755bcccf4edca6ae71a8bde694d373b537d5c609779dbe78e8a1f6a",
+  "integrityDigest": "sha256:e0ec6e1458a3a9516ddccbc6833aea546318b0eb285c80e7c465f53c2550482d",
   "pslVersion": "tldextract==5.3.0 include_psl_private_domains=true (bundled snapshot sha256:b69315c085d53972724b8f2df111ffc329b0c84fe0a47d62c8c91655cc774a38)",
   "parameters": [
     {
@@ -134,6 +134,17 @@
       ],
       "matchMode": "exact",
       "rationale": "S-02 (§6.3) federated identity provider registry. §6.3: no authoritative machine-readable IdP registry exists; curated list, small in practice. Exact-string-equality only — never substring, suffix, or similarity (§6.3)."
+    },
+    {
+      "id": "knownFormProcessors",
+      "members": [
+        "list-manage.com",
+        "hsforms.com",
+        "salesforce.com",
+        "govdelivery.com"
+      ],
+      "matchMode": "exact",
+      "rationale": "DEFECT-46 / DEC-50 (CRED-07 only). Registrable domains of known third-party form/newsletter/CRM processors that legitimate sites POST credential-shaped forms to cross-origin, which otherwise produce CRED-07 false positives (measured: Mailchimp list-manage.com, HubSpot hsforms.com, Salesforce, GovDelivery). CRED-07's predicate excludes an off-site action whose registrable domain is in this set. Exact match on lowercase registrable domain only — never substring/suffix/similarity. TO EXTEND: add the lowercase registrable domain of a verified-legitimate form-handling SaaS; keep it minimal and auditable — this is a trust-list and therefore an evasion surface (V-17 governs its shape). Scoped to CRED-07 by DEC-50; do NOT wire into CRED-01."
     }
   ],
   "rules": [
@@ -484,6 +495,14 @@
               "op": "notSameSite",
               "left": "$.actionRegistrableDomain",
               "right": "url.registrableDomain"
+            },
+            {
+              "op": "not",
+              "operand": {
+                "op": "inSet",
+                "path": "$.actionRegistrableDomain",
+                "set": "knownFormProcessors"
+              }
             }
           ]
         }
@@ -497,7 +516,7 @@
       "interveningTier": 2,
       "owner": "Durga Prasad",
       "introducedIn": "0.1.0",
-      "lastModifiedIn": "0.2.0",
+      "lastModifiedIn": "0.3.0",
       "lifecycleState": "Active",
       "rationale": "Concealment of credential collection combined with off-site submission — the only rule triggered by field-level concealment (hidden or autocomplete-disabled) rather than by transport, destination pattern, or visual deception alone. Carries the lowest primary weight and requires the off-site conjunct to fire at all.",
       "empiricalConfidence": "Unvalidated",
@@ -506,7 +525,8 @@
         "Financial institutions that disable autocomplete as a matter of policy"
       ],
       "knownLimitations": [
-        "Weak in isolation, which is why it carries the lowest primary weight and requires the off-site conjunct to fire at all."
+        "Weak in isolation, which is why it carries the lowest primary weight and requires the off-site conjunct to fire at all.",
+        "Suppressed (0.3.0, DEC-50) when the off-site action's registrable domain is in the knownFormProcessors refinement set — a hardcoded allowlist of legitimate third-party form/CRM processors (DEFECT-46). The allowlist is a trust-list and therefore an evasion surface: a page posting concealed credentials to an allowlisted processor domain is exonerated. Scoped to CRED-07 only."
       ],
       "cweMappings": [
         "CWE-451"
@@ -817,6 +837,11 @@
       "version": "0.2.0",
       "kind": "MINOR",
       "summary": "DEFECT-15 fix, authorized by Jayanth (Architecture Owner). CRED-01, CRED-02, CRED-07, and CRED-A1 each compared against loginForm.pageRegistrableDomain, which is permanently null — LoginInterfaceEvidence carries no page-domain field, so this module cannot report one (see loginForm.ts's header comment and DEFECT-15). All four notSameSite comparisons were permanently vacuous as a result. Swapped the right-hand operand to url.registrableDomain (a real, evidence-grounded field — DEFECT-16 names this as a recurring pattern, first hit by CRED-05/CRED-06 at v0.1.0 authoring) and added url to each rule's requiredModules, appended at the position matching that rule's existing first-appearance-order convention (verified per rule, not assumed). Predicate meaning changed for four rules — MINOR per §14.1, not PATCH. Each rule's lastModifiedIn bumped to 0.2.0 accordingly. Nothing else changed: same eleven rules, eleven parameters, three refinement sets, two suppressions, empty subsumption table. integrityDigest recomputed using the newly-committed tools/ci/compute-ruleset-digest.mjs (SHA-256 over canonical JSON, sorted keys, integrityDigest blanked before hashing — see that file's header for the exact algorithm); its --verify mode confirms this file's stored digest against a fresh recomputation."
+    },
+    {
+      "version": "0.3.0",
+      "kind": "MINOR",
+      "summary": "DEFECT-46 fix, ruled and signed by Jayanth (Architecture Owner) 2026-10-06 as DEC-50, enabled by his additive hand-edit of the frozen RefinementSetId union (Annex A, this session). CRED-07 produced benign false positives on legitimate cross-domain form actions to third-party SaaS form/CRM processors (Mailchimp list-manage.com, HubSpot hsforms.com, Salesforce, GovDelivery). Added a fourth refinementSet, knownFormProcessors (exact-match registrable domains), and a new conjunct to CRED-07's predicate — not(inSet($.actionRegistrableDomain, knownFormProcessors)) — so a concealed off-site credential form posting to an allowlisted processor no longer fires CRED-07. Scoped to CRED-07 ONLY per DEC-50; CRED-01 unchanged. Predicate meaning changed for one rule — MINOR per §14.1, not PATCH. CRED-07 lastModifiedIn bumped to 0.3.0. The allowlist is a trust-list / evasion surface, governed by new static check V-17 (non-empty, lowercase registrable-domain shape, referenced by a rule) and documented as extendable. Now four refinement sets (was three); same eleven rules, eleven parameters, two suppressions, empty subsumption table. integrityDigest recomputed (tools/ci/compute-ruleset-digest.mjs)."
     }
   ]
 }

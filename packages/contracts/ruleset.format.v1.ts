@@ -87,10 +87,16 @@ export interface ParameterDefinition {
  * rule-set unavailability (§15.3), never a runtime fetch.
  * ──────────────────────────────────────────────────────────────────────── */
 
+// export type RefinementSetId =
+//   | 'executableTypes'        // R-02
+//   | 'sensitivePermissions'   // R-03
+//   | 'identityProviders';     // S-02 registry
+
 export type RefinementSetId =
   | 'executableTypes'        // R-02
   | 'sensitivePermissions'   // R-03
-  | 'identityProviders';     // S-02 registry
+  | 'identityProviders'      // S-02 registry
+  | 'knownFormProcessors';   // DEFECT-46 / DEC-50 — CRED-07 off-site-form allowlist
 
 export interface RefinementSet {
   readonly id: RefinementSetId;

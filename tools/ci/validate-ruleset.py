@@ -414,8 +414,54 @@ REQUIRED_18_1_FIELDS = [
 MAX_PREDICATE_DEPTH = 12
 
 
+def check_v17_known_form_processors(rs):
+    """V-17 (DEC-50 / DEFECT-46): governs the knownFormProcessors allowlist. It is a
+    trust-list and therefore an evasion surface, so it must be present, non-empty,
+    exact-match, well-formed (lowercase bare registrable domains — no scheme/path/
+    space, must contain a dot, no duplicates), and actually referenced by a rule
+    predicate (not an orphaned list that silently suppresses nothing)."""
+    out = []
+    sets = {s['id']: s for s in rs.get('refinementSets', [])}
+    kfp = sets.get('knownFormProcessors')
+    if kfp is None:
+        out.append("knownFormProcessors refinement set is missing (DEC-50 requires it)")
+        return out
+    members = kfp.get('members', [])
+    if not members:
+        out.append("knownFormProcessors is empty — an empty allowlist invites silent rot; keep at least one curated entry")
+    if kfp.get('matchMode') != 'exact':
+        out.append(f"knownFormProcessors matchMode must be 'exact', got {kfp.get('matchMode')!r}")
+    dom = re.compile(r'^[a-z0-9.-]+\.[a-z]{2,}$')
+    seen = set()
+    for m in members:
+        if not isinstance(m, str) or m != m.lower():
+            out.append(f"knownFormProcessors member {m!r} must be a lowercase string")
+            continue
+        if ('/' in m) or (' ' in m) or ('://' in m) or not dom.match(m):
+            out.append(f"knownFormProcessors member {m!r} is not a bare lowercase registrable domain")
+        if m in seen:
+            out.append(f"knownFormProcessors has duplicate member {m!r}")
+        seen.add(m)
+
+    def refs(pred):
+        if not isinstance(pred, dict):
+            return False
+        if pred.get('op') == 'inSet' and pred.get('set') == 'knownFormProcessors':
+            return True
+        for sub in pred.get('operands', []) or []:
+            if refs(sub):
+                return True
+        for key in ('operand', 'where'):
+            if key in pred and refs(pred[key]):
+                return True
+        return False
+    if not any(refs(r['predicate']) for r in rs['rules']):
+        out.append("knownFormProcessors is defined but not referenced by any rule predicate (orphaned allowlist)")
+    return out
+
+
 def validate(rs, ruleset_path):
-    findings = {f'V-{i}': [] for i in range(1, 17)}
+    findings = {f'V-{i}': [] for i in range(1, 18)}
 
     rules_by_id = {r['id']: r for r in rs['rules']}
     param_ids_used = set()
@@ -508,6 +554,9 @@ def validate(rs, ruleset_path):
     # V-15 — pslVersion pinned and reconciled with the extractor (DEC-27 3a)
     findings['V-15'].extend(check_psl_version(rs))
 
+    # V-17 — knownFormProcessors allowlist governance (DEC-50 / DEFECT-46)
+    findings['V-17'].extend(check_v17_known_form_processors(rs))
+
     return findings
 
 
@@ -521,7 +570,7 @@ def main():
     print(f"{'CHECK':<8} {'STATUS':<8} DETAIL")
     print("-" * 78)
     any_fail = False
-    for i in range(1, 17):
+    for i in range(1, 18):
         key = f'V-{i}'
         viols = findings[key]
         if viols:
