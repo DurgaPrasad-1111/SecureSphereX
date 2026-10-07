@@ -1120,6 +1120,12 @@ def run_multi_feed(
         #    ordered admitted set (DEC-51: cap applied BEFORE limit).
         to_capture = result.admitted[:limit]
 
+        # Fresh blind set must reflect what ACTUALLY enters the corpus this run —
+        # i.e. the CAPTURED set, not the full pre-limit admitted set. Deriving it
+        # from result.fresh_blind_domains (computed over all admitted) would list
+        # new TEST-split domains that --limit never captured (DEFECT-47).
+        captured_blind = sorted({a.domain for a in to_capture if a.is_fresh_blind})
+
         print("DEC-51 MULTI-FEED SELECTION")
         print("=" * 60)
         print(f"  feeds                 {', '.join(feeds)}")
@@ -1130,7 +1136,8 @@ def run_multi_feed(
         print(f"  dropped over cap       {result.dropped_over_cap}")
         print(f"  dropped bad domain     {dropped_bad_domain}")
         print(f"  admitted (pre-limit)   {len(result.admitted)}  -> capturing {len(to_capture)} (limit={limit})")
-        print(f"  fresh blind domains    {len(result.fresh_blind_domains)} new TEST-split domains")
+        print(f"  fresh blind (admitted) {len(result.fresh_blind_domains)} new TEST-split domains pre-limit")
+        print(f"  fresh blind (captured) {len(captured_blind)} new TEST-split domains actually captured")
 
         # 6. Capture. capture_one re-derives split from the registrable domain
         #    via assign_split(), which is a pure function of the domain — so an
@@ -1155,8 +1162,9 @@ def run_multi_feed(
 
         # 7. Record the fresh blind set (new TEST-split domains) for the
         #    pre-registration note. Written to the corpus dir (untracked); the
-        #    committed note (step e/f) is authored from this.
-        blind = sorted(result.fresh_blind_domains)
+        #    committed note (step e/f) is authored from this. Uses the CAPTURED
+        #    set (DEFECT-47) so the list + hash match what is actually on disk.
+        blind = captured_blind
         blind_digest = hashlib.sha256("\n".join(blind).encode()).hexdigest()
         blind_out = CORPUS_DIR / "blind-set-latest.json"
         blind_out.write_text(json.dumps({
