@@ -3257,3 +3257,39 @@ corpus-wide cap, and split-inheritance all behaving on live data).
   "stop and ask rather than silently fall back"). Related: [[DEC-51]] (benign-tail
   design), [[DEFECT-35]] (the earlier cwd-vs-`__file__` capture path-location class
   of bug).
+  **UPDATE 2026-10-07 — RESOLVED.** Architecture-Owner ruling (2026-10-07):
+  fix properly, non-demo-critical, run the capture behind everything. Implemented:
+  `load_feed_urls("tranco")` now reads the repo-root `tranco-top1m.zip` and
+  extracts ranks 10001–60000 via the pure, deterministic, network-free
+  `load_tranco_tail` / `filter_rank_band` (50,000 domains: `mgln.ai` … `zoig.com`),
+  raising loudly if the zip is absent (no silent fallback). Unit-tested in
+  `tools/capture/selection_test.py` (band inclusivity/ordering, a small zip
+  round-trip, determinism, absent-zip SystemExit). No second PSL introduced.
+  `verify:all` green. The bounded full run (openphish + tranco tail,
+  `--max-per-domain 5`, `--limit 500`) follows as a background task.
+
+## DEFECT-49 — the per-tab verdict popup (`popup.html`/`popup.ts`) is built but not wired into the manifest, so clicking the toolbar icon opens the dashboard instead (found 2026-10-07 in the Part D demo-gate trace; OPEN — known loose end, logged per AO instruction)
+
+Finding: `apps/extension/popup.ts` is "a functional diagnostic view of the
+current tab's verdict" (reads `ssx:verdict:<tabId>` from session storage and
+renders it via the shared `verdict-view.ts`), and `build-extension.mjs` builds
+both `popup.js` and `popup.html` into `dist/`. But neither the source
+`manifest.json` nor the built dist manifest sets `action.default_popup`; instead
+`service-worker.ts` wires `chrome.action.onClicked` to open the full-tab
+dashboard (`dashboard.html`). Consequence: **the popup is never shown** — there is
+no manifest path that opens it. It is a built-but-unreferenced asset.
+
+- **Impact: none on the demo or on detection.** The user-visible warning surfaces
+  (badge tier L/M/H, and the Tier-2 interstitial/block page for Medium/High) are
+  fully wired to real engine output and unaffected; the dashboard (toolbar click)
+  and Incident History work. The popup is simply an extra, currently-unreachable
+  verdict view.
+- **Smallest fix (NOT applied — logged per the AO's "leave the unwired popup
+  alone; just log it"):** either (a) set `action.default_popup: "popup.html"` in
+  both manifests (but that would stop the toolbar click from opening the
+  dashboard — the two are mutually exclusive for a single click), or (b) drop
+  `popup.*` from the build if the dashboard is the intended single surface. This
+  is a product decision about what the toolbar click should do, not a bug fix.
+- **Status:** OPEN, logged 2026-10-07 as a known loose end. No code changed.
+  Related: Part D demo-gate trace, `apps/extension/service-worker.ts` (`onClicked`
+  → dashboard), [[DEC-43]]/CP-3 (the dashboard + verdict surfaces).
