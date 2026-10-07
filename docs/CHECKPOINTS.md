@@ -350,3 +350,84 @@ surfaces (DL-02 same-tab Save-As, Medium/High intervention visuals, v3 dashboard
 ratified as the Architecture Owner's own manual attestation from an earlier session,
 confirmed and signed here. This session did not itself witness those live checks.
 **Signed by:** Jayanth (Architecture Owner, Integrator)  **Date:** 2026-10-05
+
+---
+
+## CP-4 — Replay gate
+
+**Status: DRAFT — awaiting Architecture-Owner ruling** (the gate is green; the
+"corpus reconstruction" wording admits two honest readings, laid out below —
+the implementing session does not declare this checkpoint MET or sign it)
+**Drafted:** 2026-10-07
+**Against:** `main` (HEAD `7c6981d`); G-10 implemented at `fcf55ad` (Part 6a)
+**Gate:** G-10 green
+**Evidence:** `tools/ci/g10-replay.ts`, `tools/ci/golden/*.json.gz` + `expected.json`;
+`npm run test:g10` (in `verify:all`); CI step "G-10 Deterministic replay" in `ci.yml`
+
+**[R]** `Implementation-Ownership-Plan.md`:210 states CP-4 verbatim:
+
+> | **CP-4** | Replay gate | Jayanth | Golden corpus reconstruction replay reproduces decisions exactly | G-10 green |
+
+**[I] GATE — "G-10 green." MET.** `npm run test:g10` runs in the `verify:all`
+chain and as its own CI step, both green (verify:all EXIT 0, re-run 2026-10-07).
+G-10 replays five committed golden snapshots through the REAL pipeline
+(`readSnapshot → extractEvidence → runAnalysisPass`) and compares every decision
+— fired rule ids, score, raw/effective tier, unevaluable modules — byte-for-byte
+against the committed `expected.json`, and additionally asserts each golden is
+pass-to-pass deterministic (two passes byte-identical). It was confirmed to FAIL
+on divergence (a one-point score mutation produced an exit-1 drift report) and on
+non-determinism, so the gate is load-bearing, not vacuous. The auth store is a
+throwing reader (S-8): the gate proves replay never consults cross-visit state.
+
+**[I] CRITERION — "golden corpus reconstruction replay reproduces decisions
+exactly." Two honest readings, stated so neither is buried.**
+
+- **Satisfied (the synthetic-golden reading).** The committed goldens cover every
+  rule that currently fires on real data (CRED-01 / CRED-04 / CRED-06 / CRED-07)
+  plus a Low/no-finding case, and each replays to its committed expected decision
+  byte-for-byte and deterministically. "Reproduces decisions exactly" is therefore
+  literally demonstrated, and enforced on every CI run. A local-only mode
+  (`SSX_E2E_SNAPSHOT=<path>`) additionally replays a REAL capture.py snapshot twice
+  and asserts byte-identical decisions, extending the determinism proof to real
+  payloads on demand.
+- **Not fully met (the strict §17.2 "corpus reconstruction" reading).** The goldens
+  are SYNTHETIC fixtures authored in the gate, NOT a reconstruction of the real
+  34,631-payload corpus, and there is no committed expected-decision set for the
+  real corpus to replay against. This is deliberate and forced: DEC-1 keeps corpus
+  payloads out of git, and CI has no corpus, so a committed, CI-enforced
+  reconstruction-and-replay of the real corpus is not possible by the same rule that
+  governs the whole corpus story. Full-corpus reconstruction replay can be run
+  locally (via the real-snapshot mode, snapshot by snapshot) but is not a committed
+  checkpoint artifact. If the gate's intent is read as "rebuild the actual corpus
+  from its index/external store and reproduce a previously-recorded decision set,"
+  that is not what runs here.
+
+**[I] No OPEN defect blocks the gate.** G-10 was added clean (Part 6a); no
+register entry cites CP-4 or G-10 as blocked. The CRED-04 golden exercises the
+redirect producer path (DEFECT-19 Option B), whose S-10 divergence is a reporting
+constraint on CRED-04's corpus headline, not a replay-determinism issue — replay
+reproduces whatever decision the committed snapshot yields, which is all G-10 claims.
+
+### Scope boundaries — what CP-4 does NOT establish
+
+1. **The goldens are synthetic, not a real-corpus reconstruction** (see the strict
+   reading above). CP-4 as drafted proves deterministic, exact replay of a fixed
+   decision set; it does not prove the real corpus has been reconstructed and
+   replayed against recorded decisions in CI.
+2. **Determinism on real payloads is on-demand, not CI-enforced.** The
+   `SSX_E2E_SNAPSHOT` mode runs locally only; CI exercises only the committed
+   synthetic goldens (no corpus on the runner).
+3. **"Reproduces decisions exactly" is pinned to the current engine + ruleset.**
+   `expected.json` is regenerated deliberately (`--generate`) after an intended
+   engine/ruleset change and reviewed as a diff; the gate detects UNINTENDED drift,
+   it does not certify the decisions are themselves correct (that is CP-1/CP-2's
+   domain).
+
+**Decision:** ☐ DRAFT — recorded 2026-10-07, awaiting Architecture-Owner ruling.
+The gate (G-10 green) is MET and CI-enforced. Whether the checkpoint is MET turns
+on how "golden corpus reconstruction replay" is read against the DEC-1 constraint
+that forbids a committed real-corpus replay: the implementing session presents both
+readings above and does not declare or sign CP-4. Per CP-1/CP-3 precedent, declaring
+a checkpoint MET is an act of judgment that requires the Architecture Owner's
+signature; per CP-0/CP-2 precedent, recording it NOT MET would not.
+**Signed by:** _(unsigned — awaiting Architecture Owner)_
