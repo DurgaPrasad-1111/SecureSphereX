@@ -5305,7 +5305,49 @@ implemented this session, not self-attested by Claude Code.
   digest/version bump + test wired; verify:all EXIT 0.
 - **Signed by:** Jayanth (Architecture Owner)  **Date:** 2026-10-06
 
-## DEC-51 (CANDIDATE — unsigned, open) — Multi-feed diversity capture: additive flags for capture.py (Part 6c design note)
+## DEC-51 (SIGNED — Architecture Owner, 2026-10-06) — Multi-feed diversity capture: additive flags for capture.py (Part 6c design note)
+
+**Architecture-Owner ruling (Jayanth, 2026-10-06): APPROVED, signed, with five
+amendments recorded below. These amendments are normative for the Part 6c step (b)
+implementation and override any looser wording in the original design note that follows.**
+
+1. **Cap semantics: corpus-wide, CONFIRMED.** The `--max-per-domain N` cap counts
+   existing `INDEX.jsonl` snapshots for a registrable domain toward `N` (resolving the
+   one design choice flagged below in favor of the proposed corpus-wide option). A
+   domain already at/over `N` admits zero new URLs; a domain at `k < N` admits up to
+   `N − k`. The `new-this-run-only` alternative is REJECTED.
+2. **Fresh blind set = test-split domains with NO prior `INDEX.jsonl` entry, only.** A
+   new URL whose registrable domain ALREADY appears in `INDEX.jsonl` inherits that
+   domain's existing split and is NOT part of the fresh blind set — that domain's
+   earlier snapshots were already scored, so it is not blind. Only genuinely new
+   registrable domains that land in the TEST split constitute the fresh blind set. The
+   pre-registration wording (step e, and the "Held-out discipline" paragraph below) is
+   amended accordingly.
+3. **One PSL function only (DEFECT-34 lesson).** Registrable-domain computation for the
+   cap, for dedup, and for split-inheritance MUST use the EXACT same function
+   `capture.py` already uses to compute `splitKey` (its `tldextract`-based helper). No
+   second PSL implementation is introduced. The pure selection function unit-tests PSL
+   edge cases — `co.uk` (public multi-label suffix) and `github.io` (private suffix) —
+   against that same function.
+4. **Deterministic admission order — recorded tie-break rule.** Within a registrable
+   domain, when more candidate URLs are available than the remaining cap `N − k`
+   admits, candidates are admitted in ascending lexicographic (Unicode code-point) order
+   of their NORMALIZED URL string, and the first `N − k` are taken. This key is
+   independent of feed fetch order and of within-run dict/set iteration, so the same
+   input candidate set always yields the same admitted URLs. (Cross-feed dedup for an
+   IDENTICAL normalized URL is resolved separately, before ordering, by keeping
+   PhishTank's record — see dedup layer (i) below.)
+5. **Run parameters.** `--max-per-domain 5` for this run. The full background run has an
+   explicit bounded target (recorded in the pre-registration note and the run log, not
+   left open-ended). Actual yield per feed is reported after the run.
+
+**Status:** SIGNED by Jayanth (Architecture Owner), 2026-10-06. Proceed with Part 6c
+steps (b)–(f) as specified, honoring amendments 1–5. Commit scope unchanged (code,
+tests, this DEC, pre-registration note; payloads untracked per [[DEC-1]]).
+
+---
+
+**Design note (as originally drafted; retained for the record — read under the ruling above).**
 
 **Design note for Architecture-Owner ruling before implementation (Part 6c step a).**
 All proposed changes are ADDITIVE; with no new flags, `capture.py` behaves
@@ -5360,7 +5402,9 @@ a re-measurement is a separate, later, pre-registered step.
 **Commit scope:** code, tests, this DEC, and the pre-registration note only. Corpus
 payloads stay untracked (DEC-1).
 
-**Status:** CANDIDATE — unsigned, open. Design note only; no code written. Awaiting
-Architecture-Owner ruling (and confirmation of the corpus-wide cap semantics above)
-before Part 6c step b (implementation). Related: [[DEC-1]], [[DEC-28]], [[DEC-13]]
-(cross-environment payload — HIGH), [[DEC-27]] (PSL/split).
+**Status of the original note:** superseded by the SIGNED ruling at the top of DEC-51
+(2026-10-06). The corpus-wide cap and the blind-set definition below are now fixed by
+amendments 1 and 2; the single-PSL rule (amendment 3), the tie-break (amendment 4) and
+the run parameters (amendment 5) are additional binding constraints not present in this
+original draft. Related: [[DEC-1]], [[DEC-28]], [[DEC-13]]
+(cross-environment payload — HIGH), [[DEC-27]] (PSL/split), [[DEFECT-34]] (one-PSL lesson).
