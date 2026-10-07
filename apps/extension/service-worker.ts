@@ -234,8 +234,10 @@ async function analyzeAndReflect(
     const outcome = sessionParts !== null
       ? await runPassInSession({
           store, parts: sessionParts, evidence, ruleSet, storeReader: authStore,
-          // Tier-2 Warn/Block UI does not exist yet, so no intervention is ever
-          // presented — the plumbing is real, the value is structurally false.
+          // false because at PASS time nothing has been presented yet — the
+          // Tier-2 interstitial/block is shown AFTER this pass by maybeIntervene
+          // (below), which records the §11.4 lock itself. This flag is only the
+          // pass-time input; it is not a claim that the Tier-2 UI is absent.
           interventionWasPresented: false,
         })
       : await runAnalysisPass(evidence, ruleSet, authStore, null);
