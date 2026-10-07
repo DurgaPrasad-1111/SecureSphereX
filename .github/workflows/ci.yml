@@ -162,6 +162,15 @@ jobs:
       - name: 'G-11  Contract ↔ LDD conformance'
         run: python3 tools/ci/contract-conformance-check.py
 
+      # DEC-51 Part 6c — multi-feed capture selection (pure, network-free).
+      # Needs tldextract (installed above for the PSL oracle) to exercise the
+      # one registrable_domain function; httpx is NOT installed here, and the
+      # test stubs it when absent (capture.py's only top-level third-party
+      # import). Keeps the corpus-wide cap, cross-feed dedup, split-inheritance
+      # and PSL-edge-case logic honest.
+      - name: 'DEC-51  Capture selection unit tests'
+        run: npm run test:captureselection
+
   tests:
     runs-on: ubuntu-latest
     steps:

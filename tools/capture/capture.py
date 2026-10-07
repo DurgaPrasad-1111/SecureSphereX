@@ -43,6 +43,16 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# DEC-51 Part 6c — multi-feed selection (pure, network-free). Imported by
+# bare name: this script's own directory is on sys.path when it is run
+# directly (`python tools/capture/capture.py`) and when the unit test adds
+# tools/capture to the path before importing capture. The import is additive;
+# the legacy single-feed path below does not touch this module.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+from selection import select, uses_new_selection, normalize_url  # noqa: E402
+
 SNAPSHOT_FORMAT_VERSION = "1.1.0"
 SPLIT_FUNCTION_VERSION = "split-v2"
 SPLIT_PROPORTIONS = {"train": 0.60, "validation": 0.20, "test": 0.20}
@@ -990,9 +1000,197 @@ def load_feed_urls(feed: str) -> list[dict[str, Any]]:
     raise ValueError(f"unknown feed: {feed}")
 
 
+# ── DEC-51 Part 6c — multi-feed selection path ───────────────────────────
+#
+# Reached only when uses_new_selection() is true (>1 --feed, or a
+# --max-per-domain cap). The LEGACY single-feed path is untouched and
+# byte-identical. The pure decision logic lives in selection.py; this shell
+# builds its inputs from INDEX.jsonl + the on-disk payloads, then captures.
+
+def _label_for_feed(feed: str) -> str:
+    # Same convention as the legacy path: tranco is the negatives source.
+    return "benign" if feed == "tranco" else "phishing"
+
+
+def _build_corpus_state(
+    candidate_domains: set[str],
+) -> tuple[dict[str, int], dict[str, str], set[str]]:
+    """
+    Read INDEX.jsonl + the payloads of candidate domains to build the inputs
+    selection.select() needs. Impure (file I/O), deliberately kept OUT of the
+    pure module.
+
+      existing_domain_counts: per-registrable-domain snapshot count across the
+        whole corpus (INDEX line count per splitKey) — the corpus-wide cap base.
+      existing_domain_splits: per-registrable-domain split (from INDEX) — the
+        value a new URL on an existing domain inherits.
+      seen_urls: normalized requestedUrls already captured, but ONLY for the
+        candidate domains (payloads of other domains are never opened). This is
+        the vs-corpus URL dedup set. INDEX.jsonl stores no URL (DEC-1 §1 field
+        set), so prior URLs come from the payloads, not the index.
+    """
+    from collections import Counter
+
+    index_path = CORPUS_DIR / "INDEX.jsonl"
+    counts: Counter[str] = Counter()
+    splits: dict[str, str] = {}
+    paths_by_domain: dict[str, list[str]] = {}
+
+    if index_path.exists():
+        for line in index_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            e = json.loads(line)
+            key = e.get("splitKey")
+            if key is None:
+                continue
+            counts[key] += 1
+            if key not in splits and e.get("split") is not None:
+                splits[key] = e["split"]
+            rp = e.get("relativePath")
+            if rp is not None:
+                paths_by_domain.setdefault(key, []).append(rp)
+
+    # vs-corpus URL dedup: open only the payloads of candidate domains.
+    seen_urls: set[str] = set()
+    for domain in candidate_domains:
+        for rp in paths_by_domain.get(domain, []):
+            p = CORPUS_DIR / rp
+            if not p.exists():
+                continue
+            try:
+                with gzip.open(p, "rt", encoding="utf-8") as f:
+                    snap = json.loads(f.read())
+                prior = snap.get("raw", {}).get("requestedUrl")
+                if prior:
+                    seen_urls.add(normalize_url(prior))
+            except Exception as exc:  # noqa: BLE001 — a bad payload must not abort selection
+                print(f"_build_corpus_state: skipping unreadable payload {rp}: {exc}", file=sys.stderr)
+
+    return dict(counts), splits, seen_urls
+
+
+def run_multi_feed(
+    feeds: list[str],
+    max_per_domain: int | None,
+    limit: int,
+    once: bool,
+    poll: int | None,
+) -> int:
+    while True:
+        # 1. Load every requested feed, annotate each entry with its feed.
+        candidates: list[dict[str, Any]] = []
+        for feed in feeds:
+            for entry in load_feed_urls(feed):
+                e = dict(entry)
+                e["feed"] = feed
+                candidates.append(e)
+
+        # 2. Pre-filter urls whose registrable domain cannot be derived (unknown
+        #    suffix / malformed) — the legacy path would raise on these inside
+        #    capture_one; here we drop them loudly so selection never raises.
+        clean: list[dict[str, Any]] = []
+        dropped_bad_domain = 0
+        candidate_domains: set[str] = set()
+        for c in candidates:
+            try:
+                candidate_domains.add(registrable_domain(c["url"]))
+                clean.append(c)
+            except Exception as exc:  # noqa: BLE001
+                dropped_bad_domain += 1
+                print(f"skip (no registrable domain): {c['url']}  ({exc})", file=sys.stderr)
+
+        # 3. Build corpus state (INDEX counts/splits + prior urls for candidate domains).
+        counts, splits, seen_urls = _build_corpus_state(candidate_domains)
+
+        # 4. Pure selection — the exact same registrable_domain / assign_split
+        #    this producer uses everywhere (DEC-51 amendment #3).
+        result = select(
+            clean,
+            existing_domain_counts=counts,
+            existing_domain_splits=splits,
+            seen_urls=seen_urls,
+            max_per_domain=max_per_domain,
+            domain_of=registrable_domain,
+            assign_split_fn=assign_split,
+        )
+
+        # 5. --limit bounds the already-deduped, already-capped, deterministically
+        #    ordered admitted set (DEC-51: cap applied BEFORE limit).
+        to_capture = result.admitted[:limit]
+
+        print("DEC-51 MULTI-FEED SELECTION")
+        print("=" * 60)
+        print(f"  feeds                 {', '.join(feeds)}")
+        print(f"  max-per-domain        {max_per_domain}")
+        print(f"  candidates/feed       {dict(result.per_feed_candidates)}")
+        print(f"  dropped dup within-run {result.dropped_dup_within_run}")
+        print(f"  dropped dup vs-corpus  {result.dropped_dup_vs_corpus}")
+        print(f"  dropped over cap       {result.dropped_over_cap}")
+        print(f"  dropped bad domain     {dropped_bad_domain}")
+        print(f"  admitted (pre-limit)   {len(result.admitted)}  -> capturing {len(to_capture)} (limit={limit})")
+        print(f"  fresh blind domains    {len(result.fresh_blind_domains)} new TEST-split domains")
+
+        # 6. Capture. capture_one re-derives split from the registrable domain
+        #    via assign_split(), which is a pure function of the domain — so an
+        #    existing domain's split is INHERITED automatically (same domain ->
+        #    same split), matching what select() reported.
+        per_feed_captured: dict[str, int] = {}
+        for a in to_capture:
+            snap = capture_one(
+                a.url, _label_for_feed(a.feed), a.feed,
+                impersonated_brand=a.entry.get("target"),
+                feed_verified=a.entry.get("verified"),
+                reported_on=a.entry.get("reportedOn"),
+                feed_record_id=a.entry.get("id"),
+            )
+            persist(snap)
+            per_feed_captured[a.feed] = per_feed_captured.get(a.feed, 0) + 1
+            print(f"{snap['fetch']['outcome']:<24} [{a.feed}] {a.url}")
+
+        print("\nPER-FEED YIELD (this cycle)")
+        for feed in feeds:
+            print(f"  {feed:<12} captured {per_feed_captured.get(feed, 0)}")
+
+        # 7. Record the fresh blind set (new TEST-split domains) for the
+        #    pre-registration note. Written to the corpus dir (untracked); the
+        #    committed note (step e/f) is authored from this.
+        blind = sorted(result.fresh_blind_domains)
+        blind_digest = hashlib.sha256("\n".join(blind).encode()).hexdigest()
+        blind_out = CORPUS_DIR / "blind-set-latest.json"
+        blind_out.write_text(json.dumps({
+            "generatedOn": date.today().isoformat(),
+            "feeds": feeds,
+            "maxPerDomain": max_per_domain,
+            "freshBlindDomainCount": len(blind),
+            "freshBlindDomains": blind,
+            "sha256OverSortedDomains": blind_digest,
+            "note": "New registrable domains (no prior INDEX entry) that landed in the "
+                    "TEST split this run. NOT to be scored (DEC-51 amendment #2).",
+        }, indent=2) + "\n", encoding="utf-8")
+        print(f"\nFresh blind set -> {blind_out} "
+              f"({len(blind)} domains, sha256={blind_digest[:16]}…)")
+
+        if once or not poll:
+            return 0
+        time.sleep(poll * 60)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="SecureSphere X corpus capture")
-    ap.add_argument("--feed", choices=["phishtank", "openphish", "tranco"])
+    # DEC-51 Part 6c: --feed is now REPEATABLE (action="append"). A single
+    # --feed is unchanged (yields a one-element list routed to the legacy
+    # path); no --feed is unchanged. The choices set is unchanged.
+    ap.add_argument("--feed", choices=["phishtank", "openphish", "tranco"],
+                    action="append",
+                    help="feed to pull from; repeat for multi-feed diversity capture")
+    # DEC-51 Part 6c: corpus-wide per-registrable-domain admission cap. When
+    # present (or with >1 --feed) the run uses the new selection path; absent
+    # with a single --feed it is byte-identical to today.
+    ap.add_argument("--max-per-domain", type=int, default=None, metavar="N",
+                    help="DEC-51: corpus-wide cap on snapshots per registrable domain "
+                         "(counts existing INDEX.jsonl entries toward N)")
     ap.add_argument("--tranco", type=Path, help="CSV of negatives")
     ap.add_argument("--poll", type=int, metavar="MINUTES")
     ap.add_argument("--once", action="store_true")
@@ -1021,18 +1219,27 @@ def main() -> int:
             print(f"{snap['fetch']['outcome']:<24} {u}")
         return 0
 
-    if not args.feed:
+    feeds: list[str] = args.feed or []   # args.feed is a list (action="append") or None
+
+    if not feeds:
         ap.print_help()
         return 2
 
+    # DEC-51 routing: multi-feed OR a --max-per-domain cap uses the new
+    # selection path; a lone --feed with no cap stays on the legacy path and
+    # behaves byte-identically to before this change.
+    if uses_new_selection(feeds, args.max_per_domain):
+        return run_multi_feed(feeds, args.max_per_domain, args.limit, args.once, args.poll)
+
+    feed = feeds[0]
     while True:
         # Label convention (unchanged, extended): "tranco" is the negatives
         # source, hardcoded to "benign" here exactly as the --tranco branch
         # above hardcodes it; every other feed is "phishing".
-        label = "benign" if args.feed == "tranco" else "phishing"
-        for entry in load_feed_urls(args.feed)[: args.limit]:
+        label = "benign" if feed == "tranco" else "phishing"
+        for entry in load_feed_urls(feed)[: args.limit]:
             snap = capture_one(
-                entry["url"], label, args.feed,
+                entry["url"], label, feed,
                 impersonated_brand=entry.get("target"),
                 feed_verified=entry.get("verified"),
                 reported_on=entry.get("reportedOn"),
