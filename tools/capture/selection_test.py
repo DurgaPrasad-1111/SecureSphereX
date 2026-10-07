@@ -173,6 +173,35 @@ check("two github.io subdomains counted as two domains under the cap",
           max_per_domain=1, domain_of=capture.registrable_domain, assign_split_fn=fake_split,
       ).admitted) == 2)
 
+print("DEC-51 benign tail — Tranco rank-band extraction (DEFECT-48)")
+# Pure band filter: inclusive bounds, ascending-rank order, out-of-band dropped.
+band = capture.filter_rank_band(
+    [(1, "a.com"), (10001, "b.com"), (30000, "c.com"), (60000, "d.com"), (60001, "e.com"), (9999, "f.com")],
+    10001, 60000)
+check("rank band is inclusive and rank-ordered, out-of-band dropped",
+      band == ["b.com", "c.com", "d.com"], band)
+
+# Small real zip round-trip (no network): build a top-1m.csv-shaped zip in a
+# temp dir and extract a sub-band through the real reader.
+import io as _io, zipfile as _zip, tempfile as _tmp  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+with _tmp.TemporaryDirectory() as _d:
+    _zp = _Path(_d) / "tranco-top1m.zip"
+    _buf = "\n".join(f"{i},host{i}.example" for i in range(1, 101)) + "\n"
+    with _zip.ZipFile(_zp, "w") as _zf:
+        _zf.writestr("top-1m.csv", _buf)
+    got = capture.load_tranco_tail(_zp, lo=10, hi=12)
+    check("load_tranco_tail reads a zip and slices by rank",
+          got == ["host10.example", "host11.example", "host12.example"], got)
+    # Determinism: identical inputs -> identical output.
+    check("load_tranco_tail is deterministic", capture.load_tranco_tail(_zp, lo=10, hi=12) == got)
+# Absent zip raises loudly (DEC-51: stop, don't silently fall back).
+try:
+    capture.load_tranco_tail(_Path(_d) / "nonexistent.zip")
+    check("absent tranco zip raises", False, "no exception raised")
+except SystemExit:
+    check("absent tranco zip raises SystemExit (no silent fallback)", True)
+
 print()
 if FAILURES:
     print(f"selection_test: {len(FAILURES)} FAILURE(S)")

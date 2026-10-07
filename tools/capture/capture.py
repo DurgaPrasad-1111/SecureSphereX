@@ -67,8 +67,19 @@ SPLIT_PROPORTIONS = {"train": 0.60, "validation": 0.20, "test": 0.20}
 # never received the same treatment despite being the more consequential of
 # the two, since every persisted snapshot and INDEX.jsonl append depends on it.
 # tools/capture/capture.py -> tools/capture -> tools -> repo root.
-CORPUS_DIR = Path(__file__).resolve().parent.parent.parent / "corpus"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CORPUS_DIR = REPO_ROOT / "corpus"
 FETCH_TIMEOUT_MS = 15_000
+
+# DEC-51 benign tail (DEFECT-48 fix): the Tranco negatives are widened from the
+# old top-10k CSV toward ranks ~10k-60k, sourced from the locally-present
+# tranco-top1m.zip at the repo root. Bounds are inclusive and 1-indexed, exactly
+# as Tranco's `rank,domain` CSV is (verified: line "10001,mgln.ai" ..
+# "60000,zoig.com"). Chosen deliberately: below 10k overlaps the popular sites
+# the corpus already holds; 60k keeps the band a well-known-site tail rather than
+# long-tail noise. The band is a fixed slice of a fixed file -> deterministic.
+TRANCO_TAIL_LO = 10_001
+TRANCO_TAIL_HI = 60_000
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
@@ -890,6 +901,59 @@ def report() -> None:
 
 # ── Feed ingestion ───────────────────────────────────────────────────────
 
+def filter_rank_band(rows: list[tuple[int, str]], lo: int, hi: int) -> list[str]:
+    """
+    PURE, network-free, deterministic. `rows` is (rank, domain) pairs; returns
+    the domains whose rank is in [lo, hi], in ascending rank order (the final
+    admission order is re-derived by the selection sort, but a stable order here
+    keeps the function testable and reproducible). DEC-51 benign tail core.
+    """
+    band = [(r, d) for (r, d) in rows if lo <= r <= hi]
+    band.sort(key=lambda rd: rd[0])
+    return [d for (_, d) in band]
+
+
+def load_tranco_tail(
+    zip_path: Path | None = None, lo: int = TRANCO_TAIL_LO, hi: int = TRANCO_TAIL_HI,
+) -> list[str]:
+    """
+    Extract the DEC-51 benign tail (ranks [lo, hi]) from tranco-top1m.zip.
+    Network-free and deterministic: reads a local zip and slices by rank.
+
+    Raises loudly (SystemExit) if the zip is absent — DEC-51 requires the task to
+    STOP and ask for a download rather than silently fall back to a narrower list.
+    """
+    import zipfile
+
+    zip_path = zip_path if zip_path is not None else (REPO_ROOT / "tranco-top1m.zip")
+    if not zip_path.exists():
+        raise SystemExit(
+            f"TRANCO TAIL UNAVAILABLE: {zip_path} not found. DEC-51 requires the "
+            "benign tail to come from tranco-top1m.zip; refusing to silently fall "
+            "back to a narrower negatives list. Place the Tranco top-1M zip at the "
+            "repo root and re-run."
+        )
+    csv_members = [n for n in zipfile.ZipFile(zip_path).namelist() if n.lower().endswith(".csv")]
+    if not csv_members:
+        raise SystemExit(f"TRANCO ZIP MALFORMED: {zip_path} contains no .csv member.")
+
+    rows: list[tuple[int, str]] = []
+    with zipfile.ZipFile(zip_path) as zf, zf.open(csv_members[0]) as raw:
+        for line in io.TextIOWrapper(raw, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(",")
+            if len(parts) < 2:
+                continue
+            try:
+                rank = int(parts[0])
+            except ValueError:
+                continue
+            rows.append((rank, parts[1].strip().lower()))
+    return filter_rank_band(rows, lo, hi)
+
+
 def load_feed_urls(feed: str) -> list[dict[str, Any]]:
     """
     Both PhishTank and OpenPhish publish downloadable lists; PhishTank
@@ -985,16 +1049,14 @@ def load_feed_urls(feed: str) -> list[dict[str, Any]]:
             return []
 
     if feed == "tranco":
-        # Same URL construction the --tranco branch already uses: last CSV
-        # column is the domain, prefixed https://. Resolved relative to this
-        # script's own location, not cwd — CORPUS_DIR's cwd-relative path
-        # already caused one wrong-location bug this session; not repeating
-        # that pattern here.
-        csv_path = Path(__file__).parent / "tranco_top10k.csv"
-        rows = [r.strip().split(",") for r in csv_path.read_text().splitlines() if r.strip()]
+        # DEC-51 benign tail (DEFECT-48 fix): ranks ~10k-60k from the repo-root
+        # tranco-top1m.zip, NOT the old top-10k CSV (which this loader pointed at
+        # via a non-existent tools/capture/ path — the bug this fixes). Bounded,
+        # deterministic, network-free; raises loudly if the zip is absent.
+        domains = load_tranco_tail()
         return [
-            {"url": f"https://{r[-1]}", "id": None, "verified": None, "reportedOn": None, "target": None}
-            for r in rows
+            {"url": f"https://{d}", "id": None, "verified": None, "reportedOn": None, "target": None}
+            for d in domains
         ]
 
     raise ValueError(f"unknown feed: {feed}")
