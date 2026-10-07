@@ -3177,3 +3177,83 @@ calibration analysis: a scan of all 34,631 payloads found the field falsy
 ## DEFECT-46 — CRED-01/07 benign false positives on legitimate cross-domain form actions, surfaced by DEC-28's supersession (found 2026-09-19; PARTIALLY RESOLVED 2026-10-06 via DEC-50)
 
 On the current 34,631-snapshot corpus the DEC-28 supersession (CRED-01/07 now fire on genuine off-site form actions) carries **13 benign false-positive firings** — 4× CRED-01, 9× CRED-07 — across **11 benign snapshots** collapsing to **7 distinct `page → off-site-action` site pairs** (repeats are the same site re-captured on different dates). They are **concentrated, not random scatter**: 4 of the 7 pairs (7 of the 11 snapshots) are legitimate third-party SaaS form-handlers — porkbun→list-manage.com (Mailchimp), yotpo→hsforms.com (HubSpot), therapservices→salesforce.com (Salesforce), va.gov→govdelivery.com (GovDelivery) — plus same-entity siblings (trenitalia.com→lefrecce.it) and a Google-hosted form (keirin.jp→google.co.jp); one case (myhostadmin.net→yunyou.top) is genuinely ambiguous. Root cause is inherent to the signal — `notSameSite(actionRegistrableDomain, url.registrableDomain)` cannot distinguish credential exfiltration to an attacker domain from a legitimate form posted to a site's own SaaS/sibling domain — so this is a real (but narrow, characterizable) precision cost of the supersession, skewed to CRED-07 (marketing/lead forms carrying hidden or autocomplete-disabled fields). Fix options — a known-form-processor allowlist, a same-registrant/same-entity check, or leaning on CRED-02's auth-store cross-origin logic — were drafted in `docs/DEFECT-46-fix-REVIEW.md`. **Ruling (DEC-50, Architecture Owner, signed 2026-10-06): option (a), a known-form-processor allowlist, scoped to CRED-07 only.** Implemented: the `knownFormProcessors` refinementSet (enabled by Annex A-7's additive `RefinementSetId` hand-edit), a `not(inSet(...))` conjunct on CRED-07's predicate, static check V-17 governing the allowlist, and `test:cred07allowlist` proving suppression — rules-v0.3.0, digest recomputed. **PARTIALLY RESOLVED, not fully:** the CRED-07 SaaS-processor FPs (9 of 13) are suppressed for the four listed processors; the **CRED-01 FPs (4 of 13) remain by design** (DEC-50 scoped the allowlist to CRED-07 and explicitly left CRED-01 untouched), as do any unlisted processors and the ambiguous myhostadmin→yunyou.top case. The allowlist is a trust-list / evasion surface (recorded in DEC-50 and the refinementSet rationale). Related: [[DEC-50]], [[DEC-28]] (superseding note, 2026-09-19), `docs/DEFECT-46-fix-REVIEW.md`, `docs/Calibration-Sensitivity-Report.md` §2.
+
+## DEFECT-47 — multi-feed capture's fresh-blind-set manifest was scoped to the pre-limit *admitted* set, not the *captured* set (found 2026-10-07 in the Part 6c pilot; RESOLVED 2026-10-07)
+
+Finding: in `tools/capture/capture.py`'s `run_multi_feed` (DEC-51 Part 6c step b,
+commit `928ab75`), the fresh-blind-set manifest (`corpus/blind-set-latest.json`)
+and the header count were derived from `select(...).fresh_blind_domains`, which
+`selection.select` computes over the **entire admitted set** (all survivors of
+dedup + cap), *before* `--limit` truncates it to the set actually captured. The
+pilot made this concrete: 246 admitted, `--limit 20` → 20 captured, yet the
+manifest listed **45** fresh-blind TEST-split domains — 25-plus of them never
+captured and never written to the corpus/INDEX.
+
+- **Why it matters.** The manifest is the basis for the step-(e) held-out
+  pre-registration note (the "do not score" list + its hash, DEC-51 amendment #2).
+  A list containing domains that were never captured would (a) not match the
+  corpus on disk, so its hash is meaningless as a corpus attestation, and (b)
+  over-declare the blind set — conservative for exclusion, but dishonest as a
+  record of what actually entered the TEST split this run.
+- **Fix.** `run_multi_feed` now derives `captured_blind = {a.domain for a in
+  to_capture if a.is_fresh_blind}` from the post-`--limit` captured set and uses
+  THAT for both the manifest and the hash; the pre-limit figure is still printed,
+  clearly labelled "(admitted)", for diagnostics. `selection.select` is unchanged
+  — its `fresh_blind_domains` over the admitted set is correct for its own
+  contract; the bug was only in which set the capture shell recorded.
+- **Status:** RESOLVED 2026-10-07, same session it was introduced, caught by the
+  pilot before any real blind set was recorded (the 20 diagnostic pilot captures
+  were reverted; no corpus/INDEX growth was committed). No test regression —
+  `verify:all` green. The selection unit tests already cover the per-entry
+  `is_fresh_blind` flag; the admitted-vs-captured scoping lives in the impure
+  capture shell, exercised by the pilot. Related: [[DEC-51]] (amendment #2,
+  fresh blind set = new TEST-split domains only).
+
+## DEFECT-48 — `--feed tranco` reads a non-existent path and the DEC-51 benign tail (ranks ~10k–60k from `tranco-top1m.zip`) is unimplemented; the Part 6c full run cannot launch as specified (found 2026-10-07 in the pilot; OPEN — awaiting Architecture-Owner ruling)
+
+Finding: the Part 6c pilot (`--feed openphish --feed tranco --max-per-domain 5
+--limit 50 --once`) crashed with `FileNotFoundError` on
+`tools/capture/tranco_top10k.csv`. `load_feed_urls("tranco")`
+(`tools/capture/capture.py`) reads `Path(__file__).parent / "tranco_top10k.csv"`
+— i.e. `tools/capture/` — but the Tranco data actually present sits at the
+**repo root** (`./tranco_top10k.csv`, `./tranco-top1m.zip`) and is **untracked**.
+This is a pre-existing bug in the legacy tranco feed path (independent of the
+DEC-51 multi-feed change); the multi-feed pilot merely surfaced it. The OpenPhish
+path and the whole new selection pipeline are proven healthy by an OpenPhish-only
+pilot (300 candidates → 54 over-cap drops → 246 admitted → 20 captured; dedup, the
+corpus-wide cap, and split-inheritance all behaving on live data).
+
+- **Two layered problems.** (1) *File location*: the loader looks in the wrong
+  directory. (2) *Design*: DEC-51's SIGNED design note specifies the benign tail
+  should "widen the Tranco negatives toward ranks ~10k–60k, sourced from the
+  locally-present `tranco-top1m.zip`" — NOT the top-10k CSV the current loader
+  points at. So merely fixing the path (→ repo-root `tranco_top10k.csv`) would
+  make `--feed tranco` *run*, but with top-10k popular sites as negatives, which
+  CONTRADICTS the signed benign-tail design.
+- **Why this is a STOP, not a silent fix.** Resolving (2) means new capture
+  behavior (unzip `tranco-top1m.zip`, select a rank range, decide exact bounds and
+  how it dedups against existing benign domains) — non-trivial, with choices that
+  affect corpus composition and splits — and it changes the (currently broken)
+  legacy `--feed tranco` semantics. Per the authority model this is drafted, not
+  decided. The Part 6c **full run cannot launch as specified** (openphish + tranco
+  tail) until the benign-tail source is ruled on.
+- **Smallest-fix options (for the Architecture Owner to rule, not picked here):**
+  - **(a)** Implement DEC-51 as written: a `load_feed_urls("tranco")` that reads
+    `tranco-top1m.zip` from the repo root and yields a bounded slice of ranks
+    ~10k–60k (exact bounds stated in a follow-up DEC amendment). Honors the signed
+    design; most work.
+  - **(b)** Point the loader at the repo-root `tranco_top10k.csv` for now (top-10k
+    negatives), and defer the 10k–60k widening to a later run. Smallest change, but
+    deviates from DEC-51's stated benign tail until amended.
+  - **(c)** Run the Part 6c full capture **OpenPhish-only** (benign tail deferred
+    entirely), launch now, and treat the Tranco benign tail as a separate follow-up.
+    Unblocks the phishing-diversity goal immediately; leaves the negative set
+    unchanged this round.
+- **Status:** OPEN, logged 2026-10-07. The full run is **held** pending the ruling;
+  the pilot was not pushed into a full capture with a broken feed (per the AO's
+  "don't push a bad run" instruction). Note the Tranco source files are untracked
+  at the repo root — wherever the loader reads them from, that path/provenance
+  should be made explicit (and the zip's presence asserted loudly per DEC-51's
+  "stop and ask rather than silently fall back"). Related: [[DEC-51]] (benign-tail
+  design), [[DEFECT-35]] (the earlier cwd-vs-`__file__` capture path-location class
+  of bug).
