@@ -11,7 +11,7 @@
  *   High (≥60): hard block. Go back · View security findings only — NO proceed.
  */
 
-import { renderVerdict, type StoredVerdict } from './verdict-view.ts';
+import { renderVerdict, selectInterventionVerdict, type StoredVerdict } from './verdict-view.ts';
 
 const params = new URLSearchParams(location.search);
 const tier = params.get('tier') === 'High' ? 'High' : 'Medium';
@@ -43,8 +43,15 @@ function viewFindings(): void {
   findings.classList.toggle('show');
   if (!findings.classList.contains('show') || findings.dataset['loaded'] === '1') return;
   findings.dataset['loaded'] = '1';
-  chrome.storage.session.get(`ssx:verdict:${tabId}`, (data) => {
-    renderVerdict(findings, (data[`ssx:verdict:${tabId}`] as StoredVerdict | undefined) ?? null);
+  // DEFECT-50: read the intervention-time snapshot AND the racy per-tab latest,
+  // and render only a verdict whose targetUrl matches THIS blocked page — never
+  // a later prefetch's verdict for a different document.
+  const elevatedKey = `ssx:intervention-verdict:${tabId}`;
+  const tabKey = `ssx:verdict:${tabId}`;
+  chrome.storage.session.get([elevatedKey, tabKey], (data) => {
+    const elevated = (data[elevatedKey] as StoredVerdict | undefined) ?? null;
+    const tabLatest = (data[tabKey] as StoredVerdict | undefined) ?? null;
+    renderVerdict(findings, selectInterventionVerdict(targetUrl, elevated, tabLatest));
   });
 }
 

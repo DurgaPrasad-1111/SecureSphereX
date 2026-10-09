@@ -18,6 +18,30 @@ export function esc(s: string): string {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] ?? c));
 }
 
+/**
+ * Choose which stored verdict the Tier-2 intervention page may show — and NEVER
+ * a different page's verdict (DEFECT-50). The per-tab "latest verdict"
+ * (`ssx:verdict:<tab>`) is racy: a later same-tab navigation — in the live demo
+ * a `google.com/search/warmup.html` prefetch — overwrites it, so the block page
+ * for page X was reading page Y's Low/0 verdict.
+ *
+ * `elevated` is the intervention-time snapshot (`ssx:intervention-verdict:<tab>`),
+ * written ONLY by an intervening Medium/High pass, so a Low prefetch cannot clobber
+ * it. `tabLatest` is the racy key, kept only as a fallback. EITHER is accepted only
+ * when its `targetUrl` equals the page that triggered the intervention; otherwise
+ * `null` (the empty state) — the page shows "no matching findings" rather than a
+ * stale/wrong verdict. The targetUrl match is the regression guard.
+ */
+export function selectInterventionVerdict(
+  targetUrl: string,
+  elevated: StoredVerdict | null,
+  tabLatest: StoredVerdict | null,
+): StoredVerdict | null {
+  if (elevated !== null && elevated.targetUrl === targetUrl) return elevated;
+  if (tabLatest !== null && tabLatest.targetUrl === targetUrl) return tabLatest;
+  return null;
+}
+
 export function renderVerdict(el: HTMLElement, v: StoredVerdict | null): void {
   if (v === null) {
     el.innerHTML = '<span class="muted">No analysis yet for this tab. Reload the page.</span>';

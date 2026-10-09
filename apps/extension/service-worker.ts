@@ -294,7 +294,17 @@ function reflectBadge(tabId: number, tier: string): void {
  *  the content-script-triggered pass and the DEC-45 download re-pass. */
 async function applyOutcome(tabId: number, targetUrl: string, outcome: AnalysisPassOutcome): Promise<void> {
   const verdict = buildVerdict(outcome, targetUrl);
-  await chrome.storage.session.set({ [`ssx:verdict:${tabId}`]: verdict });
+  const toStore: Record<string, unknown> = { [`ssx:verdict:${tabId}`]: verdict };
+  // DEFECT-50: the Tier-2 page must show the verdict of the page that TRIGGERED
+  // the intervention — not whatever (possibly prefetch) navigation last wrote
+  // `ssx:verdict:<tab>`. Snapshot the verdict under a dedicated per-tab key that
+  // ONLY an intervening (Medium/High) pass writes, so a later Low prefetch of a
+  // different document (e.g. google.com/search/warmup.html) cannot clobber it.
+  // The intervention page still verifies targetUrl before rendering (the guard).
+  if (verdict.effectiveTier === 'Medium' || verdict.effectiveTier === 'High') {
+    toStore[`ssx:intervention-verdict:${tabId}`] = verdict;
+  }
+  await chrome.storage.session.set(toStore);
   reflectBadge(tabId, verdict.effectiveTier);
   // Dashboard Incident History (v3): record EVERY verdict, including Safe (Low) —
   // the full-history decision. Tier LABEL + fired rules only, never the score.

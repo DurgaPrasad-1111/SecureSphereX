@@ -15,7 +15,7 @@ import { decideIntervention, type InterventionOverrideSuppression } from './inte
 import { computeEffectiveTier, recordIntervention } from '../../packages/engine/stage7-8.ts';
 import type { PriorPassState } from '../../packages/engine/stage7-8.ts';
 import { buildAuthRecordRequest, buildLoginFingerprint, type PendingAuth } from './login-success.ts';
-import { renderVerdict, type StoredVerdict } from './verdict-view.ts';
+import { renderVerdict, selectInterventionVerdict, type StoredVerdict } from './verdict-view.ts';
 import type { AnalysisSessionId } from '../../packages/contracts/evidence.contract.v1.ts';
 
 const ORIGIN = 'https://login.acmebank.example';
@@ -95,6 +95,36 @@ console.log('  [5] never teaches trust: a proceed sets interventionOverriddenInS
   console.log('  [6] shared verdict-view render (interstitial view-findings path): tier/score/rules/unevaluable + null-state ✓');
 }
 
+// ── 7. DEFECT-50: the intervention page shows the TRIGGERING page's verdict ──
+// Repro of the live-demo bug: a High block on page /c, then a later same-tab
+// prefetch (google warmup, Low/0) overwrote the racy per-tab latest verdict.
+{
+  const TARGET = 'https://lumora-login.localhost:18443/c';
+  const high: StoredVerdict = {
+    effectiveTier: 'High', rawTier: 'High', score: 65,
+    fired: ['CRED-01', 'CRED-07'], unevaluable: [], targetUrl: TARGET,
+  };
+  const prefetchLow: StoredVerdict = {
+    effectiveTier: 'Low', rawTier: 'Low', score: 0,
+    fired: [], unevaluable: [], targetUrl: 'https://www.google.com/search/warmup.html',
+  };
+  // elevated snapshot present (written only by the Medium/High pass), racy key
+  // clobbered by the prefetch -> MUST still show the High /c verdict.
+  const sel = selectInterventionVerdict(TARGET, high, prefetchLow);
+  assert.equal(sel?.targetUrl, TARGET, 'shows the blocked page, not the prefetch');
+  assert.equal(sel?.effectiveTier, 'High');
+  assert.deepEqual(sel?.fired, ['CRED-01', 'CRED-07'], 'real rules, not "none fired"');
+  assert.equal(sel?.score, 65, 'real score, not 0');
+  // If ONLY the clobbered racy key exists (no elevated snapshot), the guard
+  // refuses the mismatch rather than showing the wrong page -> empty state.
+  assert.equal(selectInterventionVerdict(TARGET, null, prefetchLow), null,
+    'a verdict whose targetUrl != the blocked target is NEVER shown');
+  // Fallback: racy key matching the target (no elevated) is acceptable.
+  assert.equal(selectInterventionVerdict(TARGET, null, high)?.score, 65,
+    'the per-tab latest is used only when its targetUrl matches');
+  console.log('  [7] DEFECT-50: intervention findings match the triggering page (prefetch clobber cannot leak a wrong verdict) ✓');
+}
+
 console.log('Tier-2 intervention PROVEN: §9.4 tier gating (Low/Medium/High), Medium three-action semantics, '
-  + 'High no-bypass, §11.3 monotonic escalation, an override that never teaches auth-store trust, and the '
-  + 'shared verdict renderer on the interstitial path.');
+  + 'High no-bypass, §11.3 monotonic escalation, an override that never teaches auth-store trust, the '
+  + 'shared verdict renderer on the interstitial path, and DEFECT-50 verdict-lookup scoping.');

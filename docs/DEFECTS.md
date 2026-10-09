@@ -3293,3 +3293,49 @@ no manifest path that opens it. It is a built-but-unreferenced asset.
 - **Status:** OPEN, logged 2026-10-07 as a known loose end. No code changed.
   Related: Part D demo-gate trace, `apps/extension/service-worker.ts` (`onClicked`
   → dashboard), [[DEC-43]]/CP-3 (the dashboard + verdict surfaces).
+
+## DEFECT-50 — the Tier-2 block/interstitial "view findings" panel showed a DIFFERENT page's verdict (a later same-tab prefetch clobbered the tabId-keyed verdict) (found 2026-10-09 in the live demo; RESOLVED 2026-10-09)
+
+Finding (reproduced from the live demo): the High **block** page for the demo-range
+`/c` scenario showed the correct "SITE BLOCKED / lumora-login high-risk" banner (which
+comes from the `tier`/`target` query params) but its **findings** panel showed
+`Tier: Low, Score: 0, "none fired", https://www.google.com/search/warmup.html` — a
+different page's verdict. The Medium path for `/a` showed the correct `CRED-01, 45`.
+
+- **Root cause.** The per-page verdict was stored and read **keyed by `tabId` alone**
+  (`ssx:verdict:<tabId>`): `applyOutcome` wrote it (`service-worker.ts`), and the
+  intervention page read it (`intervention.ts` `viewFindings`). Every analysis pass on
+  the tab overwrites that one key. A later same-tab navigation — Chrome's omnibox
+  **search prefetch/warmup** (`google.com/search/warmup.html`), which is analyzed like
+  any page and scores Low/0 — overwrote the blocked page's verdict **before** the block
+  page read it. The banner/tier survived (query params), but the findings lookup
+  resolved to "latest for tab" = the prefetch's Low/0 verdict. It was never a wrong
+  score computation; it was a verdict-storage race.
+- **Fix (keyed so a prefetch/other-doc nav cannot clobber the displayed verdict).**
+  (1) `applyOutcome` now ALSO writes a dedicated snapshot `ssx:intervention-verdict:<tabId>`
+  **only on a Medium/High pass** — so a later Low prefetch of a different document does
+  not touch it. (2) `intervention.ts` reads both that snapshot and the racy latest and
+  renders via the new pure `selectInterventionVerdict(targetUrl, elevated, tabLatest)`
+  (`verdict-view.ts`), which returns a verdict **only when its `targetUrl` matches the
+  blocked target** (the query param), else `null` (empty state). The targetUrl match is
+  the guard: the panel can never show a verdict for a page other than the one named in
+  the banner. The High block for `/c` now shows Tier High, score 65, `CRED-07 + CRED-01`.
+- **Regression guard.** `apps/extension/intervention.test.ts` §7 reproduces the exact
+  clobber (High `/c` snapshot + a Low `google.com/search/warmup.html` racy value) and
+  asserts the selector returns the High `/c` verdict; that a target-mismatched verdict is
+  NEVER returned; and the matching-fallback case. Wired via `test:intervention` in
+  `verify:all`.
+- **Secondary observation (item 4 — FLAGGED, not changed; needs an Architecture-Owner
+  ruling).** That a `google.com/search/warmup.html` **prefetch/prerender** document was
+  analyzed and had a verdict stored + an Incident-History row recorded at all suggests the
+  extension analyzes prefetched/prerendered documents the user never actually viewed. This
+  may inflate Incident History with pages that were never navigated to, and is a candidate
+  to gate analysis on the document's active/prerender state (e.g. `document.prerendering`
+  / only analyze the committed top-level document). **Not changed here** — per the standing
+  instruction not to silently alter engine/analysis behavior; drafted as a follow-up for a
+  ruling. The DEFECT-50 fix is orthogonal: even if prefetch analysis stays, the
+  intervention panel now shows only the triggering page's verdict.
+- **Status:** RESOLVED 2026-10-09 (verdict-lookup scoping). The prefetch-analysis
+  question is a separate OPEN follow-up, flagged above. Related:
+  `apps/extension/verdict-view.ts` (`selectInterventionVerdict`), [[DEC-43]] (multi-pass
+  verdict storage), [[DEC-45]] (download re-pass, which shares `applyOutcome`).
